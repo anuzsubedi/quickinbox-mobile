@@ -5,6 +5,8 @@ import Observation
 @Observable
 final class MailboxViewModel {
     private let api: QuickMailAPI
+    private let cache: MailboxCache
+    private let userID: String
     private var requestGeneration = 0
 
     var selectedMailbox: MailboxKind = .inbox
@@ -20,14 +22,25 @@ final class MailboxViewModel {
     private(set) var isAppending = false
     private(set) var mutatingThreadIDs: Set<String> = []
     private(set) var initialError: String?
+    private(set) var cachedAt: Date?
+    private(set) var isShowingCachedData = false
+    var refreshError: String?
     var actionError: String?
 
     var hasNextPage: Bool {
         currentPage > 0 && currentPage < pageCount
     }
 
-    init(api: QuickMailAPI) {
+    init(api: QuickMailAPI, userID: String, cache: MailboxCache) {
         self.api = api
+        self.userID = userID
+        self.cache = cache
+    }
+
+    func bootstrap() async {
+        guard currentPage == 0 else { return }
+        await restoreCachedInbox()
+        await reload(showInitialLoading: threads.isEmpty)
     }
 
     func prepareForMailboxChange() {
@@ -39,6 +52,9 @@ final class MailboxViewModel {
         currentPage = 0
         pageCount = 1
         initialError = nil
+        cachedAt = nil
+        isShowingCachedData = false
+        refreshError = nil
         isInitialLoading = true
     }
 
@@ -50,6 +66,7 @@ final class MailboxViewModel {
             isInitialLoading = true
         }
         initialError = nil
+        refreshError = nil
 
         do {
             let page = try await api.listThreads(
@@ -62,6 +79,9 @@ final class MailboxViewModel {
             total = page.total
             currentPage = page.page
             pageCount = max(page.pageCount, 1)
+            isShowingCachedData = false
+            cachedAt = nil
+            await saveInboxCacheIfNeeded()
         } catch is CancellationError {
             return
         } catch {
@@ -69,7 +89,7 @@ final class MailboxViewModel {
             if threads.isEmpty {
                 initialError = error.localizedDescription
             } else {
-                actionError = error.localizedDescription
+                refreshError = error.localizedDescription
             }
         }
 
@@ -117,13 +137,53 @@ final class MailboxViewModel {
         do {
             _ = try await api.perform(action, ids: [thread.latestID])
             apply(action, to: thread)
+            await saveInboxCacheIfNeeded()
+            AppFeedback.success()
         } catch {
             actionError = error.localizedDescription
+            AppFeedback.error()
         }
     }
 
     func dismissActionError() {
         actionError = nil
+    }
+
+    func dismissRefreshError() {
+        refreshError = nil
+    }
+
+    private func restoreCachedInbox() async {
+        guard selectedMailbox == .inbox,
+              searchText.isEmpty,
+              let origin = await api.currentCredential?.origin,
+              let snapshot = cache.load(origin: origin, userID: userID),
+              !snapshot.threads.isEmpty else {
+            return
+        }
+
+        threads = deduplicated(snapshot.threads)
+        total = snapshot.total
+        currentPage = 1
+        pageCount = snapshot.pageCount
+        cachedAt = snapshot.updatedAt
+        isShowingCachedData = true
+    }
+
+    private func saveInboxCacheIfNeeded() async {
+        guard selectedMailbox == .inbox,
+              searchText.isEmpty,
+              currentPage >= 1,
+              let origin = await api.currentCredential?.origin else {
+            return
+        }
+        cache.save(
+            threads: threads,
+            total: total,
+            pageCount: pageCount,
+            origin: origin,
+            userID: userID
+        )
     }
 
     private func apply(_ action: MailAction, to thread: ThreadSummary) {

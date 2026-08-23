@@ -10,10 +10,14 @@ struct MailboxFeatureView: View {
 
     init(
         api: QuickMailAPI,
+        userID: String,
+        cache: MailboxCache,
         onCompose: @escaping (_ draftID: String?) -> Void,
         onSelectThread: @escaping (ThreadSummary) -> Void
     ) {
-        _model = State(initialValue: MailboxViewModel(api: api))
+        _model = State(
+            initialValue: MailboxViewModel(api: api, userID: userID, cache: cache)
+        )
         self.onCompose = onCompose
         self.onSelectThread = onSelectThread
     }
@@ -97,9 +101,14 @@ struct MailboxFeatureView: View {
                     composeButton
                 }
             }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if model.isShowingCachedData || model.refreshError != nil {
+                    cacheStatusBanner
+                }
+            }
             .task {
                 if model.currentPage == 0 {
-                    await model.reload()
+                    await model.bootstrap()
                 }
             }
             .task(id: model.searchText) {
@@ -138,6 +147,7 @@ struct MailboxFeatureView: View {
             ForEach(model.threads) { thread in
                 Button {
                     model.selectedThreadID = thread.id
+                    AppFeedback.selection()
                     if thread.isDraft {
                         onCompose(thread.latestID)
                     } else {
@@ -203,6 +213,10 @@ struct MailboxFeatureView: View {
             } actions: {
                 if !model.searchText.isEmpty {
                     Button("Clear Search") { model.searchText = "" }
+                } else {
+                    Button("Check Again") {
+                        Task { await model.reload() }
+                    }
                 }
             }
             .listRowSeparator(.hidden)
@@ -230,10 +244,45 @@ struct MailboxFeatureView: View {
 
     private var composeButton: some View {
         Button {
+            AppFeedback.selection()
             onCompose(nil)
         } label: {
             Label("Compose", systemImage: "square.and.pencil")
         }
+    }
+
+    private var cacheStatusBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: model.refreshError == nil ? "clock.arrow.circlepath" : "wifi.slash")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.refreshError == nil ? "Showing saved Inbox" : "Couldn’t refresh Inbox")
+                    .font(.subheadline.weight(.semibold))
+                if let cachedAt = model.cachedAt {
+                    Text("Updated \(cachedAt.formatted(.relative(presentation: .named)))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if let refreshError = model.refreshError {
+                    Text(refreshError)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+
+            Spacer()
+
+            Button("Retry") {
+                model.dismissRefreshError()
+                Task { await model.reload(showInitialLoading: false) }
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 10)
+        .background(.bar)
     }
 
     @ViewBuilder

@@ -4,6 +4,7 @@ struct AuthenticatedRootView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     let api: QuickMailAPI
+    let mailboxCache: MailboxCache
     let currentUser: User
     let onDisconnected: () -> Void
 
@@ -109,6 +110,8 @@ struct AuthenticatedRootView: View {
     private var mailboxView: some View {
         MailboxFeatureView(
             api: api,
+            userID: currentUser.id,
+            cache: mailboxCache,
             onCompose: { _ in
                 composePresentation = ComposePresentation(mode: .newMessage)
             },

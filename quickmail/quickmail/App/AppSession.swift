@@ -13,6 +13,7 @@ final class AppSession {
 
     let api: QuickMailAPI
     let credentialStore: CredentialStore
+    let mailboxCache: MailboxCache
     private(set) var phase: Phase = .booting
 
     private var hasBootstrapped = false
@@ -20,10 +21,12 @@ final class AppSession {
 
     init(
         api: QuickMailAPI = QuickMailAPI(),
-        credentialStore: CredentialStore = CredentialStore()
+        credentialStore: CredentialStore = CredentialStore(),
+        mailboxCache: MailboxCache
     ) {
         self.api = api
         self.credentialStore = credentialStore
+        self.mailboxCache = mailboxCache
     }
 
     func bootstrapIfNeeded() async {
@@ -48,6 +51,7 @@ final class AppSession {
     func didDisconnect() {
         restoreGeneration += 1
         phase = .onboarding(message: nil)
+        mailboxCache.clearAll()
         Task { await api.clearCredential() }
     }
 
@@ -55,6 +59,7 @@ final class AppSession {
         restoreGeneration += 1
         try? await credentialStore.delete()
         await api.clearCredential()
+        mailboxCache.clearAll()
         phase = .onboarding(message: nil)
     }
 
@@ -81,6 +86,9 @@ final class AppSession {
 
             await api.install(credential)
             let user = try await api.currentUser()
+            if credential.cachedUser != user {
+                try? await credentialStore.save(credential.caching(user: user))
+            }
             guard generation == restoreGeneration else { return }
             phase = .authenticated(user)
         } catch APIError.unauthorized {
@@ -92,6 +100,16 @@ final class AppSession {
             await api.clearCredential()
             guard generation == restoreGeneration else { return }
             phase = .onboarding(message: "The saved session was invalid and has been removed.")
+        } catch APIError.transport(_) {
+            guard generation == restoreGeneration else { return }
+            let savedCredential = try? await credentialStore.load()
+            if let cachedUser = savedCredential?.cachedUser {
+                phase = .authenticated(cachedUser)
+            } else {
+                phase = .restoreFailed(
+                    message: "QuickMail couldn’t reach your server and this account has not been cached yet."
+                )
+            }
         } catch {
             guard generation == restoreGeneration else { return }
             phase = .restoreFailed(message: userFacingMessage(for: error))

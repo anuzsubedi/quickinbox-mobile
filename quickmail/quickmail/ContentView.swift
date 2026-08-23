@@ -1,7 +1,14 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var session = AppSession()
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var session: AppSession
+    @State private var appLock = AppLockController()
+
+    init() {
+        let mailboxCache = MailboxCache()
+        _session = State(initialValue: AppSession(mailboxCache: mailboxCache))
+    }
 
     var body: some View {
         Group {
@@ -20,6 +27,7 @@ struct ContentView: View {
             case .authenticated(let user):
                 AuthenticatedRootView(
                     api: session.api,
+                    mailboxCache: session.mailboxCache,
                     currentUser: user,
                     onDisconnected: session.didDisconnect
                 )
@@ -33,7 +41,17 @@ struct ContentView: View {
                 )
             }
         }
+        .environment(appLock)
+        .overlay {
+            if appLock.isLocked {
+                AppLockView(controller: appLock)
+            }
+        }
         .task { await session.bootstrapIfNeeded() }
+        .task { await appLock.unlockIfNeeded() }
+        .onChange(of: scenePhase) { _, phase in
+            appLock.handleScenePhase(phase)
+        }
     }
 }
 

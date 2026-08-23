@@ -68,9 +68,11 @@ final class ThreadReaderViewModel: ObservableObject {
                 _ = try await api.perform(action, ids: [actionTargetID])
             }
             apply(action)
+            AppFeedback.success()
             return true
         } catch {
             errorMessage = Self.message(for: error)
+            AppFeedback.error()
             return false
         }
     }

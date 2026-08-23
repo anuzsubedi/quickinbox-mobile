@@ -108,6 +108,7 @@ struct QRScannerView: View {
     private func deliver(_ value: String) {
         guard !didDeliverResult else { return }
         didDeliverResult = true
+        AppFeedback.selection()
         onScan(value)
         dismiss()
     }

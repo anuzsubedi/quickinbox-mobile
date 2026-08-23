@@ -212,10 +212,13 @@ struct OnboardingView: View {
                 installedCredential = true
 
                 let user = try await api.currentUser()
-                try await credentialStore.save(credential)
+                let restorableCredential = credential.caching(user: user)
+                await api.install(restorableCredential)
+                try await credentialStore.save(restorableCredential)
 
                 isConnecting = false
-                onAuthenticated(credential, user)
+                AppFeedback.success()
+                onAuthenticated(restorableCredential, user)
             } catch {
                 if installedCredential {
                     try? await api.logout(credentialStore: credentialStore)

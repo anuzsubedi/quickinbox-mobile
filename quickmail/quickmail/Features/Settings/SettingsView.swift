@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 
 struct SettingsView: View {
+    @Environment(AppLockController.self) private var appLock
     @StateObject private var model: SettingsViewModel
     private let onDisconnected: () -> Void
 
@@ -27,10 +28,14 @@ struct SettingsView: View {
             sendingAddressSection
             signatureSection
             devicesSection
+            privacySection
             sessionSection
         }
         .navigationTitle("Settings")
-        .task { await model.loadIfNeeded() }
+        .task {
+            appLock.refreshAvailability()
+            await model.loadIfNeeded()
+        }
         .refreshable { await model.load() }
         .alert(
             "Revoke Device?",
@@ -213,6 +218,31 @@ struct SettingsView: View {
         }
     }
 
+    private var privacySection: some View {
+        Section {
+            Toggle(
+                "Require \(appLock.biometryName)",
+                isOn: Binding(
+                    get: { appLock.isEnabled },
+                    set: { enabled in
+                        Task { await appLock.setEnabled(enabled) }
+                    }
+                )
+            )
+            .disabled(!appLock.isAvailable && !appLock.isEnabled)
+
+            if let message = appLock.errorMessage {
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        } header: {
+            Text("Privacy")
+        } footer: {
+            Text("When enabled, QuickMail hides message content whenever you leave the app and requires biometrics when you return.")
+        }
+    }
+
     private func loadingRow(_ title: String) -> some View {
         HStack(spacing: 10) {
             ProgressView()
@@ -321,8 +351,10 @@ private final class SettingsViewModel: ObservableObject {
             savedSignature = signature
             signatureDraft = signature
             signatureSaved = true
+            AppFeedback.success()
         } catch {
             operationError = error.localizedDescription
+            AppFeedback.error()
         }
     }
 
@@ -335,8 +367,10 @@ private final class SettingsViewModel: ObservableObject {
         do {
             try await api.revokeDevice(id: device.id)
             devices.removeAll { $0.id == device.id }
+            AppFeedback.success()
         } catch {
             operationError = error.localizedDescription
+            AppFeedback.error()
         }
     }
 
@@ -348,6 +382,7 @@ private final class SettingsViewModel: ObservableObject {
                 revokeCurrentDevice: revokeOnServer
             )
             clearLocalPreferences()
+            AppFeedback.success()
             return nil
         } catch {
             // QuickMailAPI deliberately clears its credential and Keychain data even

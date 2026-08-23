@@ -233,16 +233,19 @@ final class ComposeViewModel: ObservableObject {
                     )
                 }
 
+                AppFeedback.success()
                 return response
             } catch {
                 // Keep all entered fields and attachments intact so Retry is safe.
                 errorMessage = (error as? LocalizedError)?.errorDescription
                     ?? "QuickMail could not send this message. Try again."
+                AppFeedback.error()
                 return nil
             }
         }
 
         errorMessage = validationMessage
+        AppFeedback.error()
         return nil
     }
 

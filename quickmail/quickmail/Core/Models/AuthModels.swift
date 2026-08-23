@@ -23,8 +23,20 @@ nonisolated struct Credential: Codable, Equatable, Sendable {
     let origin: URL
     let token: String
     let expiresAt: Date
+    let cachedUser: User?
 
     var isExpired: Bool { expiresAt <= Date() }
+
+    init(origin: URL, token: String, expiresAt: Date, cachedUser: User? = nil) {
+        self.origin = origin
+        self.token = token
+        self.expiresAt = expiresAt
+        self.cachedUser = cachedUser
+    }
+
+    func caching(user: User) -> Credential {
+        Credential(origin: origin, token: token, expiresAt: expiresAt, cachedUser: user)
+    }
 }
 
 nonisolated struct CurrentUserResponse: Decodable, Sendable {
