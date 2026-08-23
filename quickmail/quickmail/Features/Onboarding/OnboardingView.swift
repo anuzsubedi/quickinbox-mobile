@@ -27,14 +27,15 @@ struct OnboardingView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 28) {
+                VStack(spacing: 32) {
                     introduction
-                    connectionCard
+                    connectionPanel
                     privacyNote
                 }
                 .frame(maxWidth: 560)
                 .padding(.horizontal, 20)
-                .padding(.vertical, 32)
+                .padding(.top, 36)
+                .padding(.bottom, 28)
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Connect QuickMail")
@@ -61,69 +62,84 @@ struct OnboardingView: View {
     }
 
     private var introduction: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "envelope.badge.shield.half.filled")
-                .font(.system(size: 48, weight: .semibold))
-                .foregroundStyle(.tint)
-                .accessibilityHidden(true)
-            Text("Your mail, on this device")
-                .font(.title2.bold())
-            Text("In QuickMail on the web, open Settings and choose Connect mobile app.")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+        VStack(spacing: 16) {
+            QuickMailMark(size: .largeTitle)
+                .frame(width: 76, height: 76)
+                .background(Color.accentColor.opacity(0.1), in: Circle())
+
+            VStack(spacing: 7) {
+                Text("Your mailbox. Your server.")
+                    .font(.title.bold())
+                    .multilineTextAlignment(.center)
+                Text("Pair this device from QuickMail on the web. The connection belongs to the server you choose.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
-    private var connectionCard: some View {
-        VStack(spacing: 20) {
-            Button {
+    private var connectionPanel: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Connect securely")
+                    .font(.title3.weight(.semibold))
+                Text("In the web app, open Settings and choose Connect mobile app.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            PlatformPrimaryActionButton {
                 focusedField = nil
                 errorMessage = nil
                 isScannerPresented = true
             } label: {
                 Label("Scan Pairing Code", systemImage: "qrcode.viewfinder")
-                    .frame(maxWidth: .infinity)
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(isConnecting)
 
-            HStack {
+            HStack(spacing: 12) {
                 Divider()
-                Text("OR ENTER MANUALLY")
-                    .font(.caption.weight(.semibold))
+                Text("or enter it manually")
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize()
                 Divider()
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Server")
-                    .font(.subheadline.weight(.semibold))
-                TextField("https://mail.example.com", text: $serverOrigin)
-                    .textContentType(.URL)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.next)
-                    .focused($focusedField, equals: .server)
-                    .onSubmit { focusedField = .code }
-                    .textFieldStyle(.roundedBorder)
-            }
+            VStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Label("Server", systemImage: "server.rack")
+                        .font(.subheadline.weight(.semibold))
+                    TextField("https://mail.example.com", text: $serverOrigin)
+                        .textContentType(.URL)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.next)
+                        .focused($focusedField, equals: .server)
+                        .onSubmit { focusedField = .code }
+                        .textFieldStyle(.roundedBorder)
+                }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Pairing code")
-                    .font(.subheadline.weight(.semibold))
-                TextField("22-character code", text: $pairingCode)
-                    .textContentType(.oneTimeCode)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .fontDesign(.monospaced)
-                    .submitLabel(.go)
-                    .focused($focusedField, equals: .code)
-                    .onSubmit(connectManually)
-                    .textFieldStyle(.roundedBorder)
+                VStack(alignment: .leading, spacing: 7) {
+                    Label("Pairing code", systemImage: "number")
+                        .font(.subheadline.weight(.semibold))
+                    TextField("22-character code", text: $pairingCode)
+                        .textContentType(.oneTimeCode)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .fontDesign(.monospaced)
+                        .submitLabel(.go)
+                        .focused($focusedField, equals: .code)
+                        .onSubmit(connectManually)
+                        .textFieldStyle(.roundedBorder)
+                }
             }
 
             if let errorMessage {
@@ -140,30 +156,40 @@ struct OnboardingView: View {
                         ProgressView()
                             .controlSize(.small)
                     }
-                    Text(isConnecting ? "Connecting…" : "Connect")
+                    Text(isConnecting ? "Connecting…" : "Connect Manually")
                 }
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.bordered)
             .controlSize(.large)
             .disabled(isConnecting || serverOrigin.isEmpty || pairingCode.isEmpty)
         }
         .padding(20)
-        .background(.background, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(.separator.opacity(0.5), lineWidth: 0.5)
-        }
+        .background(
+            Color(.secondarySystemGroupedBackground),
+            in: RoundedRectangle(cornerRadius: QuickMailDesign.compactCornerRadius, style: .continuous)
+        )
     }
 
     private var privacyNote: some View {
-        Label {
-            Text("The pairing code expires quickly and works once. Your session is stored securely on this device.")
-        } icon: {
-            Image(systemName: "lock.fill")
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "lock.shield.fill")
+                .foregroundStyle(.tint)
+                .frame(width: 24)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Private by design")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text("The code works once and expires quickly. Your session is stored securely in Keychain on this device.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .font(.footnote)
-        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
     }
 
     private var scannedOriginConfirmationMessage: String {

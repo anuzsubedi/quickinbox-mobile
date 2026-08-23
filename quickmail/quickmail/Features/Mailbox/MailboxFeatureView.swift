@@ -97,14 +97,14 @@ struct MailboxFeatureView: View {
                         mailboxMenu
                     }
                 }
-                ToolbarItem(placement: .primaryAction) {
-                    composeButton
-                }
             }
             .safeAreaInset(edge: .top, spacing: 0) {
                 if model.isShowingCachedData || model.refreshError != nil {
                     cacheStatusBanner
                 }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                composeBar
             }
             .task {
                 if model.currentPage == 0 {
@@ -144,32 +144,26 @@ struct MailboxFeatureView: View {
 
     private var threadList: some View {
         List(selection: $model.selectedThreadID) {
-            ForEach(model.threads) { thread in
-                Button {
-                    model.selectedThreadID = thread.id
-                    AppFeedback.selection()
-                    if thread.isDraft {
-                        onCompose(thread.latestID)
-                    } else {
-                        onSelectThread(thread)
-                    }
-                } label: {
-                    ThreadSummaryRow(
-                        thread: thread,
-                        mailbox: model.selectedMailbox,
-                        isWorking: model.mutatingThreadIDs.contains(thread.id)
+            if model.searchText.isEmpty {
+                mailboxOverview
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(
+                        EdgeInsets(top: 8, leading: 20, bottom: 12, trailing: 20)
                     )
-                }
-                .buttonStyle(.plain)
-                .tag(thread.id)
-                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                    leadingSwipeActions(for: thread)
-                }
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    trailingSwipeActions(for: thread)
-                }
-                .contextMenu {
-                    contextMenuActions(for: thread)
+            }
+
+            ForEach(threadSections) { section in
+                Section {
+                    ForEach(section.threads) { thread in
+                        threadRow(thread)
+                    }
+                } header: {
+                    HStack {
+                        Text(section.title)
+                        Spacer()
+                        Text("\(section.threads.count)")
+                            .monospacedDigit()
+                    }
                 }
             }
 
@@ -195,6 +189,57 @@ struct MailboxFeatureView: View {
         .refreshable {
             await model.refresh()
         }
+    }
+
+    private func threadRow(_ thread: ThreadSummary) -> some View {
+        Button {
+            model.selectedThreadID = thread.id
+            AppFeedback.selection()
+            if thread.isDraft {
+                onCompose(thread.latestID)
+            } else {
+                onSelectThread(thread)
+            }
+        } label: {
+            ThreadSummaryRow(
+                thread: thread,
+                mailbox: model.selectedMailbox,
+                isWorking: model.mutatingThreadIDs.contains(thread.id)
+            )
+        }
+        .buttonStyle(.plain)
+        .tag(thread.id)
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            leadingSwipeActions(for: thread)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            trailingSwipeActions(for: thread)
+        }
+        .contextMenu {
+            contextMenuActions(for: thread)
+        }
+    }
+
+    private var mailboxOverview: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: model.selectedMailbox.systemImage)
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(.tint)
+                .frame(width: 44, height: 44)
+                .background(Color.accentColor.opacity(0.1), in: Circle())
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(mailboxSummaryTitle)
+                    .font(.headline)
+                Text(mailboxSummaryDetail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 8)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private var emptyState: some View {
@@ -242,13 +287,23 @@ struct MailboxFeatureView: View {
         .accessibilityLabel("Choose Mailbox")
     }
 
-    private var composeButton: some View {
-        Button {
-            AppFeedback.selection()
-            onCompose(nil)
-        } label: {
-            Label("Compose", systemImage: "square.and.pencil")
+    private var composeBar: some View {
+        HStack {
+            Spacer()
+            FloatingControlGroup {
+                FloatingActionButton(
+                    "Compose",
+                    systemImage: "square.and.pencil",
+                    prominence: .prominent
+                ) {
+                    AppFeedback.selection()
+                    onCompose(nil)
+                }
+                .controlSize(.large)
+            }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     private var cacheStatusBanner: some View {
@@ -283,6 +338,54 @@ struct MailboxFeatureView: View {
         .padding(.horizontal)
         .padding(.vertical, 10)
         .background(.bar)
+    }
+
+    private var mailboxSummaryTitle: String {
+        return model.total == 1 ? "1 conversation" : "\(model.total) conversations"
+    }
+
+    private var mailboxSummaryDetail: String {
+        if model.isShowingCachedData, let cachedAt = model.cachedAt {
+            return "Saved on this device · updated \(cachedAt.formatted(.relative(presentation: .named)))"
+        }
+        if model.selectedMailbox == .inbox {
+            let unread = model.threads.lazy.filter { !$0.isRead }.count
+            let unreadLabel = unread == 1 ? "1 unread in view" : "\(unread) unread in view"
+            if model.total > model.threads.count {
+                return "\(unreadLabel) · showing \(model.threads.count)"
+            }
+            return unreadLabel
+        }
+        if model.total > model.threads.count {
+            return "Showing \(model.threads.count) of \(model.total)"
+        }
+        return "Sorted by most recent"
+    }
+
+    private var threadSections: [MailboxThreadSection] {
+        var sections: [MailboxThreadSection] = []
+        for thread in model.threads {
+            let title = sectionTitle(for: thread.createdAt)
+            if let index = sections.firstIndex(where: { $0.title == title }) {
+                sections[index].threads.append(thread)
+            } else {
+                sections.append(MailboxThreadSection(title: title, threads: [thread]))
+            }
+        }
+        return sections
+    }
+
+    private func sectionTitle(for date: Date) -> String {
+        let calendar = Calendar.autoupdatingCurrent
+        if calendar.isDateInToday(date) { return "Today" }
+        if calendar.isDateInYesterday(date) { return "Yesterday" }
+        if let weekAgo = calendar.date(byAdding: .day, value: -7, to: .now), date >= weekAgo {
+            return "Previous 7 Days"
+        }
+        if calendar.isDate(date, equalTo: .now, toGranularity: .year) {
+            return date.formatted(.dateTime.month(.wide))
+        }
+        return date.formatted(.dateTime.year())
     }
 
     @ViewBuilder
@@ -410,4 +513,11 @@ struct MailboxFeatureView: View {
         }
         .tint(tint)
     }
+}
+
+private struct MailboxThreadSection: Identifiable {
+    let title: String
+    var threads: [ThreadSummary]
+
+    var id: String { title }
 }

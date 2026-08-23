@@ -57,15 +57,25 @@ struct ContentView: View {
 
 private struct LaunchView: View {
     var body: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "envelope.fill")
-                .font(.system(size: 42, weight: .medium))
-                .foregroundStyle(.tint)
-                .accessibilityHidden(true)
-            ProgressView("Opening QuickMail…")
+        VStack(spacing: 20) {
+            QuickMailMark(size: .largeTitle)
+                .frame(width: 72, height: 72)
+                .background(Color.accentColor.opacity(0.1), in: Circle())
+
+            VStack(spacing: 6) {
+                Text("QuickMail")
+                    .font(.title2.bold())
+                Text("Opening your mailbox…")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel("Opening QuickMail")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(uiColor: .systemBackground))
+        .background(Color(uiColor: .systemGroupedBackground))
     }
 }
 

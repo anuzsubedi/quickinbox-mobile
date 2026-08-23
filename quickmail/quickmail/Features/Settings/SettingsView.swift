@@ -32,6 +32,7 @@ struct SettingsView: View {
             sessionSection
         }
         .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.large)
         .task {
             appLock.refreshAvailability()
             await model.loadIfNeeded()
@@ -73,19 +74,20 @@ struct SettingsView: View {
     }
 
     private var accountSection: some View {
-        Section("Account") {
-            LabeledContent("Name", value: model.currentUser.name)
-            LabeledContent("Email", value: model.currentUser.email)
-
-            if let serverURL = model.serverURL {
-                LabeledContent("Server", value: serverURL.host() ?? serverURL.absoluteString)
-            }
+        Section {
+            QuickMailAccountHeader(
+                name: model.currentUser.name,
+                email: model.currentUser.email,
+                server: model.serverURL.map { $0.host() ?? $0.absoluteString }
+            )
 
             if let manageURL = model.manageWebURL {
                 Link(destination: manageURL) {
-                    Label("Manage on the Web", systemImage: "safari")
+                    Label("Open QuickMail on the Web", systemImage: "safari")
                 }
             }
+        } header: {
+            Text("Account")
         }
     }
 
@@ -97,7 +99,7 @@ struct SettingsView: View {
                 Text("No sending addresses are available.")
                     .foregroundStyle(.secondary)
             } else {
-                Picker("Send From", selection: $model.selectedAddressID) {
+                Picker(selection: $model.selectedAddressID) {
                     ForEach(model.addresses) { address in
                         VStack(alignment: .leading) {
                             Text(address.label?.isEmpty == false ? address.label! : address.address)
@@ -107,6 +109,8 @@ struct SettingsView: View {
                         }
                         .tag(address.id)
                     }
+                } label: {
+                    Label("Send From", systemImage: "at")
                 }
             }
         } header: {
@@ -123,6 +127,7 @@ struct SettingsView: View {
             } else {
                 TextEditor(text: $model.signatureDraft)
                     .frame(minHeight: 110)
+                    .accessibilityLabel("Account signature")
                     .onChange(of: model.signatureDraft) { _, value in
                         if value.count > SettingsViewModel.signatureLimit {
                             model.signatureDraft = String(value.prefix(SettingsViewModel.signatureLimit))
@@ -139,7 +144,7 @@ struct SettingsView: View {
                             .font(.callout)
                             .foregroundStyle(.green)
                     }
-                    Button("Save") {
+                    Button("Save Signature") {
                         Task { await model.saveSignature() }
                     }
                     .disabled(model.isSavingSignature || !model.signatureHasChanges)
@@ -163,8 +168,12 @@ struct SettingsView: View {
                 ForEach(model.devices) { device in
                     HStack(spacing: 12) {
                         Image(systemName: model.symbolName(for: device))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 24)
+                            .foregroundStyle(device.isCurrent ? Color.accentColor : Color.secondary)
+                            .frame(width: 36, height: 36)
+                            .background(
+                                (device.isCurrent ? Color.accentColor : Color.secondary).opacity(0.1),
+                                in: Circle()
+                            )
 
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 6) {
@@ -204,12 +213,16 @@ struct SettingsView: View {
 
     private var sessionSection: some View {
         Section {
-            Button("Disconnect This Device", role: .destructive) {
+            Button(role: .destructive) {
                 showingDisconnectConfirmation = true
+            } label: {
+                Label("Disconnect This Device", systemImage: "rectangle.portrait.and.arrow.right")
             }
 
-            Button("Remove Local Data", role: .destructive) {
+            Button(role: .destructive) {
                 showingLocalWipeConfirmation = true
+            } label: {
+                Label("Remove Local Data", systemImage: "externaldrive.badge.xmark")
             }
         } header: {
             Text("This Device")
@@ -221,14 +234,15 @@ struct SettingsView: View {
     private var privacySection: some View {
         Section {
             Toggle(
-                "Require \(appLock.biometryName)",
                 isOn: Binding(
                     get: { appLock.isEnabled },
                     set: { enabled in
                         Task { await appLock.setEnabled(enabled) }
                     }
                 )
-            )
+            ) {
+                Label("Require \(appLock.biometryName)", systemImage: "lock.shield")
+            }
             .disabled(!appLock.isAvailable && !appLock.isEnabled)
 
             if let message = appLock.errorMessage {

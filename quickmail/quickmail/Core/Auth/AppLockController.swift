@@ -140,10 +140,9 @@ struct AppLockView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 18) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 44, weight: .semibold))
-                    .foregroundStyle(.tint)
-                    .accessibilityHidden(true)
+                QuickMailMark(size: .largeTitle)
+                    .frame(width: 72, height: 72)
+                    .background(Color.accentColor.opacity(0.1), in: Circle())
                 Text("QuickMail Locked")
                     .font(.title2.bold())
                 Text("Use \(controller.biometryName) to view your mail.")
@@ -164,7 +163,7 @@ struct AppLockView: View {
                         ProgressView()
                             .frame(minWidth: 90)
                     } else {
-                        Label("Unlock", systemImage: "faceid")
+                        Label("Unlock", systemImage: "lock.open.fill")
                     }
                 }
                 .buttonStyle(.borderedProminent)

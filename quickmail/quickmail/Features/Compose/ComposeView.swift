@@ -37,6 +37,7 @@ struct ComposeView: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle(model.mode.navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -94,8 +95,13 @@ struct ComposeView: View {
                 recipientField("To", text: $model.to, prompt: "recipient@example.com")
                 recipientField("Cc", text: $model.cc, prompt: "Optional, comma separated")
                 recipientField("Bcc", text: $model.bcc, prompt: "Optional, comma separated")
-                TextField("Subject", text: $model.subject, prompt: Text("Subject"))
-                    .textInputAutocapitalization(.sentences)
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text("Subject")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 58, alignment: .leading)
+                    TextField("Subject", text: $model.subject, prompt: Text("What’s this about?"))
+                        .textInputAutocapitalization(.sentences)
+                }
             }
         }
     }
@@ -118,19 +124,21 @@ struct ComposeView: View {
                 .buttonStyle(.borderless)
             }
         } else {
-            Picker("From", selection: $model.selectedFromAddressID) {
+            Picker(selection: $model.selectedFromAddressID) {
                 if model.isReply {
                     Text("Original mailbox").tag(String?.none)
                 }
                 ForEach(model.addresses) { address in
                     Text(addressDisplayName(address)).tag(Optional(address.id))
                 }
+            } label: {
+                Label("From", systemImage: "at")
             }
         }
     }
 
     private var messageSection: some View {
-        Section("Message") {
+        Section {
             ZStack(alignment: .topLeading) {
                 if model.body.isEmpty {
                     Text(model.isReply ? "Write a reply…" : "Write a message…")
@@ -141,10 +149,12 @@ struct ComposeView: View {
                 }
 
                 TextEditor(text: $model.body)
-                    .frame(minHeight: 220)
+                    .frame(minHeight: 260)
                     .scrollContentBackground(.hidden)
                     .accessibilityLabel("Message body")
             }
+        } header: {
+            Label("Message", systemImage: "text.alignleft")
         }
     }
 
@@ -180,7 +190,7 @@ struct ComposeView: View {
                     .foregroundStyle(.red)
             }
         } header: {
-            Text("Attachments")
+            Label("Attachments", systemImage: "paperclip")
         } footer: {
             Text("Up to 5 files, 5 MB each. \(formattedByteCount(model.totalAttachmentBytes)) attached.")
         }
@@ -215,10 +225,16 @@ struct ComposeView: View {
         text: Binding<String>,
         prompt: String
     ) -> some View {
-        TextField(title, text: text, prompt: Text(prompt))
-            .keyboardType(.emailAddress)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(title)
+                .foregroundStyle(.secondary)
+                .frame(width: 58, alignment: .leading)
+            TextField(prompt, text: text)
+                .keyboardType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityLabel(title)
+        }
     }
 
     private func addressDisplayName(_ address: MailAddress) -> String {

@@ -74,6 +74,34 @@ struct FloatingControlGroup<Content: View>: View {
     }
 }
 
+/// A full-width primary action that adopts the platform's current material.
+/// Unlike `FloatingActionButton`, this is intended for actions inside a flow.
+struct PlatformPrimaryActionButton<Label: View>: View {
+    private let action: () -> Void
+    private let label: () -> Label
+
+    init(action: @escaping () -> Void, @ViewBuilder label: @escaping () -> Label) {
+        self.action = action
+        self.label = label
+    }
+
+    var body: some View {
+        Button(action: action, label: label)
+            .modifier(PlatformPrimaryActionStyle())
+    }
+}
+
+private struct PlatformPrimaryActionStyle: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.buttonStyle(.glassProminent)
+        } else {
+            content.buttonStyle(.borderedProminent)
+        }
+    }
+}
+
 private struct PlatformFloatingButtonStyle: ViewModifier {
     let prominence: FloatingActionProminence
 

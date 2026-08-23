@@ -9,9 +9,8 @@ struct ThreadMessageView: View {
     @State private var showsFormattedHTML = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             header
-            Divider()
             messageBody
             if !message.attachments.isEmpty {
                 attachmentList
@@ -21,33 +20,39 @@ struct ThreadMessageView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(senderTitle)
-                    .font(.headline)
-                    .lineLimit(1)
-                Spacer(minLength: 12)
-                Text(message.createdAt, format: .dateTime.month(.abbreviated).day().hour().minute())
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+        HStack(alignment: .top, spacing: 12) {
+            ParticipantMonogram(name: senderTitle, isEmphasized: isNewest, size: 38)
 
-            Text("To: \(message.toAddress)")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(senderTitle)
+                        .font(.headline)
+                        .lineLimit(1)
+                    Spacer(minLength: 12)
+                    Text(message.createdAt, format: .dateTime.month(.abbreviated).day().hour().minute())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
-            if let cc = message.ccAddress, !cc.isEmpty {
-                Text("Cc: \(cc)")
-                    .font(.caption)
+                Text("To: \(message.toAddress)")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
-            }
 
-            if message.direction == .outbound, let status = message.status {
-                Label(deliveryLabel(status), systemImage: deliverySymbol(status))
-                    .font(.caption)
-                    .foregroundStyle(deliveryColor(status))
+                if let cc = message.ccAddress, !cc.isEmpty {
+                    Text("Cc: \(cc)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+
+                if message.direction == .outbound, let status = message.status {
+                    MetadataPill(
+                        title: deliveryLabel(status),
+                        systemImage: deliverySymbol(status),
+                        tint: deliveryColor(status)
+                    )
+                }
             }
         }
         .accessibilityElement(children: .combine)
@@ -113,6 +118,8 @@ struct ThreadMessageView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .padding(10)
+                .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                 .disabled(downloadingAttachmentID != nil)
                 .accessibilityLabel("Preview attachment \(attachment.filename)")
             }

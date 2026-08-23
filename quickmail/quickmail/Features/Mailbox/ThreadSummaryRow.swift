@@ -20,23 +20,24 @@ struct ThreadSummaryRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Circle()
-                .fill(thread.isRead ? Color.clear : Color.accentColor)
-                .frame(width: 8, height: 8)
-                .padding(.top, 7)
-                .accessibilityHidden(true)
+        HStack(alignment: .top, spacing: 12) {
+            ParticipantMonogram(
+                name: people,
+                isEmphasized: !thread.isRead,
+                size: 42
+            )
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(people)
                         .fontWeight(thread.isRead ? .regular : .semibold)
                         .lineLimit(1)
 
                     if thread.messageCount > 1 {
-                        Text("\(thread.messageCount)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Text("\(thread.messageCount) messages")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
                     }
 
                     Spacer(minLength: 8)
@@ -46,21 +47,22 @@ struct ThreadSummaryRow: View {
                         .foregroundStyle(.secondary)
                 }
 
-                HStack(spacing: 5) {
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
                     if thread.isDraft {
                         Text("Draft")
+                            .fontWeight(.semibold)
                             .foregroundStyle(.red)
                     }
 
                     Text(thread.subject.isEmpty ? "(No Subject)" : thread.subject)
-                        .fontWeight(thread.isRead ? .regular : .medium)
+                        .fontWeight(thread.isRead ? .regular : .semibold)
                         .lineLimit(1)
 
                     Spacer(minLength: 4)
 
                     if thread.isStarred {
                         Image(systemName: "star.fill")
-                            .foregroundStyle(.yellow)
+                            .foregroundStyle(.orange)
                             .accessibilityLabel("Starred")
                     }
 
@@ -83,10 +85,11 @@ struct ThreadSummaryRow: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
+                        .lineSpacing(1)
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 7)
         .opacity(isWorking ? 0.55 : 1)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)

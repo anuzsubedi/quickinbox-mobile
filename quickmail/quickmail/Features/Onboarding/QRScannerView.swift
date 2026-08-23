@@ -65,14 +65,27 @@ struct QRScannerView: View {
 
             VStack {
                 Spacer()
-                Label("Point the camera at the QR code in QuickMail Settings", systemImage: "qrcode")
-                    .font(.subheadline.weight(.medium))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 12)
-                    .background(.regularMaterial, in: Capsule())
+                scannerGuidance
                     .padding()
             }
+        }
+    }
+
+    @ViewBuilder
+    private var scannerGuidance: some View {
+        let guidance = Label(
+            "Point the camera at the QR code in QuickMail Settings",
+            systemImage: "qrcode"
+        )
+        .font(.subheadline.weight(.medium))
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+
+        if #available(iOS 26.0, *) {
+            guidance.glassEffect(.regular, in: .capsule)
+        } else {
+            guidance.background(.regularMaterial, in: Capsule())
         }
     }
 

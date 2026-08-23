@@ -44,7 +44,7 @@ struct ThreadReaderView: View {
                 Color.clear
             }
         }
-        .navigationTitle(model.detail?.subject ?? "Conversation")
+        .navigationTitle("Conversation")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { readerToolbar }
         .task(id: model.threadID) {
@@ -100,8 +100,10 @@ struct ThreadReaderView: View {
 
     private func threadContent(_ detail: ThreadDetail) -> some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 12) {
                 let messages = model.chronologicalMessages
+                conversationHeader(detail, messages: messages)
+
                 ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                     if index == messages.count - 1 {
                         ThreadMessageView(
@@ -110,7 +112,14 @@ struct ThreadReaderView: View {
                             downloadingAttachmentID: downloadingAttachmentID,
                             openAttachment: download
                         )
-                        .padding(.horizontal)
+                        .padding(16)
+                        .background(
+                            Color(.secondarySystemBackground),
+                            in: RoundedRectangle(
+                                cornerRadius: QuickMailDesign.compactCornerRadius,
+                                style: .continuous
+                            )
+                        )
                         .accessibilityLabel("Newest message")
                     } else {
                         DisclosureGroup {
@@ -124,16 +133,24 @@ struct ThreadReaderView: View {
                         } label: {
                             collapsedMessageLabel(message)
                         }
-                        .padding(.horizontal)
-                        .padding(.vertical, 12)
+                        .padding(16)
+                        .background(
+                            Color(.secondarySystemBackground),
+                            in: RoundedRectangle(
+                                cornerRadius: QuickMailDesign.compactCornerRadius,
+                                style: .continuous
+                            )
+                        )
                     }
-
-                    if index < messages.count - 1 { Divider() }
                 }
             }
-            .frame(maxWidth: 720)
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 20)
+            .frame(maxWidth: QuickMailDesign.contentMaxWidth)
             .frame(maxWidth: .infinity)
         }
+        .background(Color(.systemGroupedBackground))
         .refreshable { await model.load() }
         .safeAreaInset(edge: .bottom) {
             HStack {
@@ -152,6 +169,39 @@ struct ThreadReaderView: View {
             .padding(.horizontal)
             .padding(.vertical, 10)
         }
+    }
+
+    private func conversationHeader(
+        _ detail: ThreadDetail,
+        messages: [ThreadMessage]
+    ) -> some View {
+        let correspondent = messages.first(where: { $0.direction == .inbound })?.fromAddress
+            ?? messages.last?.toAddress
+            ?? "Conversation"
+
+        return HStack(alignment: .top, spacing: 14) {
+            ParticipantMonogram(name: correspondent, isEmphasized: true, size: 48)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(detail.subject.isEmpty ? "(No Subject)" : detail.subject)
+                    .font(.title2.weight(.bold))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 8) {
+                    Text(correspondent)
+                        .lineLimit(1)
+                    Text("·")
+                        .accessibilityHidden(true)
+                    Text(messages.count == 1 ? "1 message" : "\(messages.count) messages")
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
     }
 
     private func collapsedMessageLabel(_ message: ThreadMessage) -> some View {
@@ -182,13 +232,6 @@ struct ThreadReaderView: View {
     @ToolbarContentBuilder
     private var readerToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            Button {
-                onReply(model.actionTargetID)
-            } label: {
-                Image(systemName: "arrowshape.turn.up.left")
-            }
-            .accessibilityLabel("Reply")
-
             Menu {
                 Button {
                     Task { await perform(model.isRead ? .unread : .read) }

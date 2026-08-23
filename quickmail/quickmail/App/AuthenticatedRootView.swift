@@ -32,7 +32,7 @@ struct AuthenticatedRootView: View {
         TabView(selection: $selectedSection) {
             mailboxView
                 .tag(AppSection.mail)
-                .tabItem { Label("Mail", systemImage: "envelope") }
+                .tabItem { Label("Mail", systemImage: "tray.full") }
 
             NavigationStack {
                 SettingsView(
@@ -61,12 +61,32 @@ struct AuthenticatedRootView: View {
                 get: { selectedSection },
                 set: { if let section = $0 { selectedSection = section } }
             )) {
-                Label("Mail", systemImage: "envelope")
-                    .tag(AppSection.mail)
-                Label("Settings", systemImage: "gearshape")
-                    .tag(AppSection.settings)
+                Section {
+                    Label("Mail", systemImage: "tray.full")
+                        .tag(AppSection.mail)
+                    Label("Settings", systemImage: "gearshape")
+                        .tag(AppSection.settings)
+                }
             }
             .navigationTitle("QuickMail")
+            .safeAreaInset(edge: .bottom) {
+                HStack(spacing: 10) {
+                    ParticipantMonogram(name: currentUser.name, size: 34)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(currentUser.name)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                        Text(currentUser.email)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+                .background(.bar)
+            }
         } content: {
             switch selectedSection {
             case .mail:
@@ -191,11 +211,11 @@ private struct AccountSummaryView: View {
 
     var body: some View {
         List {
-            Section("Account") {
-                LabeledContent("Name", value: user.name)
-                LabeledContent("Email", value: user.email)
+            Section {
+                QuickMailAccountHeader(name: user.name, email: user.email)
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("Settings")
     }
 }
