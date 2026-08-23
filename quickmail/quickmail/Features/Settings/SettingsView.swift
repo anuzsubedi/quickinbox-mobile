@@ -5,9 +5,10 @@ struct SettingsView: View {
     @Environment(AppLockController.self) private var appLock
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @StateObject private var model: SettingsViewModel
-    private let onDisconnected: () -> Void
+    @AppStorage(AppPreferences.showRemoteImagesByDefault) private var showRemoteImagesByDefault = false
+    private let onDisconnected: (String?) -> Void
 
-    @ScaledMetric(relativeTo: .body) private var signatureEditorHeight: CGFloat = 132
+    @ScaledMetric(relativeTo: .body) private var signatureEditorHeight: CGFloat = 104
 
     @State private var deviceToRevoke: DeviceSession?
     @State private var showingRevokeConfirmation = false
@@ -17,7 +18,7 @@ struct SettingsView: View {
     init(
         api: QuickMailAPI,
         currentUser: User,
-        onDisconnected: @escaping () -> Void
+        onDisconnected: @escaping (String?) -> Void
     ) {
         _model = StateObject(
             wrappedValue: SettingsViewModel(api: api, currentUser: currentUser)
@@ -27,15 +28,61 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            accountSection
-            sendingAddressSection
-            signatureSection
-            privacySection
-            devicesSection
-            sessionSection
+            Section {
+                NavigationLink {
+                    accountPage
+                } label: {
+                    accountNavigationLabel
+                }
+            }
+
+            Section("Preferences") {
+                NavigationLink {
+                    sendingPage
+                } label: {
+                    settingsDestinationLabel(
+                        "Composing",
+                        systemImage: "square.and.pencil"
+                    )
+                }
+
+                NavigationLink {
+                    privacyPage
+                } label: {
+                    settingsDestinationLabel(
+                        "Privacy & Security",
+                        systemImage: "lock.shield",
+                        detail: appLock.isEnabled ? "On" : "Off"
+                    )
+                }
+
+            }
+
+            Section("Access") {
+                NavigationLink {
+                    devicesPage
+                } label: {
+                    settingsDestinationLabel(
+                        "Connected Devices",
+                        systemImage: "laptopcomputer.and.iphone",
+                        detail: model.isLoading && model.devices.isEmpty
+                            ? nil
+                            : "\(model.devices.count)"
+                    )
+                }
+
+                NavigationLink {
+                    connectionPage
+                } label: {
+                    settingsDestinationLabel(
+                        "Server & Session",
+                        systemImage: "server.rack"
+                    )
+                }
+            }
         }
         .formStyle(.grouped)
-        .navigationTitle("Account")
+        .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             appLock.refreshAvailability()
@@ -54,6 +101,73 @@ struct SettingsView: View {
         } message: { device in
             Text("\(model.displayName(for: device)) will lose access the next time it contacts your server.")
         }
+        .alert("Couldn’t Complete Request", isPresented: operationErrorPresented) {
+            Button("OK", role: .cancel) { model.operationError = nil }
+        } message: {
+            Text(model.operationError ?? "Try again.")
+        }
+    }
+
+    private var accountPage: some View {
+        Form {
+            accountSection
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Account")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var sendingPage: some View {
+        Form {
+            sendingAddressSection
+            signatureSection
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Composing")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                saveSignatureToolbarButton
+            }
+        }
+    }
+
+    private var privacyPage: some View {
+        Form {
+            privacySection
+            remoteImagesSection
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Privacy & Security")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var devicesPage: some View {
+        Form {
+            devicesSection
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Connected Devices")
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await model.load() }
+    }
+
+    private var connectionPage: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                serverSection
+                disconnectSection
+                localDataSection
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 24)
+            .padding(.bottom, 40)
+            .frame(maxWidth: QuickMailDesign.contentMaxWidth)
+            .frame(maxWidth: .infinity)
+        }
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle("Server & Session")
+        .navigationBarTitleDisplayMode(.inline)
         .alert("Disconnect This Device?", isPresented: $showingDisconnectConfirmation) {
             Button("Disconnect", role: .destructive) {
                 Task { await disconnect(revokeOnServer: true) }
@@ -70,46 +184,66 @@ struct SettingsView: View {
         } message: {
             Text("QuickMail will remove its saved account and mailbox data without contacting your server. This device may still need to be revoked on the web.")
         }
-        .alert("Couldn’t Complete Request", isPresented: operationErrorPresented) {
-            Button("OK", role: .cancel) { model.operationError = nil }
-        } message: {
-            Text(model.operationError ?? "Try again.")
+    }
+
+    private var accountNavigationLabel: some View {
+        HStack(spacing: 14) {
+            ParticipantMonogram(
+                name: displayName,
+                isEmphasized: true,
+                size: 44
+            )
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(displayName)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+
+                Text(model.currentUser.email)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+            }
         }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Shows account details")
+    }
+
+    private func settingsDestinationLabel(
+        _ title: String,
+        systemImage: String,
+        detail: String? = nil
+    ) -> some View {
+        HStack(spacing: 12) {
+            Label(title, systemImage: systemImage)
+
+            Spacer(minLength: 8)
+
+            if let detail {
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+            .frame(minHeight: 32)
     }
 
     private var accountSection: some View {
         Section {
-            HStack(alignment: .center, spacing: 14) {
-                ParticipantMonogram(
-                    name: model.currentUser.name.isEmpty ? model.currentUser.email : model.currentUser.name,
-                    isEmphasized: true,
-                    size: 50
-                )
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(model.currentUser.name)
-                        .font(.headline)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-
-                    Text(model.currentUser.email)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-                        .textSelection(.enabled)
-
-                    if let server = serverName {
-                        Label(server, systemImage: "server.rack")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-                            .textSelection(.enabled)
-                    }
-                }
-
-                Spacer(minLength: 0)
+            LabeledContent("Name") {
+                Text(displayName)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
             }
-            .padding(.vertical, 8)
-            .accessibilityElement(children: .combine)
+
+            LabeledContent("Email") {
+                    Text(model.currentUser.email)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+            }
 
             if let manageURL = model.manageWebURL {
                 Link(destination: manageURL) {
@@ -119,6 +253,56 @@ struct SettingsView: View {
             }
         } footer: {
             Text("This app stays connected directly to your QuickMail server.")
+        }
+    }
+
+    private var serverSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Connection")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+
+            if let serverName {
+                HStack(spacing: 14) {
+                    Image(systemName: "server.rack")
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(QuickMailDesign.Palette.signalInk)
+                        .frame(width: 28)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("QuickMail Server")
+                            .font(.body.weight(.medium))
+                        Text(serverName)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    if let scheme = model.serverURL?.scheme?.uppercased() {
+                        Label(scheme, systemImage: "lock.fill")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(16)
+                .background(
+                    Color(uiColor: .secondarySystemGroupedBackground),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                )
+            } else if model.isLoading {
+                loadingRow("Loading server details")
+                    .padding(.vertical, 12)
+            } else {
+                Label("Server details unavailable", systemImage: "server.rack")
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 12)
+            }
+
+            Text("This device connects directly to your QuickMail server over HTTPS.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -136,8 +320,9 @@ struct SettingsView: View {
                             .tag(address.id)
                     }
                 } label: {
-                    Label("Default Sender", systemImage: "paperplane")
+                    Text("Default Sender")
                 }
+                .pickerStyle(.navigationLink)
             }
         } header: {
             Text("Sending")
@@ -171,59 +356,49 @@ struct SettingsView: View {
                             }
                         }
                 }
-
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 12) {
-                        signatureStatus
-                        Spacer(minLength: 8)
-                        saveSignatureButton
-                    }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        signatureStatus
-                        saveSignatureButton
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
             }
         } header: {
             Text("Signature")
         } footer: {
-            Text("Added to sent mail unless the selected sending address has its own signature.")
+            VStack(alignment: .leading, spacing: 5) {
+                signatureStatus
+                Text("Added to sent mail unless the selected sending address has its own signature.")
+            }
         }
     }
 
     private var signatureStatus: some View {
-        HStack(spacing: 8) {
-            Text("\(model.signatureDraft.count) of \(SettingsViewModel.signatureLimit)")
+        HStack(spacing: 12) {
+            Text("\(model.signatureDraft.count) / \(SettingsViewModel.signatureLimit.formatted())")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
+                .contentTransition(.numericText())
+
+            Spacer(minLength: 8)
 
             if model.signatureSaved {
-                Label("Saved", systemImage: "checkmark.circle.fill")
+                Label("Saved", systemImage: "checkmark")
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(.secondary)
                     .accessibilityLabel("Signature saved")
             }
         }
+        .frame(maxWidth: .infinity)
     }
 
-    private var saveSignatureButton: some View {
+    private var saveSignatureToolbarButton: some View {
         Button {
             Task { await model.saveSignature() }
         } label: {
             if model.isSavingSignature {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Saving…")
-                }
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Saving signature")
             } else {
-                Label("Save Signature", systemImage: "checkmark")
+                Text("Save")
             }
         }
-        .frame(minHeight: 44)
         .disabled(model.isSavingSignature || !model.signatureHasChanges)
         .accessibilityHint(
             model.signatureHasChanges
@@ -252,70 +427,117 @@ struct SettingsView: View {
     }
 
     private func deviceRow(_ device: DeviceSession) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: model.symbolName(for: device))
+        HStack(spacing: 12) {
+            Image(systemName: model.symbolName(for: device))
+                .font(.body.weight(.medium))
+                .foregroundStyle(device.isCurrent ? Color.accentColor : Color.secondary)
+                .frame(width: 32, height: 44, alignment: .center)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(model.displayName(for: device))
                     .font(.body.weight(.medium))
-                    .foregroundStyle(device.isCurrent ? Color.accentColor : Color.secondary)
-                    .frame(width: 28, height: 28)
-                    .accessibilityHidden(true)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(model.displayName(for: device))
-                        .font(.body.weight(.medium))
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text(model.deviceDetail(for: device))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    if device.isCurrent {
-                        Label("This Device", systemImage: "checkmark.circle.fill")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Spacer(minLength: 0)
-
-                if model.revokingDeviceID == device.id {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel("Revoking \(model.displayName(for: device))")
-                }
+                Text(model.deviceDetail(for: device))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
 
-            if !device.isCurrent {
-                Button("Revoke Access", role: .destructive) {
-                    deviceToRevoke = device
-                    showingRevokeConfirmation = true
-                }
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .trailing)
-                .disabled(model.revokingDeviceID != nil)
-                .accessibilityHint("Signs this device out of QuickMail")
-            }
+            Spacer(minLength: 8)
+
+            deviceAccessory(device)
         }
         .padding(.vertical, 4)
     }
 
-    private var sessionSection: some View {
-        Section {
-            Button(role: .destructive) {
+    @ViewBuilder
+    private func deviceAccessory(_ device: DeviceSession) -> some View {
+        if model.revokingDeviceID == device.id {
+            ProgressView()
+                .controlSize(.small)
+                .frame(width: 44, height: 44)
+                .accessibilityLabel("Revoking \(model.displayName(for: device))")
+        } else if device.isCurrent {
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundStyle(.secondary)
+                .frame(width: 44, height: 44)
+                .accessibilityLabel("This Device")
+        } else {
+            Menu {
+                Button("Revoke Access", systemImage: "person.crop.circle.badge.minus", role: .destructive) {
+                    deviceToRevoke = device
+                    showingRevokeConfirmation = true
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(model.revokingDeviceID != nil)
+            .accessibilityLabel("Actions for \(model.displayName(for: device))")
+            .accessibilityHint("Includes an option to revoke access")
+        }
+    }
+
+    private var disconnectSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Session")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+
+            FloatingActionButton(role: .destructive) {
                 showingDisconnectConfirmation = true
             } label: {
-                Label("Disconnect This Device", systemImage: "rectangle.portrait.and.arrow.right")
+                disconnectButtonLabel(
+                    "Disconnect"
+                )
             }
+            .tint(.red)
+            .controlSize(.regular)
+            .disabled(model.isDisconnecting)
 
-            Button(role: .destructive) {
+            Text("Revokes this session on your server and removes the account and cached mail from this device.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func disconnectButtonLabel(_ title: String) -> some View {
+        Group {
+            if model.isDisconnecting {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 120, height: 36)
+                    .accessibilityLabel("Disconnecting")
+            } else {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .frame(minHeight: 32)
+            }
+        }
+    }
+
+    private var localDataSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Recovery")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+
+            FloatingActionButton(role: .destructive) {
                 showingLocalWipeConfirmation = true
             } label: {
-                Label("Remove Local Data", systemImage: "externaldrive.badge.xmark")
+                disconnectButtonLabel("Remove Local Data")
             }
-        } header: {
-            Text("Sign Out & Data")
-        } footer: {
-            Text("Disconnect normally to revoke access. Remove local data only when your server cannot be reached.")
+            .tint(.red)
+            .controlSize(.regular)
+            .disabled(model.isDisconnecting)
+
+            Text("Use only when your server cannot be reached. You may still need to revoke this device on the web.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -329,15 +551,11 @@ struct SettingsView: View {
                     }
                 )
             ) {
-                Label {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("App Lock")
-                        Text("Protect mail when QuickMail is not active")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                } icon: {
-                    Image(systemName: "lock.shield")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("App Lock")
+                    Text("Require authentication when returning to QuickMail")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             .disabled(!appLock.isAvailable && !appLock.isEnabled)
@@ -348,6 +566,7 @@ struct SettingsView: View {
                     .foregroundStyle(.red)
                     .accessibilityLabel("App Lock unavailable. \(message)")
             }
+
         } header: {
             Text("Privacy")
         } footer: {
@@ -355,8 +574,30 @@ struct SettingsView: View {
         }
     }
 
+    private var remoteImagesSection: some View {
+        Section {
+            Toggle(isOn: $showRemoteImagesByDefault) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Show Email Images")
+                    Text("Automatically load images from the internet")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("Email Images")
+        } footer: {
+            Text("Remote images can let senders know when and where you opened a message. When disabled, you can still show images for an individual email.")
+        }
+    }
+
     private var serverName: String? {
         model.serverURL.map { $0.host() ?? $0.absoluteString }
+    }
+
+    private var displayName: String {
+        let name = model.currentUser.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? model.currentUser.email : name
     }
 
     private func addressTitle(_ address: MailAddress) -> String {
@@ -384,11 +625,8 @@ struct SettingsView: View {
 
     @MainActor
     private func disconnect(revokeOnServer: Bool) async {
-        let error = await model.disconnect(revokeOnServer: revokeOnServer)
-        onDisconnected()
-        if let error {
-            model.operationError = error
-        }
+        let warning = await model.disconnect(revokeOnServer: revokeOnServer)
+        onDisconnected(warning)
     }
 }
 
@@ -410,6 +648,7 @@ private final class SettingsViewModel: ObservableObject {
     @Published private(set) var hasLoadedSignature = false
     @Published private(set) var signatureSaved = false
     @Published private(set) var revokingDeviceID: String?
+    @Published private(set) var isDisconnecting = false
     @Published var operationError: String?
     @Published private(set) var serverURL: URL?
     @Published private(set) var manageWebURL: URL?
@@ -500,22 +739,44 @@ private final class SettingsViewModel: ObservableObject {
 
     /// Returns a warning only when local data was removed but remote revocation failed.
     func disconnect(revokeOnServer: Bool) async -> String? {
+        guard !isDisconnecting else { return nil }
+        isDisconnecting = true
+        defer { isDisconnecting = false }
+
+        var revocationError: Error?
+        if revokeOnServer {
+            do {
+                if let currentDevice = devices.first(where: \.isCurrent) {
+                    try await api.revokeDevice(id: currentDevice.id)
+                } else {
+                    try await api.logout(
+                        credentialStore: credentialStore,
+                        revokeCurrentDevice: true
+                    )
+                }
+            } catch {
+                revocationError = error
+            }
+        }
+
         do {
+            // Always finish the local wipe, including after a successful remote
+            // revocation makes the bearer credential unusable.
             try await api.logout(
                 credentialStore: credentialStore,
-                revokeCurrentDevice: revokeOnServer
+                revokeCurrentDevice: false
             )
-            clearLocalPreferences()
-            AppFeedback.play(.destructiveConfirmed)
-            return nil
         } catch {
-            // QuickMailAPI deliberately clears its credential and Keychain data even
-            // when the remote revocation request fails.
-            clearLocalPreferences()
-            return revokeOnServer
-                ? "Local data was removed, but the server could not confirm revocation. Revoke this device from QuickMail on the web."
-                : error.localizedDescription
+            revocationError = revocationError ?? error
         }
+
+        clearLocalPreferences()
+        AppFeedback.play(.destructiveConfirmed)
+
+        if revokeOnServer, revocationError != nil {
+            return "This iPhone was disconnected locally, but the server could not confirm revocation. Revoke it from QuickMail on the web."
+        }
+        return nil
     }
 
     func displayName(for device: DeviceSession) -> String {
