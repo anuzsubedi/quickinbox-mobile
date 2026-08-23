@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct MailboxFeatureView: View {
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var model: MailboxViewModel
     @State private var pendingPermanentDeletion: ThreadSummary?
+    @State private var isMailboxDrawerPresented = false
 
     private let onCompose: (_ draftID: String?) -> Void
     private let onSelectThread: (ThreadSummary) -> Void
@@ -23,19 +23,17 @@ struct MailboxFeatureView: View {
     }
 
     var body: some View {
-        Group {
-            if horizontalSizeClass == .regular {
-                NavigationSplitView {
-                    mailboxSelector
-                } detail: {
-                    mailboxContent
-                }
-                .navigationSplitViewStyle(.balanced)
-            } else {
-                NavigationStack {
-                    mailboxContent
-                }
-            }
+        NavigationStack {
+            mailboxContent
+        }
+        .sheet(isPresented: $isMailboxDrawerPresented) {
+            MailboxDrawerView(
+                selection: $model.selectedMailbox,
+                dismiss: { isMailboxDrawerPresented = false }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(28)
         }
         .alert(
             "Couldn't Update Message",
@@ -69,19 +67,6 @@ struct MailboxFeatureView: View {
         }
     }
 
-    private var mailboxSelector: some View {
-        List(selection: Binding<MailboxKind?>(
-            get: { model.selectedMailbox },
-            set: { if let mailbox = $0 { model.selectedMailbox = mailbox } }
-        )) {
-            ForEach(MailboxKind.allCases) { mailbox in
-                Label(mailbox.title, systemImage: mailbox.systemImage)
-                    .tag(mailbox)
-            }
-        }
-        .navigationTitle("Mailboxes")
-    }
-
     private var mailboxContent: some View {
         contentState
             .navigationTitle(model.selectedMailbox.title)
@@ -92,10 +77,8 @@ struct MailboxFeatureView: View {
                 prompt: "Search Messages"
             )
             .toolbar {
-                if horizontalSizeClass != .regular {
-                    ToolbarItem(placement: .topBarLeading) {
-                        mailboxMenu
-                    }
+                ToolbarItem(placement: .topBarLeading) {
+                    mailboxDrawerButton
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -273,18 +256,13 @@ struct MailboxFeatureView: View {
         }
     }
 
-    private var mailboxMenu: some View {
-        Menu {
-            Picker("Mailbox", selection: $model.selectedMailbox) {
-                ForEach(MailboxKind.allCases) { mailbox in
-                    Label(mailbox.title, systemImage: mailbox.systemImage)
-                        .tag(mailbox)
-                }
-            }
+    private var mailboxDrawerButton: some View {
+        Button {
+            isMailboxDrawerPresented = true
         } label: {
-            Label("Mailboxes", systemImage: "sidebar.left")
+            Label("Mailboxes", systemImage: "line.3.horizontal")
         }
-        .accessibilityLabel("Choose Mailbox")
+        .accessibilityLabel("Open mailboxes")
     }
 
     private var composeBar: some View {
@@ -520,4 +498,72 @@ private struct MailboxThreadSection: Identifiable {
     var threads: [ThreadSummary]
 
     var id: String { title }
+}
+
+private struct MailboxDrawerView: View {
+    @Binding var selection: MailboxKind
+    let dismiss: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(MailboxKind.allCases) { mailbox in
+                        Button {
+                            selection = mailbox
+                            AppFeedback.selection()
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 14) {
+                                Image(systemName: mailbox.systemImage)
+                                    .font(.headline)
+                                    .foregroundStyle(
+                                        selection == mailbox ? Color.accentColor : Color.secondary
+                                    )
+                                    .frame(width: 38, height: 38)
+                                    .background(
+                                        (selection == mailbox ? Color.accentColor : Color.secondary)
+                                            .opacity(0.1),
+                                        in: Circle()
+                                    )
+                                    .accessibilityHidden(true)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(mailbox.title)
+                                        .font(.body.weight(selection == mailbox ? .semibold : .regular))
+                                    Text(mailbox.emptyDescription)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+
+                                Spacer(minLength: 8)
+
+                                if selection == mailbox {
+                                    Image(systemName: "checkmark")
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.tint)
+                                        .accessibilityHidden(true)
+                                }
+                            }
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityValue(selection == mailbox ? "Selected" : "")
+                    }
+                } footer: {
+                    Text("Choose a mailbox to update the conversation index.")
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("Mailboxes")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done", action: dismiss)
+                }
+            }
+        }
+    }
 }
