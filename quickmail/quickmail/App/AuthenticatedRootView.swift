@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct AuthenticatedRootView: View {
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-
     let api: QuickMailAPI
     let mailboxCache: MailboxCache
     let currentUser: User
@@ -14,13 +12,7 @@ struct AuthenticatedRootView: View {
     @State private var mailboxGeneration = UUID()
 
     var body: some View {
-        Group {
-            if horizontalSizeClass == .regular {
-                regularLayout
-            } else {
-                compactLayout
-            }
-        }
+        primaryLayout
         .sheet(item: $composePresentation) { presentation in
             ComposeView(api: api, mode: presentation.mode) { _ in
                 refreshMailbox()
@@ -28,7 +20,7 @@ struct AuthenticatedRootView: View {
         }
     }
 
-    private var compactLayout: some View {
+    private var primaryLayout: some View {
         TabView(selection: $selectedSection) {
             mailboxView
                 .tag(AppSection.mail)
@@ -53,78 +45,6 @@ struct AuthenticatedRootView: View {
                 )
             }
         }
-    }
-
-    private var regularLayout: some View {
-        NavigationSplitView {
-            List(selection: Binding<AppSection?>(
-                get: { selectedSection },
-                set: { if let section = $0 { selectedSection = section } }
-            )) {
-                Section {
-                    Label("Mail", systemImage: "tray.full")
-                        .tag(AppSection.mail)
-                    Label("Settings", systemImage: "gearshape")
-                        .tag(AppSection.settings)
-                }
-            }
-            .navigationTitle("QuickMail")
-            .safeAreaInset(edge: .bottom) {
-                HStack(spacing: 10) {
-                    ParticipantMonogram(name: currentUser.name, size: 34)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(currentUser.name)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                        Text(currentUser.email)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 10)
-                .background(.bar)
-            }
-        } content: {
-            switch selectedSection {
-            case .mail:
-                mailboxView
-                    .environment(\.horizontalSizeClass, .compact)
-            case .settings:
-                AccountSummaryView(user: currentUser)
-            }
-        } detail: {
-            switch selectedSection {
-            case .mail:
-                if let selectedThread {
-                    NavigationStack {
-                        ThreadScene(
-                            api: api,
-                            selection: selectedThread,
-                            onMailboxMutation: refreshAndClearSelection
-                        )
-                    }
-                    .id(selectedThread.id)
-                } else {
-                    ContentUnavailableView(
-                        "Select a Conversation",
-                        systemImage: "envelope.open",
-                        description: Text("Choose a conversation from your mailbox to read it.")
-                    )
-                }
-            case .settings:
-                NavigationStack {
-                    SettingsView(
-                        api: api,
-                        currentUser: currentUser,
-                        onDisconnected: onDisconnected
-                    )
-                }
-            }
-        }
-        .navigationSplitViewStyle(.balanced)
     }
 
     private var mailboxView: some View {
@@ -203,19 +123,5 @@ private struct ThreadScene: View {
         composePresentation = ComposePresentation(
             mode: .reply(messageID: messageID, recipient: recipient, subject: subject)
         )
-    }
-}
-
-private struct AccountSummaryView: View {
-    let user: User
-
-    var body: some View {
-        List {
-            Section {
-                QuickMailAccountHeader(name: user.name, email: user.email)
-            }
-        }
-        .listStyle(.insetGrouped)
-        .navigationTitle("Settings")
     }
 }
