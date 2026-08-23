@@ -66,19 +66,18 @@ struct ContentView: View {
 
 private struct LaunchView: View {
     var body: some View {
-        VStack(spacing: QuickMailDesign.Spacing.xxl) {
-            QuickMailMark(size: .title)
-                .foregroundStyle(.white)
-                .frame(width: 72, height: 72)
-                .background(QuickMailDesign.Palette.sage, in: RoundedRectangle(cornerRadius: 20))
+        VStack(spacing: 22) {
+            Image("LaunchIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 104, height: 104)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .shadow(color: .black.opacity(0.22), radius: 18, y: 10)
 
             VStack(spacing: QuickMailDesign.Spacing.sm) {
                 Text("QuickMail")
                     .font(.title.bold())
                     .foregroundStyle(.white)
-                Text("Opening your mailbox…")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.72))
             }
 
             ProgressView()

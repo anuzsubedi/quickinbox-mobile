@@ -78,7 +78,7 @@ struct OnboardingView: View {
 
     private var onboardingBackground: some View {
         QuickMailDesign.Palette.paperGrouped
-        .ignoresSafeArea()
+            .ignoresSafeArea()
     }
 
     private var brandHeader: some View {
