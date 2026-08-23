@@ -44,14 +44,16 @@ struct ThreadSummaryRow: View {
     private var compactContent: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
+                unreadDot
+
                 Text(people)
                     .font(.body)
-                    .fontWeight(thread.isRead ? .medium : .semibold)
+                    .fontWeight(thread.isRead ? .regular : .semibold)
                     .lineLimit(1)
                     .layoutPriority(1)
 
                 if thread.messageCount > 1 {
-                    Text("(\(thread.messageCount))")
+                    Text("· \(thread.messageCount)")
                         .font(.caption)
                         .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                         .monospacedDigit()
@@ -60,8 +62,8 @@ struct ThreadSummaryRow: View {
                 Spacer(minLength: 6)
 
                 Text(relativeDate)
-                    .font(.caption)
-                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                    .font(.caption2)
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText.opacity(0.85))
                     .lineLimit(1)
             }
 
@@ -79,12 +81,16 @@ struct ThreadSummaryRow: View {
                 Spacer(minLength: 4)
                 metadataIcons
             }
-            .font(.subheadline.weight(thread.isRead ? .regular : .medium))
+            .font(.subheadline.weight(thread.isRead ? .regular : .semibold))
 
             if !thread.preview.isEmpty {
                 Text(thread.preview)
                     .font(.subheadline)
-                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                    .foregroundStyle(
+                        thread.isRead
+                            ? QuickMailDesign.Palette.secondaryText.opacity(0.72)
+                            : QuickMailDesign.Palette.secondaryText
+                    )
                     .lineLimit(1)
             }
         }
@@ -106,7 +112,7 @@ struct ThreadSummaryRow: View {
                 Text(people)
                     .fontWeight(thread.isRead ? .regular : .semibold)
                 if thread.messageCount > 1 {
-                    Text("(\(thread.messageCount))")
+                    Text("· \(thread.messageCount)")
                         .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                         .monospacedDigit()
                 }
@@ -224,14 +230,16 @@ private struct PostmarkSeal: View {
 
     var body: some View {
         ZStack {
-            ParticipantMonogram(name: name, isEmphasized: isUnread, size: 38)
+            ParticipantMonogram(name: name, isEmphasized: false, size: 38)
 
             Circle()
                 .trim(from: isUnread ? 0.08 : 0, to: isUnread ? 0.82 : 1)
                 .stroke(
-                    isUnread ? QuickMailDesign.Palette.sage : QuickMailDesign.Palette.hairline,
+                    isUnread
+                        ? QuickMailDesign.Palette.sage.opacity(0.72)
+                        : QuickMailDesign.Palette.hairline,
                     style: StrokeStyle(
-                        lineWidth: isUnread ? 2 : 0.5,
+                        lineWidth: isUnread ? 1.25 : 0.5,
                         lineCap: isUnread ? .round : .butt
                     )
                 )

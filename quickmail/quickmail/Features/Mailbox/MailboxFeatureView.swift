@@ -2,14 +2,11 @@ import SwiftUI
 
 struct MailboxFeatureView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
     @State private var model: MailboxViewModel
     @State private var pendingPermanentDeletion: ThreadSummary?
     @State private var selectionFeedbackTrigger = 0
 
     private let refreshToken: UUID
-    private let accountName: String
     private let onOpenSettings: () -> Void
     private let onCompose: (_ draftID: String?) -> Void
     private let onMailboxChanged: () -> Void
@@ -20,7 +17,6 @@ struct MailboxFeatureView: View {
         userID: String,
         cache: MailboxCache,
         refreshToken: UUID = UUID(),
-        accountName: String,
         onCompose: @escaping (_ draftID: String?) -> Void,
         onOpenSettings: @escaping () -> Void,
         onMailboxChanged: @escaping () -> Void,
@@ -30,7 +26,6 @@ struct MailboxFeatureView: View {
             initialValue: MailboxViewModel(api: api, userID: userID, cache: cache)
         )
         self.refreshToken = refreshToken
-        self.accountName = accountName
         self.onOpenSettings = onOpenSettings
         self.onCompose = onCompose
         self.onMailboxChanged = onMailboxChanged
@@ -79,9 +74,11 @@ struct MailboxFeatureView: View {
                 cacheStatusBanner
             }
 
-            Divider()
             contentState
         }
+            .safeAreaInset(edge: .bottom) {
+                composeDock
+            }
             .background(QuickMailDesign.Palette.paper)
             .toolbar(.hidden, for: .navigationBar)
             .sensoryFeedback(.selection, trigger: selectionFeedbackTrigger)
@@ -105,29 +102,48 @@ struct MailboxFeatureView: View {
     }
 
     private var mailboxMasthead: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if dynamicTypeSize >= .accessibility1 {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
                 mailboxMenu
-                mastheadActions
-            } else {
-                HStack(spacing: 10) {
-                    mailboxMenu
-                    Spacer(minLength: 4)
-                    mastheadActions
-                }
+                Spacer(minLength: 4)
+                accountButton
             }
 
-            Text(mailboxSummaryDetail)
-                .font(.subheadline)
-                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
-                .contentTransition(.numericText())
-                .accessibilityElement(children: .combine)
+            HStack(spacing: 12) {
+                Text(mailboxSummaryDetail)
+                    .font(.subheadline)
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                    .contentTransition(.numericText())
+
+                Spacer(minLength: 8)
+
+                if model.selectedMailbox == .inbox {
+                    Button {
+                        model.unreadOnly.toggle()
+                        selectionFeedbackTrigger += 1
+                        Task { await model.reload(showInitialLoading: false) }
+                    } label: {
+                        Label("Unread", systemImage: "envelope.badge")
+                    }
+                    .modifier(MailboxFilterButtonStyle(isActive: model.unreadOnly))
+                    .controlSize(.small)
+                    .frame(minHeight: 44)
+                    .accessibilityValue(model.unreadOnly ? "On" : "Off")
+                    .accessibilityHint(
+                        model.unreadOnly
+                            ? "Shows all inbox conversations"
+                            : "Shows unread inbox conversations only"
+                    )
+                    .accessibilityAddTraits(model.unreadOnly ? .isSelected : [])
+                }
+            }
+            .accessibilityElement(children: .contain)
 
             mailboxSearchField
         }
         .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 12)
+        .padding(.top, 6)
+        .padding(.bottom, 10)
         .background(QuickMailDesign.Palette.paper)
     }
 
@@ -164,30 +180,36 @@ struct MailboxFeatureView: View {
         .accessibilityHint("Shows all mailboxes")
     }
 
-    private var mastheadActions: some View {
-        HStack(spacing: 6) {
-            Button {
-                onCompose(nil)
-            } label: {
-                Label("Compose", systemImage: "square.and.pencil")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .frame(minHeight: 44)
-                    .background(QuickMailDesign.Palette.signalInk, in: Capsule())
-                    .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint("Creates a new message")
-
-            Button(action: onOpenSettings) {
-                ParticipantMonogram(name: accountName, isEmphasized: true, size: 34)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Account and settings")
+    private var accountButton: some View {
+        Button(action: onOpenSettings) {
+            Image(systemName: "gearshape")
+                .font(.title3.weight(.semibold))
         }
+        .modifier(SettingsShortcutStyle())
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
+        .accessibilityLabel("Account and settings")
+    }
+
+    private var composeDock: some View {
+        HStack {
+            Spacer()
+
+            FloatingControlGroup {
+                FloatingActionButton(
+                    "Compose",
+                    systemImage: "square.and.pencil"
+                ) {
+                    onCompose(nil)
+                }
+
+                .controlSize(.large)
+                .accessibilityHint("Creates a new message")
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
     }
 
     private var mailboxSearchField: some View {
@@ -218,7 +240,7 @@ struct MailboxFeatureView: View {
         .padding(.leading, 13)
         .padding(.trailing, model.searchText.isEmpty ? 13 : 4)
         .frame(minHeight: 44)
-        .background(QuickMailDesign.Palette.paperRaised, in: RoundedRectangle(cornerRadius: 12))
+        .modifier(MailboxSearchGlassStyle())
     }
 
     private func selectMailbox(_ mailbox: MailboxKind) {
@@ -284,9 +306,9 @@ struct MailboxFeatureView: View {
                     }
                 } header: {
                     Text(section.title)
-                        .font(.caption2.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(QuickMailDesign.Palette.secondaryText)
-                        .textCase(.uppercase)
+                        .textCase(nil)
                 }
             }
 
@@ -300,8 +322,6 @@ struct MailboxFeatureView: View {
                 .task {
                     await model.loadNextPage()
                 }
-            } else if shouldShowCaughtUpMarker {
-                caughtUpMarker
             } else if model.total > model.threads.count {
                 Text("\(model.threads.count) of \(model.total)")
                     .font(.footnote)
@@ -312,6 +332,8 @@ struct MailboxFeatureView: View {
         }
         .listStyle(.plain)
         .listSectionSpacing(.compact)
+        .listRowSpacing(4)
+        .contentMargins(.top, 8, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .background(Color(uiColor: .systemBackground))
         .animation(
@@ -353,47 +375,20 @@ struct MailboxFeatureView: View {
             contextMenuActions(for: thread)
         }
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-    }
-
-    private var shouldShowCaughtUpMarker: Bool {
-        (1...3).contains(model.threads.count)
-            && !model.hasNextPage
-            && model.total <= model.threads.count
-            && model.searchText.isEmpty
-            && !model.isShowingCachedData
-            && model.refreshError == nil
-    }
-
-    private var caughtUpMarker: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "checkmark.seal")
-                .font(.body.weight(.medium))
-                .foregroundStyle(QuickMailDesign.Palette.sage)
-                .accessibilityHidden(true)
-
-            Text("All caught up")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
-
-            Rectangle()
-                .fill(QuickMailDesign.Palette.hairline)
-                .frame(height: 0.5)
-        }
-        .padding(.vertical, 16)
-        .listRowInsets(EdgeInsets(top: 0, leading: 66, bottom: 0, trailing: 16))
         .listRowSeparator(.hidden)
-        .accessibilityElement(children: .combine)
     }
 
     private var emptyState: some View {
         List {
             ContentUnavailableView {
                 Label(
-                    model.searchText.isEmpty ? model.selectedMailbox.emptyTitle : "No Matches",
-                    systemImage: model.searchText.isEmpty ? model.selectedMailbox.systemImage : "magnifyingglass"
+                    emptyStateTitle,
+                    systemImage: emptyStateSystemImage
                 )
             } description: {
-                if model.searchText.isEmpty {
+                if model.unreadOnly && model.searchText.isEmpty {
+                    Text("All messages in your inbox have been read.")
+                } else if model.searchText.isEmpty {
                     Text(model.selectedMailbox.emptyDescription)
                 } else {
                     Text("Try another sender, subject, or phrase.")
@@ -401,6 +396,11 @@ struct MailboxFeatureView: View {
             } actions: {
                 if !model.searchText.isEmpty {
                     Button("Clear Search") { model.searchText = "" }
+                } else if model.unreadOnly {
+                    Button("Show All Mail") {
+                        model.unreadOnly = false
+                        Task { await model.reload(showInitialLoading: false) }
+                    }
                 } else {
                     Button("Check Again") {
                         Task { await model.reload() }
@@ -416,6 +416,16 @@ struct MailboxFeatureView: View {
         .refreshable {
             await model.refresh()
         }
+    }
+
+    private var emptyStateTitle: String {
+        if model.unreadOnly && model.searchText.isEmpty { return "No Unread Mail" }
+        return model.searchText.isEmpty ? model.selectedMailbox.emptyTitle : "No Matches"
+    }
+
+    private var emptyStateSystemImage: String {
+        if model.unreadOnly && model.searchText.isEmpty { return "envelope.open" }
+        return model.searchText.isEmpty ? model.selectedMailbox.systemImage : "magnifyingglass"
     }
 
     private var cacheStatusBanner: some View {
@@ -462,6 +472,12 @@ struct MailboxFeatureView: View {
     }
 
     private var mailboxSummaryDetail: String {
+        if model.unreadOnly {
+            if !model.searchText.isEmpty {
+                return model.total == 1 ? "1 unread result" : "\(model.total) unread results"
+            }
+            return model.total == 1 ? "1 unread conversation" : "\(model.total) unread conversations"
+        }
         if !model.searchText.isEmpty {
             return model.total == 1 ? "1 result" : "\(model.total) results"
         }
@@ -471,11 +487,11 @@ struct MailboxFeatureView: View {
         }
         if model.selectedMailbox == .inbox {
             let unread = model.threads.lazy.filter { !$0.isRead }.count
-            let unreadLabel = unread == 0 ? "All caught up" : (unread == 1 ? "1 unread" : "\(unread) unread")
+            let unreadLabel = unread == 1 ? "1 unread" : "\(unread) unread"
             if model.total > model.threads.count {
                 return "\(unreadLabel) in view · showing \(model.threads.count) of \(model.total)"
             }
-            let count = model.total == 1 ? "1 conversation" : "\(model.total) conversations"
+            let count = model.total == 1 ? "1 total" : "\(model.total) total"
             return "\(unreadLabel) · \(count)"
         }
         if model.total > model.threads.count {
@@ -661,4 +677,52 @@ private struct MailboxThreadSection: Identifiable {
     var threads: [ThreadSummary]
 
     var id: String { title }
+}
+
+private struct MailboxSearchGlassStyle: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
+        } else {
+            content.background(
+                QuickMailDesign.Palette.paperRaised,
+                in: RoundedRectangle(cornerRadius: 12)
+            )
+        }
+    }
+}
+
+private struct SettingsShortcutStyle: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.buttonStyle(.glass)
+        } else {
+            content.buttonStyle(.plain)
+        }
+    }
+}
+
+private struct MailboxFilterButtonStyle: ViewModifier {
+    let isActive: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            if isActive {
+                content
+                    .buttonStyle(.glassProminent)
+
+            } else {
+                content.buttonStyle(.glass)
+            }
+        } else if isActive {
+            content
+                .buttonStyle(.borderedProminent)
+
+        } else {
+            content.buttonStyle(.bordered)
+        }
+    }
 }

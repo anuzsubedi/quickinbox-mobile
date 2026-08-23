@@ -49,6 +49,11 @@ enum QuickMailDesign {
             light: UIColor(red: 0.080, green: 0.090, blue: 0.300, alpha: 1),
             dark: UIColor(red: 0.105, green: 0.120, blue: 0.360, alpha: 1)
         )
+        /// Branded control tint with enough contrast over Liquid Glass in both appearances.
+        static let floatingActionTint = dynamic(
+            light: UIColor(red: 0.080, green: 0.090, blue: 0.300, alpha: 1),
+            dark: UIColor(red: 0.620, green: 0.700, blue: 1.000, alpha: 1)
+        )
 
         /// The single brand accent for selection, unread state, and primary action.
         static let sage = dynamic(

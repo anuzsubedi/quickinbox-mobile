@@ -11,6 +11,7 @@ final class MailboxViewModel {
 
     var selectedMailbox: MailboxKind = .inbox
     var searchText = ""
+    var unreadOnly = false
     var selectedThreadID: String?
 
     private(set) var threads: [ThreadSummary] = []
@@ -46,6 +47,7 @@ final class MailboxViewModel {
     func prepareForMailboxChange() {
         requestGeneration += 1
         searchText = ""
+        unreadOnly = false
         selectedThreadID = nil
         threads = []
         total = 0
@@ -72,7 +74,7 @@ final class MailboxViewModel {
             let page = try await api.listThreads(
                 mailbox: selectedMailbox,
                 page: 1,
-                filters: MailboxFilters(query: searchText)
+                filters: MailboxFilters(query: searchText, unreadOnly: unreadOnly)
             )
             guard generation == requestGeneration else { return }
             threads = deduplicated(page.threads)
@@ -115,7 +117,7 @@ final class MailboxViewModel {
             let page = try await api.listThreads(
                 mailbox: selectedMailbox,
                 page: nextPage,
-                filters: MailboxFilters(query: searchText)
+                filters: MailboxFilters(query: searchText, unreadOnly: unreadOnly)
             )
             guard generation == requestGeneration else { return }
             threads = merging(threads, with: page.threads)
@@ -156,6 +158,7 @@ final class MailboxViewModel {
     private func restoreCachedInbox() async {
         guard selectedMailbox == .inbox,
               searchText.isEmpty,
+              !unreadOnly,
               let origin = await api.currentCredential?.origin,
               let snapshot = cache.load(origin: origin, userID: userID),
               !snapshot.threads.isEmpty else {
@@ -173,6 +176,7 @@ final class MailboxViewModel {
     private func saveInboxCacheIfNeeded() async {
         guard selectedMailbox == .inbox,
               searchText.isEmpty,
+              !unreadOnly,
               currentPage >= 1,
               let origin = await api.currentCredential?.origin else {
             return
@@ -189,7 +193,11 @@ final class MailboxViewModel {
     private func apply(_ action: MailAction, to thread: ThreadSummary) {
         switch action {
         case .read:
-            replace(thread.updating(isRead: true))
+            if unreadOnly {
+                remove(thread)
+            } else {
+                replace(thread.updating(isRead: true))
+            }
         case .unread:
             replace(thread.updating(isRead: false))
         case .star:
