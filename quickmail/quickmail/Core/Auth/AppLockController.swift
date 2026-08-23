@@ -25,7 +25,7 @@ final class AppLockController {
         let context = LAContext()
         var error: NSError?
         isAvailable = context.canEvaluatePolicy(
-            .deviceOwnerAuthenticationWithBiometrics,
+            .deviceOwnerAuthentication,
             error: &error
         )
         switch context.biometryType {
@@ -54,7 +54,7 @@ final class AppLockController {
 
         refreshAvailability()
         guard isAvailable else {
-            errorMessage = "Set up biometrics in Settings before enabling QuickMail Lock."
+            errorMessage = "Set up a device passcode before enabling QuickMail Lock."
             AppFeedback.error()
             return
         }
@@ -72,7 +72,7 @@ final class AppLockController {
         guard isEnabled, isLocked, !isAuthenticating else { return }
         refreshAvailability()
         guard isAvailable else {
-            errorMessage = "Biometric authentication is unavailable. Check your device settings and try again."
+            errorMessage = "Device authentication is unavailable. Check Settings and try again."
             return
         }
 
@@ -107,7 +107,7 @@ final class AppLockController {
         context.localizedCancelTitle = "Cancel"
         do {
             return try await context.evaluatePolicy(
-                .deviceOwnerAuthenticationWithBiometrics,
+                .deviceOwnerAuthentication,
                 localizedReason: reason
             )
         } catch let error as LAError {
@@ -115,7 +115,7 @@ final class AppLockController {
             case .userCancel, .systemCancel, .appCancel:
                 break
             case .biometryNotAvailable, .biometryNotEnrolled:
-                errorMessage = "Biometric authentication is not set up on this device."
+                errorMessage = "Use your device passcode to unlock QuickMail."
             case .biometryLockout:
                 errorMessage = "Biometrics are temporarily locked. Unlock the device and try again."
             default:
@@ -141,11 +141,10 @@ struct AppLockView: View {
 
             VStack(spacing: 18) {
                 QuickMailMark(size: .largeTitle)
-                    .frame(width: 72, height: 72)
-                    .background(Color.accentColor.opacity(0.1), in: Circle())
+                    .frame(width: 56, height: 56)
                 Text("QuickMail Locked")
-                    .font(.title2.bold())
-                Text("Use \(controller.biometryName) to view your mail.")
+                    .font(.title2.weight(.semibold))
+                Text("Use \(controller.biometryName) or your device passcode to view your mail.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
 

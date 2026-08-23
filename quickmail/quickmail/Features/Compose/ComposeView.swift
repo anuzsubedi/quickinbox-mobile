@@ -3,9 +3,13 @@ import UniformTypeIdentifiers
 
 struct ComposeView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var model: ComposeViewModel
     @State private var isFileImporterPresented = false
     @State private var isDiscardConfirmationPresented = false
+    @State private var showsCarbonCopyFields = false
+    @FocusState private var focusedField: ComposeField?
 
     private let onSent: (SendMessageResponse) -> Void
 
@@ -23,22 +27,25 @@ struct ComposeView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                recipientsSection
-                messageSection
-                attachmentsSection
-
-                if let errorMessage = model.errorMessage {
-                    Section {
-                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                            .font(.callout)
-                            .foregroundStyle(.red)
-                            .accessibilityLabel("Error: \(errorMessage)")
-                    }
+            ScrollView {
+                VStack(spacing: 0) {
+                    addressHeader
+                    fieldDivider
+                    subjectRow
+                    Divider()
+                    messageEditor
+                    attachmentArea
+                    guidanceArea
                 }
+                .padding(.horizontal, horizontalInset)
+                .padding(.top, 4)
+                .padding(.bottom, 32)
+                .frame(maxWidth: QuickMailDesign.contentMaxWidth)
+                .frame(maxWidth: .infinity)
             }
+            .background(Color(.systemBackground))
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle(model.mode.navigationTitle)
+            .navigationTitle(composeTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -61,6 +68,10 @@ struct ComposeView: View {
             }
             .task {
                 await model.loadAddressesIfNeeded()
+                await model.loadDraftIfNeeded()
+                if !model.cc.isEmpty || !model.bcc.isEmpty {
+                    showsCarbonCopyFields = true
+                }
             }
             .fileImporter(
                 isPresented: $isFileImporterPresented,
@@ -70,7 +81,7 @@ struct ComposeView: View {
                 Task { await model.importFiles(result) }
             }
             .confirmationDialog(
-                model.isReply ? "Discard this reply?" : "Discard this message?",
+                discardTitle,
                 isPresented: $isDiscardConfirmationPresented,
                 titleVisibility: .visible
             ) {
@@ -83,123 +94,224 @@ struct ComposeView: View {
         }
     }
 
-    @ViewBuilder
-    private var recipientsSection: some View {
-        Section {
+    private var addressHeader: some View {
+        VStack(spacing: 0) {
             fromAddressPicker
 
+            fieldDivider
+
             if model.isReply {
-                LabeledContent("To", value: model.to)
-                LabeledContent("Subject", value: model.subject)
+                readOnlyField("To", value: model.to)
             } else {
-                recipientField("To", text: $model.to, prompt: "recipient@example.com")
-                recipientField("Cc", text: $model.cc, prompt: "Optional, comma separated")
-                recipientField("Bcc", text: $model.bcc, prompt: "Optional, comma separated")
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Text("Subject")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 58, alignment: .leading)
-                    TextField("Subject", text: $model.subject, prompt: Text("What’s this about?"))
-                        .textInputAutocapitalization(.sentences)
+                adaptiveFieldRow {
+                    fieldLabel("To")
+                    TextField("recipient@example.com", text: $model.to)
+                        .focused($focusedField, equals: .to)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.next)
+                        .onSubmit {
+                            focusedField = showsCarbonCopyFields ? .cc : .subject
+                        }
+                        .accessibilityLabel("To")
+
+                    if !showsCarbonCopyFields {
+                        Button("Cc/Bcc") {
+                            withAnimation(reduceMotion ? nil : .snappy(duration: 0.22)) {
+                                showsCarbonCopyFields = true
+                            }
+                            focusedField = .cc
+                        }
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .accessibilityHint("Shows carbon copy and blind carbon copy address fields")
+                    }
+                }
+                .frame(minHeight: fieldMinimumHeight)
+
+                if showsCarbonCopyFields {
+                    fieldDivider
+                    recipientField(
+                        "Cc",
+                        text: $model.cc,
+                        prompt: "Optional",
+                        field: .cc,
+                        nextField: .bcc
+                    )
+                    fieldDivider
+                    recipientField(
+                        "Bcc",
+                        text: $model.bcc,
+                        prompt: "Optional",
+                        field: .bcc,
+                        nextField: .subject
+                    )
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
         }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: showsCarbonCopyFields)
     }
 
     @ViewBuilder
     private var fromAddressPicker: some View {
-        if model.isLoadingAddresses && model.addresses.isEmpty {
-            HStack {
-                Text("From")
-                Spacer()
-                ProgressView()
-                    .controlSize(.small)
-            }
-        } else if model.addresses.isEmpty {
-            HStack {
-                LabeledContent("From", value: "Unavailable")
-                Button("Retry") {
-                    Task { await model.retryLoadingAddresses() }
-                }
-                .buttonStyle(.borderless)
-            }
-        } else {
-            Picker(selection: $model.selectedFromAddressID) {
-                if model.isReply {
-                    Text("Original mailbox").tag(String?.none)
-                }
-                ForEach(model.addresses) { address in
-                    Text(addressDisplayName(address)).tag(Optional(address.id))
-                }
-            } label: {
-                Label("From", systemImage: "at")
-            }
-        }
-    }
+        adaptiveFieldRow {
+            fieldLabel("From")
 
-    private var messageSection: some View {
-        Section {
-            ZStack(alignment: .topLeading) {
-                if model.body.isEmpty {
-                    Text(model.isReply ? "Write a reply…" : "Write a message…")
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 8)
-                        .allowsHitTesting(false)
-                }
-
-                TextEditor(text: $model.body)
-                    .frame(minHeight: 260)
-                    .scrollContentBackground(.hidden)
-                    .accessibilityLabel("Message body")
-            }
-        } header: {
-            Label("Message", systemImage: "text.alignleft")
-        }
-    }
-
-    private var attachmentsSection: some View {
-        Section {
-            ForEach(model.attachments) { attachment in
-                attachmentRow(attachment)
-            }
-
-            Button {
-                isFileImporterPresented = true
-            } label: {
-                Label("Add Attachment", systemImage: "paperclip")
-            }
-            .disabled(
-                model.isSending
-                    || model.isImportingAttachments
-                    || model.attachments.count >= ComposeViewModel.maximumAttachmentCount
-            )
-
-            if model.isImportingAttachments {
+            if model.isLoadingAddresses && model.addresses.isEmpty {
                 HStack(spacing: 10) {
+                    Text("Loading sending addresses…")
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
                     ProgressView()
                         .controlSize(.small)
-                    Text("Preparing attachments…")
+                        .accessibilityLabel("Loading sending addresses")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else if model.addresses.isEmpty {
+                HStack(spacing: 10) {
+                    Text("No address available")
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    Button("Retry") {
+                        Task { await model.retryLoadingAddresses() }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Picker("From", selection: $model.selectedFromAddressID) {
+                    if model.isReply {
+                        Text("Original mailbox").tag(String?.none)
+                    }
+                    ForEach(model.addresses) { address in
+                        Text(addressDisplayName(address)).tag(Optional(address.id))
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel("From address")
+            }
+        }
+        .frame(minHeight: fieldMinimumHeight)
+    }
+
+    @ViewBuilder
+    private var subjectRow: some View {
+        if model.isReply {
+            readOnlyField("Subject", value: model.subject)
+        } else {
+            adaptiveFieldRow {
+                fieldLabel("Subject")
+                TextField("What’s this about?", text: $model.subject)
+                    .focused($focusedField, equals: .subject)
+                    .textInputAutocapitalization(.sentences)
+                    .submitLabel(.next)
+                    .onSubmit { focusedField = .body }
+                    .accessibilityLabel("Subject")
+            }
+            .frame(minHeight: fieldMinimumHeight + 4)
+        }
+    }
+
+    private var messageEditor: some View {
+        ZStack(alignment: .topLeading) {
+            if model.body.isEmpty {
+                Text(model.isReply ? "Write a reply…" : "Start writing…")
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 15)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+
+            TextEditor(text: $model.body)
+                .focused($focusedField, equals: .body)
+                .font(.body)
+                .lineSpacing(3)
+                .frame(minHeight: editorMinimumHeight)
+                .scrollContentBackground(.hidden)
+                .accessibilityLabel("Message body")
+        }
+        .padding(.top, 6)
+    }
+
+    @ViewBuilder
+    private var attachmentArea: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !model.attachments.isEmpty {
+                Divider()
+                Text(model.attachments.count == 1 ? "1 ATTACHMENT" : "\(model.attachments.count) ATTACHMENTS")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .tracking(0.5)
+                    .padding(.top, 14)
+
+                ForEach(model.attachments) { attachment in
+                    attachmentRow(attachment)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    isFileImporterPresented = true
+                } label: {
+                    Label("Attach Files", systemImage: "paperclip")
+                }
+                .fontWeight(.medium)
+                .disabled(
+                    model.isSending
+                        || model.isImportingAttachments
+                        || model.attachments.count >= ComposeViewModel.maximumAttachmentCount
+                )
+
+                if model.isImportingAttachments {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Adding files…")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
+
+                Spacer(minLength: 0)
+            }
+            .frame(minHeight: 44)
+
+            if !model.attachments.isEmpty {
+                Text("5 files max · 5 MB each · \(formattedByteCount(model.totalAttachmentBytes)) attached")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
             }
 
             if let message = model.attachmentMessage {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                guidanceLabel(message)
             }
-        } header: {
-            Label("Attachments", systemImage: "paperclip")
-        } footer: {
-            Text("Up to 5 files, 5 MB each. \(formattedByteCount(model.totalAttachmentBytes)) attached.")
+        }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: model.attachments)
+    }
+
+    @ViewBuilder
+    private var guidanceArea: some View {
+        if let errorMessage = model.errorMessage {
+            guidanceLabel(errorMessage)
+                .padding(.top, 6)
+                .transition(.opacity)
+        } else if model.hasUnsavedChanges, let validationMessage = model.validationMessage {
+            guidanceLabel(validationMessage)
+                .padding(.top, 6)
+                .transition(.opacity)
         }
     }
 
     private func attachmentRow(_ attachment: ComposeAttachment) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: "doc")
+            Image(systemName: attachmentSymbol(for: attachment.contentType))
                 .foregroundStyle(.secondary)
+                .font(.body.weight(.medium))
+                .frame(width: 30)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(attachment.filename)
@@ -208,33 +320,114 @@ struct ComposeView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Spacer()
+            Spacer(minLength: 8)
             Button(role: .destructive) {
-                model.removeAttachment(id: attachment.id)
+                withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) {
+                    model.removeAttachment(id: attachment.id)
+                }
             } label: {
                 Image(systemName: "xmark.circle.fill")
+                    .font(.title3)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
             .accessibilityLabel("Remove \(attachment.filename)")
             .disabled(model.isSending)
         }
+        .padding(.vertical, 5)
+        .contentShape(Rectangle())
     }
 
     private func recipientField(
         _ title: String,
         text: Binding<String>,
-        prompt: String
+        prompt: String,
+        field: ComposeField,
+        nextField: ComposeField
     ) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(title)
-                .foregroundStyle(.secondary)
-                .frame(width: 58, alignment: .leading)
+        adaptiveFieldRow {
+            fieldLabel(title)
             TextField(prompt, text: text)
+                .focused($focusedField, equals: field)
                 .keyboardType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .submitLabel(.next)
+                .onSubmit { focusedField = nextField }
                 .accessibilityLabel(title)
         }
+        .frame(minHeight: fieldMinimumHeight)
+    }
+
+    private func readOnlyField(_ title: String, value: String) -> some View {
+        adaptiveFieldRow(alignment: .firstTextBaseline) {
+            fieldLabel(title)
+            Text(value)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+        }
+        .frame(minHeight: fieldMinimumHeight)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func fieldLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(.secondary)
+            .frame(width: usesStackedFields ? nil : fieldLabelWidth, alignment: .leading)
+    }
+
+    private func guidanceLabel(_ message: String) -> some View {
+        Label(message, systemImage: "exclamationmark.circle")
+            .font(.callout)
+            .foregroundStyle(.red)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel("Action needed: \(message)")
+    }
+
+    private func attachmentSymbol(for contentType: String) -> String {
+        if contentType.hasPrefix("image/") { return "photo" }
+        if contentType == "application/pdf" { return "doc.richtext" }
+        if contentType.hasPrefix("audio/") { return "waveform" }
+        if contentType.hasPrefix("video/") { return "film" }
+        return "doc"
+    }
+
+    private var fieldLabelWidth: CGFloat { 58 }
+    private var fieldSpacing: CGFloat { 12 }
+    private var horizontalInset: CGFloat { usesStackedFields ? 16 : 20 }
+    private var fieldMinimumHeight: CGFloat { usesStackedFields ? 64 : 48 }
+    private var editorMinimumHeight: CGFloat { usesStackedFields ? 280 : 340 }
+    private var usesStackedFields: Bool { dynamicTypeSize.isAccessibilitySize }
+
+    private var fieldDivider: some View {
+        Divider()
+            .padding(.leading, usesStackedFields ? 0 : fieldLabelWidth + fieldSpacing)
+    }
+
+    @ViewBuilder
+    private func adaptiveFieldRow<Content: View>(
+        alignment: VerticalAlignment = .center,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        if usesStackedFields {
+            VStack(alignment: .leading, spacing: 7, content: content)
+                .padding(.vertical, 9)
+        } else {
+            HStack(alignment: alignment, spacing: fieldSpacing, content: content)
+        }
+    }
+
+    private var composeTitle: String {
+        model.isDraft ? "Edit Draft" : model.mode.navigationTitle
+    }
+
+    private var discardTitle: String {
+        if model.isReply { return "Discard reply?" }
+        if model.isDraft { return "Discard changes?" }
+        return "Discard message?"
     }
 
     private func addressDisplayName(_ address: MailAddress) -> String {
@@ -264,4 +457,12 @@ struct ComposeView: View {
             dismiss()
         }
     }
+}
+
+private enum ComposeField: Hashable {
+    case to
+    case cc
+    case bcc
+    case subject
+    case body
 }

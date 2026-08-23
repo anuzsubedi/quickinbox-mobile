@@ -11,6 +11,9 @@ enum FloatingActionProminence: Sendable {
 /// Keep actions in a navigation bar or toolbar as plain `Button` values so the system
 /// can style the surrounding bar. This component is for standalone floating actions.
 struct FloatingActionButton<Label: View>: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @GestureState private var isPressed = false
+
     private let role: ButtonRole?
     private let prominence: FloatingActionProminence
     private let action: () -> Void
@@ -31,6 +34,21 @@ struct FloatingActionButton<Label: View>: View {
     var body: some View {
         Button(role: role, action: action, label: label)
             .modifier(PlatformFloatingButtonStyle(prominence: prominence))
+            .scaleEffect(isPressed && !reduceMotion ? 0.97 : 1)
+            .opacity(isPressed && reduceMotion ? 0.82 : 1)
+            .animation(
+                QuickMailDesign.Motion.resolved(
+                    QuickMailDesign.Motion.press,
+                    reduceMotion: reduceMotion
+                ),
+                value: isPressed
+            )
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .updating($isPressed) { _, pressed, _ in
+                        pressed = true
+                    }
+            )
     }
 }
 
@@ -48,29 +66,20 @@ extension FloatingActionButton where Label == SwiftUI.Label<Text, Image> {
     }
 }
 
-/// Coordinates adjacent Liquid Glass controls on iOS 26 and later.
-/// Earlier systems retain their normal SwiftUI layout and styling.
+/// Preserves the shared layout used by floating controls.
+///
+/// A `GlassEffectContainer` is unnecessary for the current single-action call sites.
+/// Add one at the call site only when multiple adjacent glass effects need to blend
+/// or transition together.
 struct FloatingControlGroup<Content: View>: View {
-    private let spacing: CGFloat?
     private let content: () -> Content
 
-    init(
-        spacing: CGFloat? = nil,
-        @ViewBuilder content: @escaping () -> Content
-    ) {
-        self.spacing = spacing
+    init(@ViewBuilder content: @escaping () -> Content) {
         self.content = content
     }
 
-    @ViewBuilder
     var body: some View {
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: spacing) {
-                content()
-            }
-        } else {
-            content()
-        }
+        content()
     }
 }
 

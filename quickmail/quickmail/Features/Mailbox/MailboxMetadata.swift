@@ -25,23 +25,23 @@ extension MailboxKind {
 
     var emptyTitle: String {
         switch self {
-        case .inbox: "No Mail"
-        case .archive: "Archive Is Empty"
-        case .starred: "No Starred Messages"
+        case .inbox: "Your Inbox Is Clear"
+        case .archive: "Nothing Archived"
+        case .starred: "No Starred Conversations"
         case .drafts: "No Drafts"
-        case .sent: "Nothing Sent Yet"
+        case .sent: "No Sent Mail"
         case .trash: "Trash Is Empty"
         }
     }
 
     var emptyDescription: String {
         switch self {
-        case .inbox: "New messages appear here."
-        case .archive: "Messages you archive appear here."
-        case .starred: "Star important conversations to find them quickly."
-        case .drafts: "Messages you save for later appear here."
-        case .sent: "Messages you send appear here."
-        case .trash: "Deleted messages appear here."
+        case .inbox: "New conversations will appear here."
+        case .archive: "Conversations you archive will appear here."
+        case .starred: "Star a conversation to keep it close."
+        case .drafts: "Messages you save will appear here."
+        case .sent: "Messages you send will appear here."
+        case .trash: "Deleted conversations will appear here."
         }
     }
 }

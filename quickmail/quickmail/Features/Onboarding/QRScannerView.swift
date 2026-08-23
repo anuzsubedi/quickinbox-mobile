@@ -71,9 +71,8 @@ struct QRScannerView: View {
         }
     }
 
-    @ViewBuilder
     private var scannerGuidance: some View {
-        let guidance = Label(
+        Label(
             "Point the camera at the QR code in QuickMail Settings",
             systemImage: "qrcode"
         )
@@ -81,12 +80,7 @@ struct QRScannerView: View {
         .multilineTextAlignment(.center)
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
-
-        if #available(iOS 26.0, *) {
-            guidance.glassEffect(.regular, in: .capsule)
-        } else {
-            guidance.background(.regularMaterial, in: Capsule())
-        }
+        .background(.regularMaterial, in: Capsule())
     }
 
     @MainActor
@@ -121,7 +115,6 @@ struct QRScannerView: View {
     private func deliver(_ value: String) {
         guard !didDeliverResult else { return }
         didDeliverResult = true
-        AppFeedback.selection()
         onScan(value)
         dismiss()
     }

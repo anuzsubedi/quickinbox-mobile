@@ -4,13 +4,19 @@ import UniformTypeIdentifiers
 
 nonisolated enum ComposeMode: Equatable, Sendable {
     case newMessage
+    case draft(draftID: String)
     case reply(messageID: String, recipient: String, subject: String)
 
     var navigationTitle: String {
         switch self {
         case .newMessage: "New Message"
+        case .draft: "Draft"
         case .reply: "Reply"
         }
+    }
+
+    var draftID: String? {
+        if case .draft(let draftID) = self { draftID } else { nil }
     }
 }
 
@@ -55,6 +61,7 @@ final class ComposeViewModel: ObservableObject {
     @Published var selectedFromAddressID: String?
     @Published private(set) var attachments: [ComposeAttachment] = []
     @Published private(set) var isLoadingAddresses = false
+    @Published private(set) var isLoadingDraft = false
     @Published private(set) var isImportingAttachments = false
     @Published private(set) var isSending = false
     @Published var errorMessage: String?
@@ -64,6 +71,7 @@ final class ComposeViewModel: ObservableObject {
 
     private let api: QuickMailAPI
     private var didAttemptAddressLoad = false
+    private var didAttemptDraftLoad = false
 
     init(api: QuickMailAPI, mode: ComposeMode, addresses: [MailAddress] = []) {
         self.api = api
@@ -73,6 +81,8 @@ final class ComposeViewModel: ObservableObject {
         switch mode {
         case .newMessage:
             selectedFromAddressID = Self.preferredAddress(in: addresses)?.id
+        case .draft:
+            selectedFromAddressID = nil
         case .reply(_, let recipient, let subject):
             to = recipient
             self.subject = subject
@@ -85,6 +95,8 @@ final class ComposeViewModel: ObservableObject {
     var isReply: Bool {
         if case .reply = mode { true } else { false }
     }
+
+    var isDraft: Bool { mode.draftID != nil }
 
     var totalAttachmentBytes: Int {
         attachments.reduce(0) { $0 + $1.byteCount }
@@ -102,7 +114,7 @@ final class ComposeViewModel: ObservableObject {
     }
 
     var canSend: Bool {
-        !isSending && !isImportingAttachments && validationMessage == nil
+        !isSending && !isImportingAttachments && !isLoadingDraft && validationMessage == nil
     }
 
     var validationMessage: String? {
@@ -110,7 +122,7 @@ final class ComposeViewModel: ObservableObject {
         guard !trimmedBody.isEmpty else { return "Write a message before sending." }
 
         switch mode {
-        case .newMessage:
+        case .newMessage, .draft:
             guard selectedFromAddressID != nil else {
                 return "Choose a sending address."
             }
@@ -134,6 +146,29 @@ final class ComposeViewModel: ObservableObject {
         guard !didAttemptAddressLoad else { return }
         didAttemptAddressLoad = true
         await loadAddresses()
+    }
+
+    func loadDraftIfNeeded() async {
+        guard !didAttemptDraftLoad, let draftID = mode.draftID else { return }
+        didAttemptDraftLoad = true
+        isLoadingDraft = true
+        defer { isLoadingDraft = false }
+
+        do {
+            let draft = try await api.draft(id: draftID)
+
+            to = draft.to
+            cc = draft.cc ?? ""
+            bcc = draft.bcc ?? ""
+            subject = draft.subject
+            body = draft.text ?? ""
+            selectedFromAddressID = addresses.first(where: {
+                $0.address.caseInsensitiveCompare(draft.fromAddress) == .orderedSame
+            })?.id ?? Self.preferredAddress(in: addresses)?.id
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription
+                ?? "QuickMail couldn’t load this draft. Try again."
+        }
     }
 
     func retryLoadingAddresses() async {
@@ -207,10 +242,10 @@ final class ComposeViewModel: ObservableObject {
                     : attachments.map(\.outboundValue)
 
                 switch mode {
-                case .newMessage:
+                case .newMessage, .draft:
                     response = try await api.send(
                         ComposeMessage(
-                            draftID: nil,
+                            draftID: mode.draftID,
                             fromAddressID: selectedFromAddressID,
                             to: to.trimmingCharacters(in: .whitespacesAndNewlines),
                             cc: Self.nilIfEmpty(cc),
@@ -233,7 +268,7 @@ final class ComposeViewModel: ObservableObject {
                     )
                 }
 
-                AppFeedback.success()
+                AppFeedback.play(.messageSent)
                 return response
             } catch {
                 // Keep all entered fields and attachments intact so Retry is safe.
@@ -245,7 +280,7 @@ final class ComposeViewModel: ObservableObject {
         }
 
         errorMessage = validationMessage
-        AppFeedback.error()
+        AppFeedback.play(.warning)
         return nil
     }
 

@@ -68,7 +68,7 @@ final class ThreadReaderViewModel: ObservableObject {
                 _ = try await api.perform(action, ids: [actionTargetID])
             }
             apply(action)
-            AppFeedback.success()
+            AppFeedback.play(feedbackEvent(for: action))
             return true
         } catch {
             errorMessage = Self.message(for: error)
@@ -92,6 +92,17 @@ final class ThreadReaderViewModel: ObservableObject {
             isArchived = false
         case .restore: isTrashed = false
         case .delete, .readAll, .emptyTrash: break
+        }
+    }
+
+    private func feedbackEvent(for action: MailAction) -> AppFeedback.Event {
+        switch action {
+        case .read, .unread, .star, .unstar, .readAll:
+            .toggleConfirmed
+        case .archive, .unarchive, .restore:
+            .moveConfirmed
+        case .trash, .delete, .emptyTrash:
+            .destructiveConfirmed
         }
     }
 

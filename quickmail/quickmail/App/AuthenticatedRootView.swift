@@ -1,50 +1,91 @@
 import SwiftUI
 
 struct AuthenticatedRootView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     let api: QuickMailAPI
     let mailboxCache: MailboxCache
     let currentUser: User
     let onDisconnected: () -> Void
 
-    @State private var selectedSection: AppSection = .mail
     @State private var selectedThread: ThreadSelection?
+    @State private var compactPath: [ThreadSelection] = []
     @State private var composePresentation: ComposePresentation?
-    @State private var mailboxGeneration = UUID()
+    @State private var isSettingsPresented = false
+    @State private var mailboxRefreshToken = UUID()
 
     var body: some View {
-        primaryLayout
-        .sheet(item: $composePresentation) { presentation in
-            ComposeView(api: api, mode: presentation.mode) { _ in
-                refreshMailbox()
+        Group {
+            if horizontalSizeClass == .regular {
+                regularLayout
+            } else {
+                compactLayout
             }
         }
-    }
-
-    private var primaryLayout: some View {
-        TabView(selection: $selectedSection) {
-            mailboxView
-                .tag(AppSection.mail)
-                .tabItem { Label("Mail", systemImage: "tray.full") }
-
+        .sheet(isPresented: $isSettingsPresented) {
             NavigationStack {
                 SettingsView(
                     api: api,
                     currentUser: currentUser,
                     onDisconnected: onDisconnected
                 )
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            isSettingsPresented = false
+                        }
+                    }
+                }
             }
-            .tag(AppSection.settings)
-            .tabItem { Label("Settings", systemImage: "gearshape") }
         }
-        .sheet(item: $selectedThread) { selection in
+        .sheet(item: $composePresentation) { presentation in
+            ComposeView(api: api, mode: presentation.mode) { _ in
+                refreshMailbox()
+            }
+        }
+        .onChange(of: horizontalSizeClass) { _, sizeClass in
+            adaptSelection(to: sizeClass)
+        }
+        .onChange(of: compactPath) { _, path in
+            if horizontalSizeClass != .regular, path.isEmpty {
+                selectedThread = nil
+            }
+        }
+    }
+
+    private var compactLayout: some View {
+        NavigationStack(path: $compactPath) {
+            mailboxView
+                .navigationDestination(for: ThreadSelection.self) { selection in
+                    ThreadScene(
+                        api: api,
+                        selection: selection,
+                        onMailboxMutation: refreshMailbox,
+                        onExit: exitRegularThread
+                    )
+                }
+        }
+    }
+
+    private var regularLayout: some View {
+        NavigationSplitView {
+            mailboxView
+                .navigationSplitViewColumnWidth(min: 320, ideal: 390, max: 480)
+        } detail: {
             NavigationStack {
-                ThreadScene(
-                    api: api,
-                    selection: selection,
-                    onMailboxMutation: refreshAndClearSelection
-                )
+                if let selectedThread {
+                    ThreadScene(
+                        api: api,
+                        selection: selectedThread,
+                        onMailboxMutation: refreshMailbox,
+                        onExit: exitRegularThread
+                    )
+                } else {
+                    conversationPlaceholder
+                }
             }
         }
+        .navigationSplitViewStyle(.balanced)
     }
 
     private var mailboxView: some View {
@@ -52,34 +93,75 @@ struct AuthenticatedRootView: View {
             api: api,
             userID: currentUser.id,
             cache: mailboxCache,
-            onCompose: { _ in
-                composePresentation = ComposePresentation(mode: .newMessage)
+            refreshToken: mailboxRefreshToken,
+            accountName: currentUser.name.isEmpty ? currentUser.email : currentUser.name,
+            onCompose: { draftID in
+                composePresentation = ComposePresentation(
+                    mode: draftID.map(ComposeMode.draft(draftID:)) ?? .newMessage
+                )
             },
-            onSelectThread: { summary in
-                selectedThread = ThreadSelection(summary: summary)
-            }
+            onOpenSettings: {
+                isSettingsPresented = true
+            },
+            onMailboxChanged: resetMailboxSelection,
+            onSelectThread: openThread
         )
-        .id(mailboxGeneration)
+    }
+
+    private var conversationPlaceholder: some View {
+        ContentUnavailableView {
+            Label("Nothing Open", systemImage: "envelope.open")
+        } description: {
+            Text("Select a conversation to read it here.")
+        }
+        .foregroundStyle(.secondary)
+    }
+
+    private func openThread(_ summary: ThreadSummary) {
+        let selection = ThreadSelection(summary: summary)
+        selectedThread = selection
+
+        if horizontalSizeClass != .regular {
+            compactPath.append(selection)
+        }
     }
 
     private func refreshMailbox() {
-        mailboxGeneration = UUID()
+        mailboxRefreshToken = UUID()
     }
 
-    private func refreshAndClearSelection() {
-        refreshMailbox()
+    private func resetMailboxSelection() {
         selectedThread = nil
+        compactPath.removeAll()
+    }
+
+    private func adaptSelection(to sizeClass: UserInterfaceSizeClass?) {
+        if sizeClass == .regular {
+            compactPath.removeAll()
+        } else if let selectedThread, compactPath.isEmpty {
+            compactPath = [selectedThread]
+        }
+    }
+
+    private func exitRegularThread() {
+        if horizontalSizeClass == .regular {
+            selectedThread = nil
+        }
     }
 }
 
-private enum AppSection: Hashable {
-    case mail
-    case settings
-}
-
-private struct ThreadSelection: Identifiable {
-    let id = UUID()
+private struct ThreadSelection: Identifiable, Hashable {
     let summary: ThreadSummary
+
+    var id: String { summary.id }
+
+    static func == (lhs: ThreadSelection, rhs: ThreadSelection) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
 }
 
 private struct ComposePresentation: Identifiable {
@@ -91,22 +173,24 @@ private struct ThreadScene: View {
     let api: QuickMailAPI
     let selection: ThreadSelection
     let onMailboxMutation: () -> Void
+    let onExit: () -> Void
 
     @State private var composePresentation: ComposePresentation?
-    @State private var readerGeneration = UUID()
+    @State private var refreshToken = UUID()
 
     var body: some View {
         ThreadReaderView(
             api: api,
             threadID: selection.summary.id,
             summary: selection.summary,
+            refreshToken: refreshToken,
             onReply: presentReply,
-            onMailboxMutation: onMailboxMutation
+            onMailboxMutation: onMailboxMutation,
+            onExit: onExit
         )
-        .id(readerGeneration)
         .sheet(item: $composePresentation) { presentation in
             ComposeView(api: api, mode: presentation.mode) { _ in
-                readerGeneration = UUID()
+                refreshToken = UUID()
                 onMailboxMutation()
             }
         }

@@ -225,6 +225,20 @@ nonisolated struct ComposeMessage: Encodable, Equatable, Sendable {
     }
 }
 
+nonisolated struct DraftMessage: Decodable, Equatable, Sendable {
+    let id: String
+    let fromAddress: String
+    let to: String
+    let cc: String?
+    let bcc: String?
+    let subject: String
+    let text: String?
+}
+
+nonisolated struct DraftResponse: Decodable, Equatable, Sendable {
+    let draft: DraftMessage
+}
+
 nonisolated struct ReplyMessage: Encodable, Equatable, Sendable {
     var fromAddressID: String?
     var text: String?

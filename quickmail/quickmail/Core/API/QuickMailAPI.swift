@@ -76,6 +76,11 @@ actor QuickMailAPI {
         try await authenticatedRequest(path: ["api", "mail", id])
     }
 
+    func draft(id: String) async throws -> DraftMessage {
+        let response: DraftResponse = try await authenticatedRequest(path: ["api", "drafts", id])
+        return response.draft
+    }
+
     func send(_ message: ComposeMessage) async throws -> SendMessageResponse {
         try await authenticatedRequest(
             path: ["api", "mail"],

@@ -16,7 +16,6 @@ struct ThreadMessageView: View {
                 attachmentList
             }
         }
-        .padding(.vertical, 8)
     }
 
     private var header: some View {
@@ -24,14 +23,24 @@ struct ThreadMessageView: View {
             ParticipantMonogram(name: senderTitle, isEmphasized: isNewest, size: 38)
 
             VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(senderTitle)
-                        .font(.headline)
-                        .lineLimit(1)
-                    Spacer(minLength: 12)
-                    Text(message.createdAt, format: .dateTime.month(.abbreviated).day().hour().minute())
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(senderTitle)
+                            .font(.headline)
+                            .lineLimit(1)
+                        Spacer(minLength: 4)
+                        Text(message.createdAt, format: .dateTime.month(.abbreviated).day().hour().minute())
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(senderTitle)
+                            .font(.headline)
+                        Text(message.createdAt, format: .dateTime.month(.abbreviated).day().hour().minute())
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Text("To: \(message.toAddress)")
@@ -47,15 +56,12 @@ struct ThreadMessageView: View {
                 }
 
                 if message.direction == .outbound, let status = message.status {
-                    MetadataPill(
-                        title: deliveryLabel(status),
-                        systemImage: deliverySymbol(status),
-                        tint: deliveryColor(status)
-                    )
+                    Label(deliveryLabel(status), systemImage: deliverySymbol(status))
+                        .font(.caption)
+                        .foregroundStyle(deliveryColor(status))
                 }
             }
         }
-        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
@@ -84,20 +90,28 @@ struct ThreadMessageView: View {
     }
 
     private var attachmentList: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(message.attachments.count == 1 ? "Attachment" : "Attachments")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+                .padding(.bottom, 2)
 
-            ForEach(message.attachments) { attachment in
+            ForEach(Array(message.attachments.enumerated()), id: \.element.id) { index, attachment in
+                if index > 0 {
+                    Divider()
+                }
+
                 Button {
                     openAttachment(message, attachment)
                 } label: {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 12) {
                         Image(systemName: attachmentSymbol(for: attachment.contentType))
-                            .frame(width: 22)
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 24)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(attachment.filename)
+                                .font(.subheadline)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
                             if attachment.sizeBytes > 0 {
@@ -116,12 +130,11 @@ struct ThreadMessageView: View {
                         }
                     }
                     .contentShape(Rectangle())
+                    .padding(.vertical, 9)
                 }
                 .buttonStyle(.plain)
-                .padding(10)
-                .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                 .disabled(downloadingAttachmentID != nil)
-                .accessibilityLabel("Preview attachment \(attachment.filename)")
+                .accessibilityHint("Previews this attachment")
             }
         }
         .padding(.top, 4)

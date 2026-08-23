@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var session: AppSession
     @State private var appLock = AppLockController()
 
@@ -11,6 +12,25 @@ struct ContentView: View {
     }
 
     var body: some View {
+        appContent
+            .accessibilityHidden(appLock.isLocked)
+            .allowsHitTesting(!appLock.isLocked)
+            .environment(appLock)
+            .overlay {
+                if appLock.isLocked {
+                    AppLockView(controller: appLock)
+                        .transition(reduceMotion ? .identity : .opacity)
+                }
+            }
+            .task { await session.bootstrapIfNeeded() }
+            .task { await appLock.unlockIfNeeded() }
+            .onChange(of: scenePhase) { _, phase in
+                appLock.handleScenePhase(phase)
+            }
+    }
+
+    @ViewBuilder
+    private var appContent: some View {
         Group {
             switch session.phase {
             case .booting:
@@ -41,41 +61,33 @@ struct ContentView: View {
                 )
             }
         }
-        .environment(appLock)
-        .overlay {
-            if appLock.isLocked {
-                AppLockView(controller: appLock)
-            }
-        }
-        .task { await session.bootstrapIfNeeded() }
-        .task { await appLock.unlockIfNeeded() }
-        .onChange(of: scenePhase) { _, phase in
-            appLock.handleScenePhase(phase)
-        }
     }
 }
 
 private struct LaunchView: View {
     var body: some View {
-        VStack(spacing: 20) {
-            QuickMailMark(size: .largeTitle)
+        VStack(spacing: QuickMailDesign.Spacing.xxl) {
+            QuickMailMark(size: .title)
+                .foregroundStyle(.white)
                 .frame(width: 72, height: 72)
-                .background(Color.accentColor.opacity(0.1), in: Circle())
+                .background(QuickMailDesign.Palette.sage, in: RoundedRectangle(cornerRadius: 20))
 
-            VStack(spacing: 6) {
+            VStack(spacing: QuickMailDesign.Spacing.sm) {
                 Text("QuickMail")
-                    .font(.title2.bold())
+                    .font(.title.bold())
+                    .foregroundStyle(.white)
                 Text("Opening your mailbox…")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.72))
             }
 
             ProgressView()
+                .tint(.white)
                 .controlSize(.small)
                 .accessibilityLabel("Opening QuickMail")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background(QuickMailDesign.Palette.signalInk)
     }
 }
 
@@ -110,17 +122,30 @@ private struct SessionRestoreErrorView: View {
     let message: String
     let retry: () -> Void
     let removeLocalData: () -> Void
+    @State private var isRemovalConfirmationPresented = false
 
     var body: some View {
         ContentUnavailableView {
-            Label("Couldn’t Verify Session", systemImage: "wifi.exclamationmark")
+            Label("Session Couldn’t Be Verified", systemImage: "wifi.exclamationmark")
         } description: {
             Text(message)
         } actions: {
             Button("Try Again", action: retry)
                 .buttonStyle(.borderedProminent)
-            Button("Connect to a Different Server", role: .destructive, action: removeLocalData)
+            Button("Remove Local Data…", role: .destructive) {
+                isRemovalConfirmationPresented = true
+            }
                 .buttonStyle(.bordered)
+        }
+        .confirmationDialog(
+            "Remove QuickMail data from this iPhone?",
+            isPresented: $isRemovalConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Remove Data", role: .destructive, action: removeLocalData)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your saved session and cached mail will be removed. If the server is unavailable, you may still need to revoke this iPhone on QuickMail on the web.")
         }
     }
 }

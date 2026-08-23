@@ -138,7 +138,7 @@ final class MailboxViewModel {
             _ = try await api.perform(action, ids: [thread.latestID])
             apply(action, to: thread)
             await saveInboxCacheIfNeeded()
-            AppFeedback.success()
+            AppFeedback.play(feedbackEvent(for: action))
         } catch {
             actionError = error.localizedDescription
             AppFeedback.error()
@@ -216,6 +216,17 @@ final class MailboxViewModel {
             remove(thread)
         case .readAll, .emptyTrash:
             break
+        }
+    }
+
+    private func feedbackEvent(for action: MailAction) -> AppFeedback.Event {
+        switch action {
+        case .read, .unread, .star, .unstar, .readAll:
+            .toggleConfirmed
+        case .archive, .unarchive, .restore:
+            .moveConfirmed
+        case .trash, .delete, .emptyTrash:
+            .destructiveConfirmed
         }
     }
 

@@ -12,7 +12,6 @@ struct HardenedHTMLView: View {
     var body: some View {
         HardenedWebView(html: HTMLMessageSanitizer.document(from: html), height: $contentHeight)
             .frame(height: max(44, contentHeight))
-            .accessibilityLabel("Formatted email message")
     }
 }
 
@@ -47,6 +46,7 @@ private struct HardenedWebView: UIViewRepresentable {
         // Selection and native <details> disclosure remain available. Link and
         // window navigation is independently denied by the navigation delegates.
         webView.isUserInteractionEnabled = true
+        context.coordinator.observeContentSize(of: webView)
         return webView
     }
 
@@ -58,6 +58,7 @@ private struct HardenedWebView: UIViewRepresentable {
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
         webView.stopLoading()
+        coordinator.stopObservingContentSize()
         webView.navigationDelegate = nil
         webView.uiDelegate = nil
         WKWebsiteDataStore.nonPersistent().removeData(
@@ -69,9 +70,29 @@ private struct HardenedWebView: UIViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         @Binding var height: CGFloat
         var loadedHTML: String?
+        private var contentSizeObservation: NSKeyValueObservation?
 
         init(height: Binding<CGFloat>) {
             _height = height
+        }
+
+        func observeContentSize(of webView: WKWebView) {
+            contentSizeObservation = webView.scrollView.observe(
+                \.contentSize,
+                options: [.initial, .new]
+            ) { [weak self] _, change in
+                guard let measured = change.newValue?.height,
+                      measured.isFinite,
+                      measured > 0 else { return }
+                DispatchQueue.main.async {
+                    self?.height = ceil(measured)
+                }
+            }
+        }
+
+        func stopObservingContentSize() {
+            contentSizeObservation?.invalidate()
+            contentSizeObservation = nil
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -130,19 +151,50 @@ nonisolated enum HTMLMessageSanitizer {
         return """
         <!doctype html>
         <html><head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
         <style>
         :root { color-scheme: light dark; }
-        html, body { margin: 0; padding: 0; background: transparent; color: -apple-system-label; }
-        body { font: -apple-system-body; overflow-wrap: anywhere; line-height: 1.38; }
-        img { max-width: 100%; height: auto; }
-        a { color: -apple-system-link; text-decoration: underline; }
-        pre { white-space: pre-wrap; }
-        blockquote { margin: .6em 0 0 .55em; padding-left: .75em; border-left: 2px solid -apple-system-quaternary-label; color: -apple-system-secondary-label; }
-        details { margin-top: .75em; color: -apple-system-secondary-label; }
-        summary { font-weight: 600; }
-        table { max-width: 100%; border-collapse: collapse; }
+        html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            max-width: 100% !important;
+            background: transparent !important;
+            color: -apple-system-label !important;
+            -webkit-text-size-adjust: 100%;
+        }
+        body {
+            font: -apple-system-body !important;
+            overflow-wrap: anywhere !important;
+            line-height: 1.38 !important;
+        }
+        body * {
+            box-sizing: border-box !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            background-color: transparent !important;
+            color: inherit !important;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif !important;
+            font-size: inherit !important;
+            line-height: inherit !important;
+            overflow-wrap: anywhere !important;
+        }
+        h1 { font-size: 2em !important; }
+        h2 { font-size: 1.5em !important; }
+        h3 { font-size: 1.17em !important; }
+        h4, h5, h6 { font-size: 1em !important; }
+        img { width: auto !important; max-width: 100% !important; height: auto !important; }
+        a { color: -apple-system-link !important; text-decoration: underline !important; }
+        pre, code { white-space: pre-wrap !important; font-family: ui-monospace, monospace !important; }
+        blockquote {
+            margin: .6em 0 0 .55em !important;
+            padding-left: .75em !important;
+            border-left: 2px solid -apple-system-quaternary-label !important;
+            color: -apple-system-secondary-label !important;
+        }
+        details { margin-top: .75em !important; color: -apple-system-secondary-label !important; }
+        summary { font-weight: 600 !important; }
+        table { width: 100% !important; max-width: 100% !important; border-collapse: collapse; }
         </style></head><body>\(body)</body></html>
         """
     }
