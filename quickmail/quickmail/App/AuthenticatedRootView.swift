@@ -6,7 +6,7 @@ struct AuthenticatedRootView: View {
     let api: QuickMailAPI
     let mailboxCache: MailboxCache
     let currentUser: User
-    let onDisconnected: () -> Void
+    let onDisconnected: (String?) -> Void
 
     @State private var selectedThread: ThreadSelection?
     @State private var compactPath: [ThreadSelection] = []
@@ -31,12 +31,16 @@ struct AuthenticatedRootView: View {
                 )
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") {
+                        Button {
                             isSettingsPresented = false
+                        } label: {
+                            Image(systemName: "xmark")
                         }
+                        .accessibilityLabel("Close Settings")
                     }
                 }
             }
+            .presentationDragIndicator(.visible)
         }
         .sheet(item: $composePresentation) { presentation in
             ComposeView(api: api, mode: presentation.mode) { _ in
@@ -94,7 +98,6 @@ struct AuthenticatedRootView: View {
             userID: currentUser.id,
             cache: mailboxCache,
             refreshToken: mailboxRefreshToken,
-            accountName: currentUser.name.isEmpty ? currentUser.email : currentUser.name,
             onCompose: { draftID in
                 composePresentation = ComposePresentation(
                     mode: draftID.map(ComposeMode.draft(draftID:)) ?? .newMessage
@@ -185,6 +188,7 @@ private struct ThreadScene: View {
             summary: selection.summary,
             refreshToken: refreshToken,
             onReply: presentReply,
+            onForward: presentForward,
             onMailboxMutation: onMailboxMutation,
             onExit: onExit
         )
@@ -207,5 +211,56 @@ private struct ThreadScene: View {
         composePresentation = ComposePresentation(
             mode: .reply(messageID: messageID, recipient: recipient, subject: subject)
         )
+    }
+
+    private func presentForward(messages: [ThreadMessage]) {
+        let baseSubject = selection.summary.subject
+        let subject = baseSubject.lowercased().hasPrefix("fwd:")
+            ? baseSubject
+            : "Fwd: \(baseSubject)"
+
+        let forwardedMessages = messages.map { message in
+            let rawBody = message.bodyText?.trimmingCharacters(in: .whitespacesAndNewlines)
+                ?? plainText(from: message.bodyHTML)
+            let body = QuotedTextParser.split(rawBody).message
+            let date = message.createdAt.formatted(
+                .dateTime.month(.wide).day().year().hour().minute()
+            )
+            let ccLine = message.ccAddress.flatMap { $0.isEmpty ? nil : "\nCc: \($0)" } ?? ""
+
+            return """
+            From: \(message.fromAddress)
+            Date: \(date)
+            Subject: \(message.subject.isEmpty ? baseSubject : message.subject)
+            To: \(message.toAddress)\(ccLine)
+
+            \(body)
+            """
+        }
+        .joined(separator: "\n\n------------------------------\n\n")
+
+        let forwardedBody = """
+
+
+        ---------- Forwarded conversation ----------
+        \(forwardedMessages)
+        """
+
+        composePresentation = ComposePresentation(
+            mode: .forward(subject: subject, body: forwardedBody)
+        )
+    }
+
+    private func plainText(from html: String?) -> String {
+        guard let html else { return "" }
+        return html
+            .replacingOccurrences(of: "<br\\s*/?>", with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: "</p>", with: "\n\n", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

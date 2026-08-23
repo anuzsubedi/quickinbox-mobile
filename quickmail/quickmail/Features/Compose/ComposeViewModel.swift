@@ -6,12 +6,14 @@ nonisolated enum ComposeMode: Equatable, Sendable {
     case newMessage
     case draft(draftID: String)
     case reply(messageID: String, recipient: String, subject: String)
+    case forward(subject: String, body: String)
 
     var navigationTitle: String {
         switch self {
         case .newMessage: "New Message"
         case .draft: "Draft"
         case .reply: "Reply"
+        case .forward: "Forward"
         }
     }
 
@@ -89,6 +91,10 @@ final class ComposeViewModel: ObservableObject {
             // A nil selection lets the server reply from the mailbox that received
             // the original, including a catch-all address that is not saved.
             selectedFromAddressID = nil
+        case .forward(let subject, let body):
+            self.subject = subject
+            self.body = body
+            selectedFromAddressID = Self.preferredAddress(in: addresses)?.id
         }
     }
 
@@ -122,7 +128,7 @@ final class ComposeViewModel: ObservableObject {
         guard !trimmedBody.isEmpty else { return "Write a message before sending." }
 
         switch mode {
-        case .newMessage, .draft:
+        case .newMessage, .draft, .forward:
             guard selectedFromAddressID != nil else {
                 return "Choose a sending address."
             }
@@ -242,7 +248,7 @@ final class ComposeViewModel: ObservableObject {
                     : attachments.map(\.outboundValue)
 
                 switch mode {
-                case .newMessage, .draft:
+                case .newMessage, .draft, .forward:
                     response = try await api.send(
                         ComposeMessage(
                             draftID: mode.draftID,
