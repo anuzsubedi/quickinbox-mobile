@@ -22,10 +22,15 @@ struct SettingsView: View {
         selectedTheme.palette(for: colorScheme)
     }
 
+    private var settingsPreferredColorScheme: ColorScheme? {
+        selectedTheme.preferredColorScheme ?? adaptiveTransitionColorScheme
+    }
+
     @State private var deviceToRevoke: DeviceSession?
     @State private var showingRevokeConfirmation = false
     @State private var showingDisconnectConfirmation = false
     @State private var showingLocalWipeConfirmation = false
+    @State private var adaptiveTransitionColorScheme: ColorScheme?
 
     init(
         api: QuickMailAPI,
@@ -137,6 +142,10 @@ struct SettingsView: View {
         } message: {
             Text(model.operationError ?? "Try again.")
         }
+        // Settings is presented in its own sheet boundary. Apply the preference
+        // here as well so removing a forced light/dark theme takes effect without
+        // dismissing and reopening the sheet.
+        .preferredColorScheme(settingsPreferredColorScheme)
         .environment(\.appTheme, selectedTheme)
     }
 
@@ -560,10 +569,29 @@ struct SettingsView: View {
 
     private func selectTheme(_ theme: AppTheme) {
         guard theme.id != selectedTheme.id else { return }
+
+        // Sheet presentations can retain a forced light scheme for one update
+        // when the preference becomes adaptive. Briefly bridge to the actual
+        // system scheme, then release the override after the parent settles.
+        if theme.preferredColorScheme == nil,
+           selectedTheme.preferredColorScheme != nil {
+            adaptiveTransitionColorScheme = SystemAppearance.colorScheme
+        } else {
+            adaptiveTransitionColorScheme = nil
+        }
+
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             appThemeID = theme.id
+        }
+
+        if theme.preferredColorScheme == nil {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(150))
+                guard selectedTheme.preferredColorScheme == nil else { return }
+                adaptiveTransitionColorScheme = nil
+            }
         }
         AppFeedback.selection()
     }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// A registry-driven theme system. To add a theme, define one `AppTheme` in
 /// `all`; persistence, environment propagation, semantic colors, and the
@@ -198,5 +199,17 @@ struct AppThemeColorStyle: ShapeStyle, View {
 
     var body: some View {
         Rectangle().fill(self)
+    }
+}
+
+@MainActor
+enum SystemAppearance {
+    static var colorScheme: ColorScheme {
+        let interfaceStyle = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first(where: { $0.activationState != .unattached })?
+            .screen.traitCollection.userInterfaceStyle
+            ?? UITraitCollection.current.userInterfaceStyle
+        return interfaceStyle == .dark ? .dark : .light
     }
 }
