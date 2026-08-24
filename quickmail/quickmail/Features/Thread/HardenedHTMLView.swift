@@ -53,8 +53,6 @@ private struct HardenedWebView: UIViewRepresentable {
         webView.scrollView.isScrollEnabled = true
         webView.scrollView.bounces = false
         webView.scrollView.bouncesZoom = true
-        webView.scrollView.minimumZoomScale = 1
-        webView.scrollView.maximumZoomScale = 5
         webView.scrollView.showsVerticalScrollIndicator = false
         webView.scrollView.showsHorizontalScrollIndicator = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
@@ -89,6 +87,7 @@ private struct HardenedWebView: UIViewRepresentable {
         @Binding var height: CGFloat
         var loadedHTML: String?
         private var contentSizeObservation: NSKeyValueObservation?
+        private var restingZoomScale: CGFloat?
 
         init(height: Binding<CGFloat>) {
             _height = height
@@ -99,12 +98,22 @@ private struct HardenedWebView: UIViewRepresentable {
                 \.contentSize,
                 options: [.initial, .new]
             ) { [weak self] scrollView, change in
+                guard let self,
+                      !scrollView.isZooming,
+                      !scrollView.isZoomBouncing else { return }
+
+                if let restingZoomScale = self.restingZoomScale,
+                   abs(scrollView.zoomScale - restingZoomScale) > 0.01 {
+                    // Keep the SwiftUI container stable while the user is zoomed.
+                    // Resizing it during a pinch changes WebKit's viewport and causes
+                    // the content to jump or flash.
+                    return
+                }
                 guard let measured = change.newValue?.height,
                       measured.isFinite,
                       measured > 0 else { return }
-                let unscaledHeight = measured / max(scrollView.zoomScale, 1)
                 DispatchQueue.main.async {
-                    self?.height = ceil(unscaledHeight)
+                    self.height = ceil(measured)
                 }
             }
         }
@@ -112,11 +121,12 @@ private struct HardenedWebView: UIViewRepresentable {
         func stopObservingContentSize() {
             contentSizeObservation?.invalidate()
             contentSizeObservation = nil
+            restingZoomScale = nil
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            restingZoomScale = webView.scrollView.zoomScale
             let measured = webView.scrollView.contentSize.height
-                / max(webView.scrollView.zoomScale, 1)
             if measured.isFinite, measured > 0 {
                 height = ceil(measured)
             }
@@ -160,8 +170,8 @@ nonisolated enum HTMLMessageSanitizer {
         ) != nil
         let viewportWidth = isRichMessage ? designWidth(in: rawHTML) : nil
         let viewport = viewportWidth.map {
-            "width=\($0), user-scalable=yes, maximum-scale=5"
-        } ?? "width=device-width, initial-scale=1, user-scalable=yes, maximum-scale=5"
+            "width=\($0), user-scalable=yes, minimum-scale=0.5, maximum-scale=5"
+        } ?? "width=device-width, initial-scale=1, user-scalable=yes, minimum-scale=0.5, maximum-scale=5"
 
         let senderStyles = matches(of: #"<style\b[^>]*>([\s\S]*?)</style\s*>"#, in: body)
             .map { sanitizeCSS($0, loadsRemoteImages: loadsRemoteImages) }
@@ -181,6 +191,14 @@ nonisolated enum HTMLMessageSanitizer {
         body = replacing(#"\s+on[a-zA-Z]+\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+)"#, in: body, with: "")
         body = replacing(#"\s+(?:srcdoc|contenteditable|autofocus)\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+)"#, in: body, with: "")
         body = replacing(#"\s+(?:href|src|poster|action)\s*=\s*(?:\"|')?\s*(?:javascript|file):[^\s>]*(?:\"|')?"#, in: body, with: "")
+        // CID images are MIME attachments, not network resources WebKit can
+        // resolve in this isolated document. They are exposed in the native
+        // attachment list instead of leaving a broken-image outline in-body.
+        body = replacing(
+            #"<img\b[^>]*\bsrc\s*=\s*(?:\"\s*cid:[^\"]*\"|'\s*cid:[^']*'|cid:[^\s>]+)[^>]*>"#,
+            in: body,
+            with: ""
+        )
         if !loadsRemoteImages {
             body = replacing(#"\s+(?:src|srcset|poster)\s*=\s*(?:\"[^\"]*(?:http|https):[^\"]*\"|'[^']*(?:http|https):[^']*'|(?:http|https):[^\s>]+)"#, in: body, with: "")
             body = replacing(#"url\s*\([^)]*\)"#, in: body, with: "none")
@@ -234,11 +252,27 @@ nonisolated enum HTMLMessageSanitizer {
     }
 
     static func hasVisibleContent(_ html: String) -> Bool {
-        if html.range(of: #"<(?:img|table|video|svg)\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
+        // Layout tables and unresolved CID images are common in attachment-only
+        // messages. Only media this isolated WebView can actually render counts.
+        if html.range(
+            of: #"<svg\b|<img\b[^>]*\bsrc\s*=\s*[\"']?\s*(?:data:|https?://)"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil {
             return true
         }
-        let text = replacing(#"<[^>]+>"#, in: html, with: "")
+        let withoutNonContent = replacing(
+            #"<(?:style|script|head)\b[^>]*>[\s\S]*?</(?:style|script|head)\s*>|<!--[\s\S]*?-->"#,
+            in: html,
+            with: ""
+        )
+        let text = replacing(#"<[^>]+>"#, in: withoutNonContent, with: "")
             .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&#160;", with: " ")
+            .replacingOccurrences(of: "&#xA0;", with: " ", options: .caseInsensitive)
+            .replacingOccurrences(of: "&zwnj;", with: "")
+            .replacingOccurrences(of: "&zwj;", with: "")
+            .replacingOccurrences(of: "\u{200B}", with: "")
+            .replacingOccurrences(of: "\u{FEFF}", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return !text.isEmpty
     }

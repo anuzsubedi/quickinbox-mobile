@@ -17,7 +17,13 @@ struct ThreadMessageView: View {
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(deliveryColor(status))
             }
-            messageBody
+            if hasReadableBody {
+                messageBody
+            } else if message.attachments.isEmpty {
+                Text("This message has no readable body.")
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                    .italic()
+            }
             if !message.attachments.isEmpty {
                 attachmentList
             }
@@ -74,11 +80,16 @@ struct ThreadMessageView: View {
             FormattedMessageBody(html: html)
         } else if let plainText, !plainText.isEmpty {
             PlainMessageBody(text: plainText)
-        } else {
-            Text("This message has no readable body.")
-                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
-                .italic()
         }
+    }
+
+    private var hasReadableBody: Bool {
+        if let html = message.bodyHTML?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !html.isEmpty,
+           HTMLMessageSanitizer.hasVisibleContent(html) {
+            return true
+        }
+        return !(message.bodyText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
     }
 
     private var attachmentList: some View {
