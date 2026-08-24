@@ -375,7 +375,7 @@ struct ThreadReaderView: View {
             guard expandedMessageID != messageID else { return }
             var transaction = Transaction()
             transaction.disablesAnimations = true
-            withTransaction(transaction) {
+            _ = withTransaction(transaction) {
                 hiddenPreviewMessageIDs.remove(messageID)
             }
         }

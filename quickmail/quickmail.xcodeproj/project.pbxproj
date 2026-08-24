@@ -256,6 +256,8 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = QuickMail;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "QuickMail uses the camera to scan a pairing code shown in your QuickMail web settings.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "QuickMail uses Face ID to protect your mail when App Lock is enabled.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -291,6 +293,8 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = QuickMail;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "QuickMail uses the camera to scan a pairing code shown in your QuickMail web settings.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "QuickMail uses Face ID to protect your mail when App Lock is enabled.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
