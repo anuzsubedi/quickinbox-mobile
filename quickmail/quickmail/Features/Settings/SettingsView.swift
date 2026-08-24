@@ -4,6 +4,7 @@ import Combine
 struct SettingsView: View {
     @Environment(AppLockController.self) private var appLock
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var model: SettingsViewModel
     @AppStorage(AppPreferences.showRemoteImagesByDefault) private var showRemoteImagesByDefault = false
     @AppStorage(AppPreferences.appCanvasStyle) private var appCanvasStyle = AppCanvasStyle.paper
@@ -11,6 +12,10 @@ struct SettingsView: View {
 
     private var appearanceSummary: String {
         appCanvasStyle.title
+    }
+
+    private var settingsPalette: AppCanvasPalette {
+        appCanvasStyle.palette(for: colorScheme)
     }
 
     @State private var deviceToRevoke: DeviceSession?
@@ -101,8 +106,9 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity)
         }
         .scrollIndicators(.hidden)
-        .background(QuickMailDesign.Palette.paperGrouped)
-        .quickMailPageSurface()
+        .background(settingsPalette.grouped)
+        .toolbarBackground(settingsPalette.paper, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -127,6 +133,7 @@ struct SettingsView: View {
         } message: {
             Text(model.operationError ?? "Try again.")
         }
+        .environment(\.appCanvasStyle, appCanvasStyle)
     }
 
     private var accountOverview: some View {
@@ -189,25 +196,81 @@ struct SettingsView: View {
                 detail: "Choose the background that feels right to you."
             )
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Background")
-                    .font(.subheadline.weight(.semibold))
-                Picker("Background", selection: canvasStyleBinding) {
-                    ForEach(AppCanvasStyle.allCases) { style in
-                        Text(style.pickerTitle).tag(style)
-                    }
+            VStack(spacing: 10) {
+                ForEach(AppCanvasStyle.allCases) { style in
+                    canvasStyleChoice(style)
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .tint(Color.accentColor)
-
-                Text(appCanvasStyle.detail)
-                    .font(.footnote)
-                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
             }
-
         }
         .modifier(SettingsPanelModifier())
+    }
+
+    private func canvasStyleChoice(_ style: AppCanvasStyle) -> some View {
+        let isSelected = style == appCanvasStyle
+        let previewPalette = style.palette(for: colorScheme)
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+
+        return Button {
+            selectCanvasStyle(style)
+        } label: {
+            HStack(spacing: 13) {
+                canvasPreview(palette: previewPalette)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(style.title)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(settingsPalette.primaryText)
+                    Text(style.detail)
+                        .font(.footnote)
+                        .foregroundStyle(settingsPalette.secondaryText)
+                        .multilineTextAlignment(.leading)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(isSelected ? Color.accentColor : settingsPalette.secondaryText.opacity(0.5))
+                    .accessibilityHidden(true)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+            .background(isSelected ? Color.accentColor.opacity(0.09) : settingsPalette.fill, in: shape)
+            .overlay {
+                shape.stroke(
+                    isSelected ? Color.accentColor.opacity(0.85) : settingsPalette.separator,
+                    lineWidth: isSelected ? 1.5 : 0.5
+                )
+            }
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(style.title)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityHint(style.detail)
+    }
+
+    private func canvasPreview(palette: AppCanvasPalette) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        return ZStack {
+            shape.fill(palette.grouped)
+
+            VStack(alignment: .leading, spacing: 4) {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(palette.raised)
+                    .frame(height: 15)
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(palette.primaryText.opacity(0.72))
+                    .frame(width: 27, height: 3)
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(palette.secondaryText.opacity(0.55))
+                    .frame(width: 20, height: 2)
+            }
+            .padding(7)
+        }
+        .frame(width: 52, height: 46)
+        .overlay { shape.stroke(palette.separator, lineWidth: 0.75) }
+        .accessibilityHidden(true)
     }
 
     private func settingsOverviewHeading(_ title: String, detail: String) -> some View {
@@ -335,8 +398,9 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity)
         }
         .scrollIndicators(.hidden)
-        .background(QuickMailDesign.Palette.paperGrouped)
-        .quickMailPageSurface()
+        .background(settingsPalette.grouped)
+        .toolbarBackground(settingsPalette.paper, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
     }
 
     private var accountIdentitySummary: some View {
@@ -1006,20 +1070,23 @@ struct SettingsView: View {
 }
 
 private struct SettingsPanelModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(AppPreferences.appCanvasStyle) private var appCanvasStyle = AppCanvasStyle.paper
     var contentPadding: CGFloat = 16
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        let palette = appCanvasStyle.palette(for: colorScheme)
 
         content
             .padding(contentPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                QuickMailDesign.Palette.paperRaised,
+                palette.raised,
                 in: shape
             )
             .overlay {
-                shape.stroke(Color.clear, lineWidth: 0)
+                shape.stroke(palette.separator.opacity(0.55), lineWidth: 0.5)
             }
     }
 }
