@@ -1,0 +1,10 @@
+.DS_Store
+DerivedData/
+*.xcresult
+**/xcuserdata/
+*.xcuserstate
+*.mobileprovision
+*.p8
+*.p12
+*.cer
+Local.xcconfig
