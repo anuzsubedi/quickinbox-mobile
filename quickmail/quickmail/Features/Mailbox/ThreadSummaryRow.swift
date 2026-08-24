@@ -91,8 +91,8 @@ struct ThreadSummaryRow: View {
                     .font(rowPreviewFont(isUnread: !thread.isRead))
                     .foregroundStyle(
                         thread.isRead
-                            ? QuickMailDesign.Palette.secondaryText.opacity(0.72)
-                            : QuickMailDesign.Palette.secondaryText
+                            ? AnyShapeStyle(QuickMailDesign.Palette.secondaryText.opacity(0.72))
+                            : AnyShapeStyle(QuickMailDesign.Palette.secondaryText)
                     )
                     .lineLimit(1)
                     .padding(.top, 1)

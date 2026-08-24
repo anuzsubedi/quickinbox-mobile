@@ -1,116 +1,6 @@
 import SwiftUI
 import UIKit
 
-enum AppCanvasStyle: String, CaseIterable, Identifiable, Sendable {
-    case paper
-    case pureWhite
-    case amoledBlack
-
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .paper: "Adaptive Paper"
-        case .pureWhite: "Pure White"
-        case .amoledBlack: "AMOLED Black"
-        }
-    }
-    var detail: String {
-        switch self {
-        case .paper: "Warm paper by day and deep charcoal at night"
-        case .pureWhite: "Always use a crisp white canvas"
-        case .amoledBlack: "Always use a true black canvas"
-        }
-    }
-    var pickerTitle: String {
-        switch self {
-        case .paper: "Paper"
-        case .pureWhite: "White"
-        case .amoledBlack: "AMOLED"
-        }
-    }
-    var preferredColorScheme: ColorScheme? {
-        switch self {
-        case .paper: nil
-        case .pureWhite: .light
-        case .amoledBlack: .dark
-        }
-    }
-    static var current: AppCanvasStyle {
-        let value = UserDefaults.standard.string(forKey: AppPreferences.appCanvasStyle)
-        return AppCanvasStyle(rawValue: value ?? "") ?? .paper
-    }
-}
-
-private struct AppCanvasStyleKey: EnvironmentKey {
-    static let defaultValue = AppCanvasStyle.current
-}
-
-extension EnvironmentValues {
-    var appCanvasStyle: AppCanvasStyle {
-        get { self[AppCanvasStyleKey.self] }
-        set { self[AppCanvasStyleKey.self] = newValue }
-    }
-}
-
-struct AppCanvasPalette: Sendable {
-    let grouped: Color
-    let paper: Color
-    let raised: Color
-    let primaryText: Color
-    let secondaryText: Color
-    let separator: Color
-    let fill: Color
-}
-
-extension AppCanvasStyle {
-    func palette(for systemScheme: ColorScheme) -> AppCanvasPalette {
-        let effectiveScheme = preferredColorScheme ?? systemScheme
-        switch self {
-        case .pureWhite:
-            return AppCanvasPalette(
-                grouped: .white,
-                paper: .white,
-                raised: Color(red: 0.975, green: 0.975, blue: 0.980),
-                primaryText: Color(red: 0.055, green: 0.065, blue: 0.075),
-                secondaryText: Color(red: 0.34, green: 0.36, blue: 0.39),
-                separator: Color.black.opacity(0.14),
-                fill: Color.black.opacity(0.055)
-            )
-        case .amoledBlack:
-            return AppCanvasPalette(
-                grouped: .black,
-                paper: .black,
-                raised: Color(red: 0.055, green: 0.055, blue: 0.060),
-                primaryText: Color(red: 0.96, green: 0.96, blue: 0.97),
-                secondaryText: Color(red: 0.68, green: 0.70, blue: 0.73),
-                separator: Color.white.opacity(0.18),
-                fill: Color.white.opacity(0.10)
-            )
-        case .paper:
-            if effectiveScheme == .dark {
-                return AppCanvasPalette(
-                    grouped: Color(red: 15/255, green: 19/255, blue: 21/255),
-                    paper: Color(red: 21/255, green: 25/255, blue: 27/255),
-                    raised: Color(red: 29/255, green: 34/255, blue: 37/255),
-                    primaryText: Color(red: 239/255, green: 237/255, blue: 231/255),
-                    secondaryText: Color(red: 177/255, green: 181/255, blue: 183/255),
-                    separator: Color.white.opacity(0.16),
-                    fill: Color.white.opacity(0.07)
-                )
-            }
-            return AppCanvasPalette(
-                grouped: Color(red: 244/255, green: 241/255, blue: 233/255),
-                paper: Color(red: 250/255, green: 248/255, blue: 242/255),
-                raised: Color(red: 255/255, green: 253/255, blue: 248/255),
-                primaryText: Color(red: 28/255, green: 29/255, blue: 27/255),
-                secondaryText: Color(red: 91/255, green: 92/255, blue: 88/255),
-                separator: Color.black.opacity(0.12),
-                fill: Color.black.opacity(0.045)
-            )
-        }
-    }
-}
-
 extension Font {
     static func quickMailDisplay(_ size: CGFloat, relativeTo style: TextStyle = .largeTitle) -> Font {
         .system(size: size, weight: .bold, design: .default)
@@ -158,90 +48,25 @@ enum QuickMailDesign {
         static var micro: Font { .quickMailBold(11, relativeTo: .caption2) }
     }
     enum Palette {
-        static var paper: Color { resolvedCanvas(.paper) }
-        static var paperRaised: Color { resolvedCanvas(.raised) }
-        static var paperGrouped: Color { resolvedCanvas(.grouped) }
-        static var ink: Color { resolvedInk(muted: false) }
-        static var inkMuted: Color { resolvedInk(muted: true) }
-        static let signalInk = dynamic(
-            light: UIColor(red: 0.080, green: 0.090, blue: 0.300, alpha: 1),
-            dark: UIColor(red: 0.620, green: 0.700, blue: 1.000, alpha: 1)
-        )
+        static let paper = AppThemeColorStyle(.paper)
+        static let paperRaised = AppThemeColorStyle(.raised)
+        static let paperGrouped = AppThemeColorStyle(.grouped)
+        static let ink = AppThemeColorStyle(.primaryText)
+        static let inkMuted = AppThemeColorStyle(.secondaryText)
+        static let signalInk = AppThemeColorStyle(.signalInk)
         static let floatingActionTint = signalInk
-        static let sage = dynamic(
-            light: UIColor(red: 0.204, green: 0.400, blue: 0.318, alpha: 1),
-            dark: UIColor(red: 0.490, green: 0.710, blue: 0.596, alpha: 1)
-        )
-        static let sageStrong = dynamic(
-            light: UIColor(red: 0.133, green: 0.310, blue: 0.239, alpha: 1),
-            dark: UIColor(red: 0.600, green: 0.800, blue: 0.694, alpha: 1)
-        )
-        static let sageWash = dynamic(
-            light: UIColor(red: 0.855, green: 0.910, blue: 0.875, alpha: 1),
-            dark: UIColor(red: 0.125, green: 0.212, blue: 0.169, alpha: 1)
-        )
-        static var hairline: Color { resolvedRule }
-        static var canvas: Color { paper }
-        static var surface: Color { paperRaised }
-        static var groupedSurface: Color { paperGrouped }
-        static var raisedSurface: Color { paperRaised }
-        static var fill: Color {
-            switch AppCanvasStyle.current {
-            case .amoledBlack: Color.white.opacity(0.12)
-            case .pureWhite: Color.black.opacity(0.07)
-            case .paper: ink.opacity(0.07)
-            }
-        }
-        static var separator: Color { hairline }
-        static var primaryText: Color { ink }
-        static var secondaryText: Color { inkMuted }
-
-        private enum Surface { case grouped, paper, raised }
-        private static func resolvedCanvas(_ surface: Surface) -> Color {
-            switch AppCanvasStyle.current {
-            case .pureWhite:
-                switch surface {
-                case .grouped, .paper: .white
-                case .raised: Color(red: 0.985, green: 0.985, blue: 0.985)
-                }
-            case .amoledBlack:
-                switch surface {
-                case .grouped, .paper: .black
-                case .raised: Color(red: 0.055, green: 0.055, blue: 0.060)
-                }
-            case .paper:
-                switch surface {
-                case .grouped:
-                    dynamic(light: UIColor(red: 244/255, green: 241/255, blue: 233/255, alpha: 1), dark: UIColor(red: 15/255, green: 19/255, blue: 21/255, alpha: 1))
-                case .paper:
-                    dynamic(light: UIColor(red: 250/255, green: 248/255, blue: 242/255, alpha: 1), dark: UIColor(red: 21/255, green: 25/255, blue: 27/255, alpha: 1))
-                case .raised:
-                    dynamic(light: UIColor(red: 255/255, green: 253/255, blue: 248/255, alpha: 1), dark: UIColor(red: 29/255, green: 34/255, blue: 37/255, alpha: 1))
-                }
-            }
-        }
-        private static func resolvedInk(muted: Bool) -> Color {
-            switch AppCanvasStyle.current {
-            case .pureWhite:
-                muted ? Color(red: 0.34, green: 0.36, blue: 0.39) : Color(red: 0.055, green: 0.065, blue: 0.075)
-            case .amoledBlack:
-                muted ? Color(red: 0.68, green: 0.70, blue: 0.73) : Color(red: 0.96, green: 0.96, blue: 0.97)
-            case .paper:
-                muted
-                    ? dynamic(light: UIColor(red: 91/255, green: 92/255, blue: 88/255, alpha: 1), dark: UIColor(red: 177/255, green: 181/255, blue: 183/255, alpha: 1))
-                    : dynamic(light: UIColor(red: 28/255, green: 29/255, blue: 27/255, alpha: 1), dark: UIColor(red: 239/255, green: 237/255, blue: 231/255, alpha: 1))
-            }
-        }
-        private static var resolvedRule: Color {
-            switch AppCanvasStyle.current {
-            case .pureWhite: Color.black.opacity(0.14)
-            case .amoledBlack: Color.white.opacity(0.18)
-            case .paper: dynamic(light: UIColor.black.withAlphaComponent(0.12), dark: UIColor.white.withAlphaComponent(0.16))
-            }
-        }
-        private static func dynamic(light: UIColor, dark: UIColor) -> Color {
-            Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? dark : light })
-        }
+        static let sage = AppThemeColorStyle(.sage)
+        static let sageStrong = AppThemeColorStyle(.sageStrong)
+        static let sageWash = AppThemeColorStyle(.sageWash)
+        static let hairline = AppThemeColorStyle(.separator)
+        static let canvas = paper
+        static let surface = paperRaised
+        static let groupedSurface = paperGrouped
+        static let raisedSurface = paperRaised
+        static let fill = AppThemeColorStyle(.fill)
+        static let separator = hairline
+        static let primaryText = ink
+        static let secondaryText = inkMuted
     }
     enum Motion {
         static let press = Animation.easeOut(duration: 0.10)
@@ -332,8 +157,14 @@ struct ParticipantMonogram: View {
 
 enum MetadataPillTone: Sendable {
     case neutral, info, success, warning, critical
-    fileprivate var foreground: Color {
-        switch self { case .neutral: QuickMailDesign.Palette.secondaryText; case .info: .accentColor; case .success: Color(uiColor: .systemGreen); case .warning: Color(uiColor: .systemOrange); case .critical: Color(uiColor: .systemRed) }
+    fileprivate var foreground: AnyShapeStyle {
+        switch self {
+        case .neutral: AnyShapeStyle(QuickMailDesign.Palette.secondaryText)
+        case .info: AnyShapeStyle(Color.accentColor)
+        case .success: AnyShapeStyle(Color(uiColor: .systemGreen))
+        case .warning: AnyShapeStyle(Color(uiColor: .systemOrange))
+        case .critical: AnyShapeStyle(Color(uiColor: .systemRed))
+        }
     }
 }
 struct MetadataPill: View {
@@ -342,9 +173,11 @@ struct MetadataPill: View {
     var tint: Color = .secondary
     private var tone: MetadataPillTone?
     init(title: String, systemImage: String, tint: Color = .secondary) { self.title = title; self.systemImage = systemImage; self.tint = tint; tone = nil }
-    init(title: String, systemImage: String, tone: MetadataPillTone) { self.title = title; self.systemImage = systemImage; tint = tone.foreground; self.tone = tone }
+    init(title: String, systemImage: String, tone: MetadataPillTone) { self.title = title; self.systemImage = systemImage; tint = .secondary; self.tone = tone }
     var body: some View {
-        Label(title, systemImage: systemImage).font(QuickMailDesign.Typography.micro).foregroundStyle(tone?.foreground ?? tint)
+        Label(title, systemImage: systemImage)
+            .font(QuickMailDesign.Typography.micro)
+            .foregroundStyle(tone?.foreground ?? AnyShapeStyle(tint))
             .padding(.horizontal, QuickMailDesign.Spacing.sm).padding(.vertical, QuickMailDesign.Spacing.xs)
             .background(QuickMailDesign.Palette.fill, in: QuickMailCapsuleShape())
             .overlay { QuickMailCapsuleShape().stroke(QuickMailDesign.Palette.separator.opacity(0.35), lineWidth: 0.5) }

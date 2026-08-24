@@ -2,6 +2,8 @@ import SwiftUI
 
 struct MailboxFeatureView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.appTheme) private var appTheme
+    @Environment(\.colorScheme) private var colorScheme
     @State private var model: MailboxViewModel
     @State private var pendingPermanentDeletion: ThreadSummary?
     @State private var selectionFeedbackTrigger = 0
@@ -384,7 +386,7 @@ struct MailboxFeatureView: View {
         .listRowBackground(QuickMailDesign.Palette.paper)
         .listRowSeparator(.hidden, edges: .top)
         .listRowSeparator(isLast ? .hidden : .visible, edges: .bottom)
-        .listRowSeparatorTint(QuickMailDesign.Palette.separator.opacity(0.58))
+        .listRowSeparatorTint(appTheme.palette(for: colorScheme).separator.opacity(0.58))
         .alignmentGuide(.listRowSeparatorLeading) { _ in 56 }
     }
 
@@ -707,11 +709,15 @@ private struct MailboxSearchGlassStyle: ViewModifier {
 }
 
 private struct MailboxThreadButtonStyle: ButtonStyle {
+    @Environment(\.appTheme) private var appTheme
+    @Environment(\.colorScheme) private var colorScheme
+
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        let palette = appTheme.palette(for: colorScheme)
+        return configuration.label
             .background(
                 configuration.isPressed
-                    ? QuickMailDesign.Palette.fill.opacity(0.72)
+                    ? palette.fill.opacity(0.72)
                     : Color.clear
             )
             .opacity(configuration.isPressed ? 0.86 : 1)

@@ -7,15 +7,19 @@ struct SettingsView: View {
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var model: SettingsViewModel
     @AppStorage(AppPreferences.showRemoteImagesByDefault) private var showRemoteImagesByDefault = false
-    @AppStorage(AppPreferences.appCanvasStyle) private var appCanvasStyle = AppCanvasStyle.paper
+    @AppStorage(AppPreferences.appThemeID) private var appThemeID = AppThemeRegistry.defaultThemeID
     private let onDisconnected: (String?) -> Void
 
     private var appearanceSummary: String {
-        appCanvasStyle.title
+        selectedTheme.title
     }
 
-    private var settingsPalette: AppCanvasPalette {
-        appCanvasStyle.palette(for: colorScheme)
+    private var selectedTheme: AppTheme {
+        AppThemeRegistry.theme(id: appThemeID)
+    }
+
+    private var settingsPalette: AppThemePalette {
+        selectedTheme.palette(for: colorScheme)
     }
 
     @State private var deviceToRevoke: DeviceSession?
@@ -133,7 +137,7 @@ struct SettingsView: View {
         } message: {
             Text(model.operationError ?? "Try again.")
         }
-        .environment(\.appCanvasStyle, appCanvasStyle)
+        .environment(\.appTheme, selectedTheme)
     }
 
     private var accountOverview: some View {
@@ -192,35 +196,35 @@ struct SettingsView: View {
     private var appearanceOverview: some View {
         VStack(alignment: .leading, spacing: 14) {
             settingsOverviewHeading(
-                "Background",
-                detail: "Choose the background that feels right to you."
+                "Theme",
+                detail: "Choose how QuickMail’s surfaces and contrast should look."
             )
 
             VStack(spacing: 10) {
-                ForEach(AppCanvasStyle.allCases) { style in
-                    canvasStyleChoice(style)
+                ForEach(AppThemeRegistry.all) { theme in
+                    themeChoice(theme)
                 }
             }
         }
         .modifier(SettingsPanelModifier())
     }
 
-    private func canvasStyleChoice(_ style: AppCanvasStyle) -> some View {
-        let isSelected = style == appCanvasStyle
-        let previewPalette = style.palette(for: colorScheme)
+    private func themeChoice(_ theme: AppTheme) -> some View {
+        let isSelected = theme.id == selectedTheme.id
+        let previewPalette = theme.palette(for: colorScheme)
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
 
         return Button {
-            selectCanvasStyle(style)
+            selectTheme(theme)
         } label: {
             HStack(spacing: 13) {
                 canvasPreview(palette: previewPalette)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(style.title)
+                    Text(theme.title)
                         .font(.body.weight(.semibold))
                         .foregroundStyle(settingsPalette.primaryText)
-                    Text(style.detail)
+                    Text(theme.detail)
                         .font(.footnote)
                         .foregroundStyle(settingsPalette.secondaryText)
                         .multilineTextAlignment(.leading)
@@ -245,12 +249,12 @@ struct SettingsView: View {
             .contentShape(shape)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(style.title)
+        .accessibilityLabel(theme.title)
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
-        .accessibilityHint(style.detail)
+        .accessibilityHint(theme.detail)
     }
 
-    private func canvasPreview(palette: AppCanvasPalette) -> some View {
+    private func canvasPreview(palette: AppThemePalette) -> some View {
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
         return ZStack {
             shape.fill(palette.grouped)
@@ -554,21 +558,14 @@ struct SettingsView: View {
             .textSelection(.enabled)
     }
 
-    private func selectCanvasStyle(_ style: AppCanvasStyle) {
-        guard style != appCanvasStyle else { return }
+    private func selectTheme(_ theme: AppTheme) {
+        guard theme.id != selectedTheme.id else { return }
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            appCanvasStyle = style
+            appThemeID = theme.id
         }
         AppFeedback.selection()
-    }
-
-    private var canvasStyleBinding: Binding<AppCanvasStyle> {
-        Binding(
-            get: { appCanvasStyle },
-            set: selectCanvasStyle
-        )
     }
 
     private var accountSection: some View {
@@ -1071,12 +1068,12 @@ struct SettingsView: View {
 
 private struct SettingsPanelModifier: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(AppPreferences.appCanvasStyle) private var appCanvasStyle = AppCanvasStyle.paper
+    @Environment(\.appTheme) private var appTheme
     var contentPadding: CGFloat = 16
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
-        let palette = appCanvasStyle.palette(for: colorScheme)
+        let palette = appTheme.palette(for: colorScheme)
 
         content
             .padding(contentPadding)

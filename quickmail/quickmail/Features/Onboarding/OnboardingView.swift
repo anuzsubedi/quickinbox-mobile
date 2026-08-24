@@ -2,6 +2,8 @@ import SwiftUI
 
 struct OnboardingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.appTheme) private var appTheme
+    @Environment(\.colorScheme) private var colorScheme
 
     private let api: QuickMailAPI
     private let credentialStore: CredentialStore
@@ -73,12 +75,13 @@ struct OnboardingView: View {
     }
 
     private var onboardingBackground: some View {
-        ZStack {
+        let palette = appTheme.palette(for: colorScheme)
+        return ZStack {
             QuickMailDesign.Palette.paperGrouped
 
             LinearGradient(
                 colors: [
-                    QuickMailDesign.Palette.floatingActionTint.opacity(0.13),
+                    palette.signalInk.opacity(0.13),
                     .clear
                 ],
                 startPoint: .topLeading,

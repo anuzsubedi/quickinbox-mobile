@@ -5,7 +5,7 @@ struct ContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var session: AppSession
     @State private var appLock = AppLockController()
-    @AppStorage(AppPreferences.appCanvasStyle) private var appCanvasStyle = AppCanvasStyle.paper
+    @AppStorage(AppPreferences.appThemeID) private var appThemeID = AppThemeRegistry.defaultThemeID
 
     init() {
         let mailboxCache = MailboxCache()
@@ -29,8 +29,12 @@ struct ContentView: View {
             .onChange(of: scenePhase) { _, phase in
                 appLock.handleScenePhase(phase)
             }
-            .preferredColorScheme(appCanvasStyle.preferredColorScheme)
-            .environment(\.appCanvasStyle, appCanvasStyle)
+            .preferredColorScheme(selectedTheme.preferredColorScheme)
+            .environment(\.appTheme, selectedTheme)
+    }
+
+    private var selectedTheme: AppTheme {
+        AppThemeRegistry.theme(id: appThemeID)
     }
 
     @ViewBuilder
