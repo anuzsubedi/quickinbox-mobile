@@ -11,6 +11,10 @@ struct ComposeView: View {
     @State private var showsCarbonCopyFields = false
     @FocusState private var focusedField: ComposeField?
 
+    private var composeBodyFont: Font {
+        .body
+    }
+
     private let onSent: (SendMessageResponse) -> Void
 
     init(
@@ -32,9 +36,9 @@ struct ComposeView: View {
                     addressHeader
                     fieldDivider
                     subjectRow
-                    Divider()
-                    messageEditor
+                    QuickMailRule()
                     attachmentArea
+                    messageEditor
                     guidanceArea
                 }
                 .padding(.horizontal, horizontalInset)
@@ -42,8 +46,9 @@ struct ComposeView: View {
                 .padding(.bottom, 32)
                 .frame(maxWidth: QuickMailDesign.contentMaxWidth)
                 .frame(maxWidth: .infinity)
+                .font(composeBodyFont)
             }
-            .background(Color(.systemBackground))
+            .background(QuickMailDesign.Palette.paper)
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle(composeTitle)
             .navigationBarTitleDisplayMode(.inline)
@@ -57,12 +62,13 @@ struct ComposeView: View {
                         if model.isSending {
                             ProgressView()
                                 .controlSize(.small)
+                                .tint(Color.accentColor)
                                 .accessibilityLabel("Sending")
                         } else {
                             Text("Send")
-                                .fontWeight(.semibold)
                         }
                     }
+                    .tint(Color.accentColor)
                     .disabled(!model.canSend)
                 }
             }
@@ -162,7 +168,7 @@ struct ComposeView: View {
             if model.isLoadingAddresses && model.addresses.isEmpty {
                 HStack(spacing: 10) {
                     Text("Loading sending addresses…")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     Spacer(minLength: 8)
                     ProgressView()
                         .controlSize(.small)
@@ -172,7 +178,7 @@ struct ComposeView: View {
             } else if model.addresses.isEmpty {
                 HStack(spacing: 10) {
                     Text("No address available")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     Spacer(minLength: 8)
                     Button("Retry") {
                         Task { await model.retryLoadingAddresses() }
@@ -228,7 +234,7 @@ struct ComposeView: View {
 
             TextEditor(text: $model.body)
                 .focused($focusedField, equals: .body)
-                .font(.body)
+                .font(composeBodyFont)
                 .lineSpacing(3)
                 .frame(minHeight: editorMinimumHeight)
                 .scrollContentBackground(.hidden)
@@ -239,21 +245,7 @@ struct ComposeView: View {
 
     @ViewBuilder
     private var attachmentArea: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if !model.attachments.isEmpty {
-                Divider()
-                Text(model.attachments.count == 1 ? "1 ATTACHMENT" : "\(model.attachments.count) ATTACHMENTS")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .tracking(0.5)
-                    .padding(.top, 14)
-
-                ForEach(model.attachments) { attachment in
-                    attachmentRow(attachment)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                }
-            }
-
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 Button {
                     isFileImporterPresented = true
@@ -272,17 +264,30 @@ struct ComposeView: View {
                         .controlSize(.small)
                     Text("Adding files…")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                 }
 
                 Spacer(minLength: 0)
+
+                if !model.attachments.isEmpty {
+                    Text(model.attachments.count == 1 ? "1 ATTACHMENT" : "\(model.attachments.count) ATTACHMENTS")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                        .tracking(0.5)
+                        .contentTransition(.numericText())
+                }
             }
             .frame(minHeight: 44)
 
             if !model.attachments.isEmpty {
+                ForEach(model.attachments) { attachment in
+                    attachmentRow(attachment)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+
                 Text("5 files max · 5 MB each · \(formattedByteCount(model.totalAttachmentBytes)) attached")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     .contentTransition(.numericText())
             }
 
@@ -290,6 +295,7 @@ struct ComposeView: View {
                 guidanceLabel(message)
             }
         }
+        .padding(.vertical, 4)
         .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: model.attachments)
     }
 
@@ -309,7 +315,7 @@ struct ComposeView: View {
     private func attachmentRow(_ attachment: ComposeAttachment) -> some View {
         HStack(spacing: 12) {
             Image(systemName: attachmentSymbol(for: attachment.contentType))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                 .font(.body.weight(.medium))
                 .frame(width: 30)
                 .accessibilityHidden(true)
@@ -318,7 +324,7 @@ struct ComposeView: View {
                     .lineLimit(1)
                 Text(formattedByteCount(attachment.byteCount))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
             }
             Spacer(minLength: 8)
             Button(role: .destructive) {
@@ -364,7 +370,7 @@ struct ComposeView: View {
         adaptiveFieldRow(alignment: .firstTextBaseline) {
             fieldLabel(title)
             Text(value)
-                .foregroundStyle(.primary)
+                .foregroundStyle(QuickMailDesign.Palette.primaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
         }
@@ -375,7 +381,7 @@ struct ComposeView: View {
     private func fieldLabel(_ title: String) -> some View {
         Text(title)
             .font(.subheadline.weight(.medium))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(QuickMailDesign.Palette.secondaryText)
             .frame(width: usesStackedFields ? nil : fieldLabelWidth, alignment: .leading)
     }
 
@@ -403,7 +409,7 @@ struct ComposeView: View {
     private var usesStackedFields: Bool { dynamicTypeSize.isAccessibilitySize }
 
     private var fieldDivider: some View {
-        Divider()
+        QuickMailRule()
             .padding(.leading, usesStackedFields ? 0 : fieldLabelWidth + fieldSpacing)
     }
 

@@ -1,7 +1,18 @@
 {
   "images" : [
     {
-      "filename" : "LaunchIcon.png",
+      "filename" : "LaunchIcon-Light.png",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "appearances" : [
+        {
+          "appearance" : "luminosity",
+          "value" : "dark"
+        }
+      ],
+      "filename" : "LaunchIcon-Dark.png",
       "idiom" : "universal",
       "scale" : "1x"
     }

@@ -32,32 +32,32 @@ struct ThreadMessageView: View {
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(senderTitle)
-                            .font(.body.weight(.semibold))
+                            .font(messageSenderFont)
                             .lineLimit(1)
                         Spacer(minLength: 4)
                         Text(compactMessageDate(message.createdAt))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(messageMetadataFont)
+                            .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(senderTitle)
-                            .font(.body.weight(.semibold))
+                            .font(messageSenderFont)
                         Text(compactMessageDate(message.createdAt))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(messageMetadataFont)
+                            .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     }
                 }
 
                 Text("To: \(message.toAddress)")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(messageRecipientFont)
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     .textSelection(.enabled)
 
                 if let cc = message.ccAddress, !cc.isEmpty {
                     Text("Cc: \(cc)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(messageRecipientFont)
+                        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                         .textSelection(.enabled)
                 }
 
@@ -76,7 +76,7 @@ struct ThreadMessageView: View {
             PlainMessageBody(text: plainText)
         } else {
             Text("This message has no readable body.")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                 .italic()
         }
     }
@@ -85,12 +85,12 @@ struct ThreadMessageView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(message.attachments.count == 1 ? "Attachment" : "Attachments")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                 .padding(.bottom, 2)
 
             ForEach(Array(message.attachments.enumerated()), id: \.element.id) { index, attachment in
                 if index > 0 {
-                    Divider()
+                    QuickMailRule()
                 }
 
                 Button {
@@ -99,7 +99,7 @@ struct ThreadMessageView: View {
                     HStack(spacing: 12) {
                         Image(systemName: attachmentSymbol(for: attachment.contentType))
                             .font(.body)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                             .frame(width: 24)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(attachment.filename)
@@ -109,7 +109,7 @@ struct ThreadMessageView: View {
                             if attachment.sizeBytes > 0 {
                                 Text(ByteCountFormatter.string(fromByteCount: Int64(attachment.sizeBytes), countStyle: .file))
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                             }
                         }
                         Spacer(minLength: 8)
@@ -118,7 +118,7 @@ struct ThreadMessageView: View {
                                 .controlSize(.small)
                         } else {
                             Image(systemName: "eye")
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                         }
                     }
                     .contentShape(Rectangle())
@@ -134,6 +134,18 @@ struct ThreadMessageView: View {
 
     private var senderTitle: String {
         message.direction == .outbound ? "Me" : message.fromAddress
+    }
+
+    private var messageSenderFont: Font {
+        .body.weight(.semibold)
+    }
+
+    private var messageMetadataFont: Font {
+        .caption
+    }
+
+    private var messageRecipientFont: Font {
+        .footnote
     }
 
     private var deliveryIssue: DeliveryStatus? {
@@ -240,7 +252,7 @@ private struct FormattedMessageBody: View {
                 }
                 .buttonStyle(.plain)
                 .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                 .accessibilityValue(showsQuotedHistory ? "Expanded" : "Collapsed")
 
                 if showsQuotedHistory {
@@ -262,6 +274,7 @@ private struct PlainMessageBody: View {
         let parts = QuotedTextParser.split(text)
         VStack(alignment: .leading, spacing: 12) {
             Text(parts.message)
+                .font(.body)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -280,12 +293,12 @@ private struct PlainMessageBody: View {
                 }
                 .buttonStyle(.plain)
                 .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
 
                 if showsQuotedHistory {
                     Text(history)
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }

@@ -136,8 +136,7 @@ struct AppLockView: View {
 
     var body: some View {
         ZStack {
-            Color(uiColor: .systemBackground)
-                .ignoresSafeArea()
+            QuickMailDesign.Palette.paper.ignoresSafeArea()
 
             VStack(spacing: 18) {
                 QuickMailMark(size: .largeTitle)
@@ -145,12 +144,12 @@ struct AppLockView: View {
                 Text("QuickMail Locked")
                     .font(.title2.weight(.semibold))
                 Text("Use \(controller.biometryName) or your device passcode to view your mail.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     .multilineTextAlignment(.center)
 
                 if let errorMessage = controller.errorMessage {
                     Text(errorMessage)
-                        .font(.callout)
+                        .font(.quickMailBody(16, relativeTo: .callout))
                         .foregroundStyle(.red)
                         .multilineTextAlignment(.center)
                 }
@@ -165,7 +164,7 @@ struct AppLockView: View {
                         Label("Unlock", systemImage: "lock.open.fill")
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .quickMailProminentButtonStyle()
                 .controlSize(.large)
                 .disabled(controller.isAuthenticating || !controller.isAvailable)
             }

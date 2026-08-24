@@ -117,7 +117,8 @@ struct AuthenticatedRootView: View {
         } description: {
             Text("Select a conversation to read it here.")
         }
-        .foregroundStyle(.secondary)
+        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+        .quickMailPageSurface()
     }
 
     private func openThread(_ summary: ThreadSummary) {

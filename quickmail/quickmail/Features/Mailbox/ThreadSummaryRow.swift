@@ -24,7 +24,7 @@ struct ThreadSummaryRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             if dynamicTypeSize < .xxxLarge {
-                PostmarkSeal(name: people, isUnread: !thread.isRead)
+                MailboxAvatar(name: people, isUnread: !thread.isRead)
             }
 
             if dynamicTypeSize >= .xxxLarge {
@@ -33,8 +33,9 @@ struct ThreadSummaryRow: View {
                 compactContent
             }
         }
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
+        .padding(.vertical, 13)
+        .frame(maxWidth: .infinity, minHeight: 90, alignment: .leading)
+        .foregroundStyle(QuickMailDesign.Palette.primaryText)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
@@ -42,29 +43,32 @@ struct ThreadSummaryRow: View {
     }
 
     private var compactContent: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                unreadDot
-
                 Text(people)
-                    .font(.body)
-                    .fontWeight(thread.isRead ? .regular : .semibold)
+                    .font(thread.isRead
+                        ? rowSenderFont(isUnread: false)
+                        : rowSenderFont(isUnread: true))
                     .lineLimit(1)
                     .layoutPriority(1)
 
                 if thread.messageCount > 1 {
                     Text("· \(thread.messageCount)")
-                        .font(.caption)
+                        .font(rowMetadataFont)
                         .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                         .monospacedDigit()
                 }
 
-                Spacer(minLength: 6)
+                Spacer(minLength: 8)
 
-                Text(relativeDate)
-                    .font(.caption2)
-                    .foregroundStyle(QuickMailDesign.Palette.secondaryText.opacity(0.85))
-                    .lineLimit(1)
+                HStack(spacing: 7) {
+                    metadataIcons
+
+                    Text(relativeDate)
+                        .font(rowDateFont)
+                        .foregroundStyle(QuickMailDesign.Palette.secondaryText.opacity(0.85))
+                        .lineLimit(1)
+                }
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 5) {
@@ -75,23 +79,23 @@ struct ThreadSummaryRow: View {
                 }
 
                 Text(subject)
+                    .font(thread.isRead
+                        ? rowSubjectFont(isUnread: false)
+                        : rowSubjectFont(isUnread: true))
                     .lineLimit(1)
                     .layoutPriority(1)
-
-                Spacer(minLength: 4)
-                metadataIcons
             }
-            .font(.subheadline.weight(thread.isRead ? .regular : .semibold))
 
             if !thread.preview.isEmpty {
                 Text(thread.preview)
-                    .font(.subheadline)
+                    .font(rowPreviewFont(isUnread: !thread.isRead))
                     .foregroundStyle(
                         thread.isRead
                             ? QuickMailDesign.Palette.secondaryText.opacity(0.72)
                             : QuickMailDesign.Palette.secondaryText
                     )
                     .lineLimit(1)
+                    .padding(.top, 1)
             }
         }
         .overlay(alignment: .trailing) {
@@ -108,9 +112,11 @@ struct ThreadSummaryRow: View {
     private var expandedContent: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                unreadDot
+                unreadStatusMark
                 Text(people)
-                    .fontWeight(thread.isRead ? .regular : .semibold)
+                    .font(thread.isRead
+                        ? rowSenderFont(isUnread: false)
+                        : rowSenderFont(isUnread: true))
                 if thread.messageCount > 1 {
                     Text("· \(thread.messageCount)")
                         .foregroundStyle(QuickMailDesign.Palette.secondaryText)
@@ -119,7 +125,7 @@ struct ThreadSummaryRow: View {
             }
 
             Text(relativeDate)
-                .font(.caption)
+                .font(rowMetadataFont)
                 .foregroundStyle(QuickMailDesign.Palette.secondaryText)
 
             HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -129,11 +135,14 @@ struct ThreadSummaryRow: View {
                         .foregroundStyle(.red)
                 }
                 Text(subject)
-                    .fontWeight(thread.isRead ? .regular : .medium)
+                    .font(thread.isRead
+                        ? rowSubjectFont(isUnread: false)
+                        : rowSubjectFont(isUnread: true))
             }
 
             if !thread.preview.isEmpty {
                 Text(thread.preview)
+                    .font(rowPreviewFont(isUnread: !thread.isRead))
                     .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     .lineLimit(2)
             }
@@ -147,11 +156,10 @@ struct ThreadSummaryRow: View {
                 }
             }
         }
-        .font(.subheadline)
     }
 
     @ViewBuilder
-    private var unreadDot: some View {
+    private var unreadStatusMark: some View {
         if !thread.isRead {
             Circle()
                 .fill(QuickMailDesign.Palette.sage)
@@ -179,6 +187,32 @@ struct ThreadSummaryRow: View {
                 .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                 .accessibilityLabel(status.accessibilityLabel)
         }
+    }
+
+    private func rowSenderFont(isUnread: Bool) -> Font {
+        return isUnread
+            ? .body.bold()
+            : .body
+    }
+
+    private func rowSubjectFont(isUnread: Bool) -> Font {
+        return isUnread
+            ? .subheadline.weight(.semibold)
+            : .subheadline
+    }
+
+    private func rowPreviewFont(isUnread: Bool) -> Font {
+        return isUnread
+            ? .subheadline.weight(.semibold)
+            : .subheadline
+    }
+
+    private var rowMetadataFont: Font {
+        .caption
+    }
+
+    private var rowDateFont: Font {
+        .caption2
     }
 
     private var subject: String {
@@ -224,7 +258,7 @@ struct ThreadSummaryRow: View {
     }
 }
 
-private struct PostmarkSeal: View {
+private struct MailboxAvatar: View {
     let name: String
     let isUnread: Bool
 
@@ -232,21 +266,28 @@ private struct PostmarkSeal: View {
         ZStack {
             ParticipantMonogram(name: name, isEmphasized: false, size: 38)
 
-            Circle()
-                .trim(from: isUnread ? 0.08 : 0, to: isUnread ? 0.82 : 1)
-                .stroke(
-                    isUnread
-                        ? QuickMailDesign.Palette.sage.opacity(0.72)
-                        : QuickMailDesign.Palette.hairline,
-                    style: StrokeStyle(
-                        lineWidth: isUnread ? 1.25 : 0.5,
-                        lineCap: isUnread ? .round : .butt
-                    )
-                )
-                .rotationEffect(.degrees(isUnread ? -35 : 0))
-                .frame(width: 42, height: 42)
+            if isUnread {
+                unreadBadge
+                    .frame(width: 16, height: 16)
+                    .offset(x: 14, y: 14)
+            }
         }
         .frame(width: 44, height: 44)
         .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var unreadBadge: some View {
+        ZStack {
+            Circle()
+                .fill(Color.accentColor)
+            Image(systemName: "envelope.fill")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.white)
+        }
+            .overlay {
+                Circle()
+                    .stroke(QuickMailDesign.Palette.paper, lineWidth: 2)
+            }
     }
 }

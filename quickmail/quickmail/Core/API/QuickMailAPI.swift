@@ -207,6 +207,10 @@ actor QuickMailAPI {
             )
         } catch let error as APIError {
             throw error
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
         } catch {
             throw APIError.transport(error.localizedDescription)
         }
@@ -254,6 +258,10 @@ actor QuickMailAPI {
             }
         } catch let error as APIError {
             throw error
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
         } catch {
             throw APIError.transport(error.localizedDescription)
         }

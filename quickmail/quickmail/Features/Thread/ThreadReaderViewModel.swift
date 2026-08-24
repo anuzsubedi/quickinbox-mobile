@@ -49,6 +49,8 @@ final class ThreadReaderViewModel: ObservableObject {
             isStarred = value.messages.contains(where: \.isStarred)
             isArchived = !value.messages.isEmpty && value.messages.allSatisfy { $0.archivedAt != nil }
             isTrashed = !value.messages.isEmpty && value.messages.allSatisfy { $0.deletedAt != nil }
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = Self.message(for: error)
         }
@@ -70,6 +72,8 @@ final class ThreadReaderViewModel: ObservableObject {
             apply(action)
             AppFeedback.play(feedbackEvent(for: action))
             return true
+        } catch is CancellationError {
+            return false
         } catch {
             errorMessage = Self.message(for: error)
             AppFeedback.error()

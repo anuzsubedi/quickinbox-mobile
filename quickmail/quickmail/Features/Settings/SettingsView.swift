@@ -6,9 +6,12 @@ struct SettingsView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @StateObject private var model: SettingsViewModel
     @AppStorage(AppPreferences.showRemoteImagesByDefault) private var showRemoteImagesByDefault = false
+    @AppStorage(AppPreferences.appCanvasStyle) private var appCanvasStyle = AppCanvasStyle.paper
     private let onDisconnected: (String?) -> Void
 
-    @ScaledMetric(relativeTo: .body) private var signatureEditorHeight: CGFloat = 104
+    private var appearanceSummary: String {
+        appCanvasStyle.title
+    }
 
     @State private var deviceToRevoke: DeviceSession?
     @State private var showingRevokeConfirmation = false
@@ -27,61 +30,79 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        Form {
-            Section {
-                NavigationLink {
-                    accountPage
-                } label: {
-                    accountNavigationLabel
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 24) {
+                accountOverview
+
+                settingsGroup(title: "Personalization") {
+                    NavigationLink {
+                        appearancePage
+                    } label: {
+                        settingsDestinationLabel(
+                            "Appearance",
+                            systemImage: "paintpalette",
+                            detail: appearanceSummary
+                        )
+                    }
+                }
+
+                settingsGroup(title: "Mail") {
+                    NavigationLink {
+                        sendingPage
+                    } label: {
+                        settingsDestinationLabel(
+                            "Composing",
+                            systemImage: "square.and.pencil"
+                        )
+                    }
+
+                    settingsGroupDivider
+
+                    NavigationLink {
+                        privacyPage
+                    } label: {
+                        settingsDestinationLabel(
+                            "Privacy & Security",
+                            systemImage: "lock.shield",
+                            detail: appLock.isEnabled ? "On" : "Off"
+                        )
+                    }
+                }
+
+                settingsGroup(title: "Account Access") {
+                    NavigationLink {
+                        devicesPage
+                    } label: {
+                        settingsDestinationLabel(
+                            "Connected Devices",
+                            systemImage: "laptopcomputer.and.iphone",
+                            detail: model.isLoading && model.devices.isEmpty
+                                ? nil
+                                : "\(model.devices.count)"
+                        )
+                    }
+
+                    settingsGroupDivider
+
+                    NavigationLink {
+                        connectionPage
+                    } label: {
+                        settingsDestinationLabel(
+                            "Server & Session",
+                            systemImage: "server.rack"
+                        )
+                    }
                 }
             }
-
-            Section("Preferences") {
-                NavigationLink {
-                    sendingPage
-                } label: {
-                    settingsDestinationLabel(
-                        "Composing",
-                        systemImage: "square.and.pencil"
-                    )
-                }
-
-                NavigationLink {
-                    privacyPage
-                } label: {
-                    settingsDestinationLabel(
-                        "Privacy & Security",
-                        systemImage: "lock.shield",
-                        detail: appLock.isEnabled ? "On" : "Off"
-                    )
-                }
-
-            }
-
-            Section("Access") {
-                NavigationLink {
-                    devicesPage
-                } label: {
-                    settingsDestinationLabel(
-                        "Connected Devices",
-                        systemImage: "laptopcomputer.and.iphone",
-                        detail: model.isLoading && model.devices.isEmpty
-                            ? nil
-                            : "\(model.devices.count)"
-                    )
-                }
-
-                NavigationLink {
-                    connectionPage
-                } label: {
-                    settingsDestinationLabel(
-                        "Server & Session",
-                        systemImage: "server.rack"
-                    )
-                }
-            }
+            .padding(.horizontal, 16)
+            .padding(.top, 18)
+            .padding(.bottom, 40)
+            .frame(maxWidth: QuickMailDesign.contentMaxWidth)
+            .frame(maxWidth: .infinity)
         }
-        .formStyle(.grouped)
+        .scrollIndicators(.hidden)
+        .background(QuickMailDesign.Palette.paperGrouped)
+        .quickMailPageSurface()
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -108,21 +129,144 @@ struct SettingsView: View {
         }
     }
 
+    private var accountOverview: some View {
+        NavigationLink {
+            accountPage
+        } label: {
+            HStack(alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center, spacing: 14) {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ParticipantMonogram(
+                            name: displayName,
+                            isEmphasized: true,
+                            size: 52
+                        )
+                        accountOverviewText
+                    }
+                } else {
+                    ParticipantMonogram(
+                        name: displayName,
+                        isEmphasized: true,
+                        size: 52
+                    )
+                    accountOverviewText
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                    .padding(.top, dynamicTypeSize.isAccessibilitySize ? 8 : 0)
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: 60)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Shows account details")
+        .modifier(SettingsPanelModifier())
+    }
+
+    private var accountOverviewText: some View {
+        VStack(alignment: .leading, spacing: 3) {
+                    Text(displayName)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(QuickMailDesign.Palette.primaryText)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+
+                    Text(model.currentUser.email)
+                        .font(.subheadline)
+                        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+        }
+    }
+
+    private var appearanceOverview: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            settingsOverviewHeading(
+                "Background",
+                detail: "Choose the background that feels right to you."
+            )
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Background")
+                    .font(.subheadline.weight(.semibold))
+                Picker("Background", selection: canvasStyleBinding) {
+                    ForEach(AppCanvasStyle.allCases) { style in
+                        Text(style.pickerTitle).tag(style)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .tint(Color.accentColor)
+
+                Text(appCanvasStyle.detail)
+                    .font(.footnote)
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+            }
+
+        }
+        .modifier(SettingsPanelModifier())
+    }
+
+    private func settingsOverviewHeading(_ title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(QuickMailDesign.Palette.primaryText)
+            Text(detail)
+                .font(.footnote)
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+        }
+    }
+
+    private func settingsGroup<Content: View>(
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                .padding(.horizontal, 2)
+
+            VStack(spacing: 0) {
+                content()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .modifier(SettingsPanelModifier(contentPadding: 0))
+        }
+    }
+
+    private var settingsGroupDivider: some View {
+        QuickMailRule()
+            .padding(.leading, 58)
+            .accessibilityHidden(true)
+    }
+
+    private var appearancePage: some View {
+        settingsPage {
+            appearanceOverview
+        }
+        .navigationTitle("Appearance")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
     private var accountPage: some View {
-        Form {
+        settingsPage {
+            accountIdentitySummary
             accountSection
         }
-        .formStyle(.grouped)
         .navigationTitle("Account")
         .navigationBarTitleDisplayMode(.inline)
     }
 
     private var sendingPage: some View {
-        Form {
+        settingsPage {
             sendingAddressSection
             signatureSection
         }
-        .formStyle(.grouped)
         .navigationTitle("Composing")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -133,39 +277,29 @@ struct SettingsView: View {
     }
 
     private var privacyPage: some View {
-        Form {
+        settingsPage {
             privacySection
             remoteImagesSection
         }
-        .formStyle(.grouped)
         .navigationTitle("Privacy & Security")
         .navigationBarTitleDisplayMode(.inline)
     }
 
     private var devicesPage: some View {
-        Form {
+        settingsPage {
             devicesSection
         }
-        .formStyle(.grouped)
         .navigationTitle("Connected Devices")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.load() }
     }
 
     private var connectionPage: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                serverSection
-                disconnectSection
-                localDataSection
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 24)
-            .padding(.bottom, 40)
-            .frame(maxWidth: QuickMailDesign.contentMaxWidth)
-            .frame(maxWidth: .infinity)
+        settingsPage(spacing: 24) {
+            serverSection
+            disconnectSection
+            localDataSection
         }
-        .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Server & Session")
         .navigationBarTitleDisplayMode(.inline)
         .alert("Disconnect This Device?", isPresented: $showingDisconnectConfirmation) {
@@ -186,29 +320,62 @@ struct SettingsView: View {
         }
     }
 
-    private var accountNavigationLabel: some View {
-        HStack(spacing: 14) {
-            ParticipantMonogram(
-                name: displayName,
-                isEmphasized: true,
-                size: 44
-            )
+    private func settingsPage<Content: View>(
+        spacing: CGFloat = 24,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: spacing) {
+                content()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 18)
+            .padding(.bottom, 40)
+            .frame(maxWidth: QuickMailDesign.contentMaxWidth)
+            .frame(maxWidth: .infinity)
+        }
+        .scrollIndicators(.hidden)
+        .background(QuickMailDesign.Palette.paperGrouped)
+        .quickMailPageSurface()
+    }
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(displayName)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-
-                Text(model.currentUser.email)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+    private var accountIdentitySummary: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 12) {
+                    ParticipantMonogram(
+                        name: displayName,
+                        isEmphasized: true,
+                        size: 58
+                    )
+                    accountIdentityText
+                }
+            } else {
+                HStack(spacing: 16) {
+                    ParticipantMonogram(
+                        name: displayName,
+                        isEmphasized: true,
+                        size: 58
+                    )
+                    accountIdentityText
+                    Spacer(minLength: 0)
+                }
             }
         }
-        .padding(.vertical, 6)
+        .modifier(SettingsPanelModifier())
         .accessibilityElement(children: .combine)
-        .accessibilityHint("Shows account details")
+    }
+
+    private var accountIdentityText: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(displayName)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(QuickMailDesign.Palette.primaryText)
+            Text(model.currentUser.email)
+                .font(.subheadline)
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                .textSelection(.enabled)
+        }
     }
 
     private func settingsDestinationLabel(
@@ -217,51 +384,166 @@ struct SettingsView: View {
         detail: String? = nil
     ) -> some View {
         HStack(spacing: 12) {
-            Label(title, systemImage: systemImage)
+            Image(systemName: systemImage)
+                .font(.body)
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 32, height: 32)
+                .background(
+                    Color.accentColor.opacity(0.12),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(QuickMailDesign.Palette.primaryText)
+
+                if dynamicTypeSize.isAccessibilitySize, let detail {
+                    Text(detail)
+                        .font(.quickMailBody(15, relativeTo: .subheadline))
+                        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                }
+            }
 
             Spacer(minLength: 8)
 
-            if let detail {
+            if !dynamicTypeSize.isAccessibilitySize, let detail {
                 Text(detail)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.quickMailBody(15, relativeTo: .subheadline))
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     .lineLimit(1)
             }
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                .accessibilityHidden(true)
         }
-            .frame(minHeight: 32)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(minHeight: 56)
+        .contentShape(Rectangle())
+    }
+
+    private func settingsPageSection<Content: View>(
+        _ title: String,
+        detail: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                .padding(.horizontal, 2)
+
+            VStack(spacing: 0) {
+                content()
+            }
+            .modifier(SettingsPanelModifier(contentPadding: 0))
+
+            if let detail {
+                Text(detail)
+                    .font(.quickMailBody(13, relativeTo: .footnote))
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                    .padding(.horizontal, 2)
+            }
+        }
+    }
+
+    private var settingsInsetDivider: some View {
+        QuickMailRule()
+            .padding(.leading, 16)
+            .accessibilityHidden(true)
+    }
+
+    private func labeledValueRow(_ label: String, value: String) -> some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    labeledValueLabel(label)
+                    labeledValue(value, alignment: .leading)
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 16) {
+                    labeledValueLabel(label)
+                    Spacer(minLength: 16)
+                    labeledValue(value, alignment: .trailing)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func labeledValueLabel(_ label: String) -> some View {
+        Text(label)
+            .font(.body)
+            .foregroundStyle(QuickMailDesign.Palette.primaryText)
+    }
+
+    private func labeledValue(_ value: String, alignment: TextAlignment) -> some View {
+        Text(value)
+            .font(.quickMailBody(15, relativeTo: .subheadline))
+            .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+            .multilineTextAlignment(alignment)
+            .textSelection(.enabled)
+    }
+
+    private func selectCanvasStyle(_ style: AppCanvasStyle) {
+        guard style != appCanvasStyle else { return }
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            appCanvasStyle = style
+        }
+        AppFeedback.selection()
+    }
+
+    private var canvasStyleBinding: Binding<AppCanvasStyle> {
+        Binding(
+            get: { appCanvasStyle },
+            set: selectCanvasStyle
+        )
     }
 
     private var accountSection: some View {
-        Section {
-            LabeledContent("Name") {
-                Text(displayName)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
+        settingsPageSection(
+            "Details",
+            detail: "This app stays connected directly to your QuickMail server."
+        ) {
+            labeledValueRow("Name", value: displayName)
 
-            LabeledContent("Email") {
-                    Text(model.currentUser.email)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-            }
+            settingsInsetDivider
+
+            labeledValueRow("Email", value: model.currentUser.email)
 
             if let manageURL = model.manageWebURL {
+                settingsInsetDivider
+
                 Link(destination: manageURL) {
-                    Label("Manage Account on the Web", systemImage: "safari")
+                    HStack(spacing: 12) {
+                        Label("Manage Account on the Web", systemImage: "safari")
+                            .font(.body)
+                        Spacer(minLength: 8)
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption.weight(.semibold))
+                            .accessibilityHidden(true)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .accessibilityHint("Opens your QuickMail account settings in the browser")
             }
-        } footer: {
-            Text("This app stays connected directly to your QuickMail server.")
         }
     }
 
     private var serverSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Connection")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-
+        settingsPageSection(
+            "Connection",
+            detail: "This device connects directly to your QuickMail server over HTTPS."
+        ) {
             if let serverName {
                 HStack(spacing: 14) {
                     Image(systemName: "server.rack")
@@ -273,105 +555,145 @@ struct SettingsView: View {
                         Text("QuickMail Server")
                             .font(.body.weight(.medium))
                         Text(serverName)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .font(.quickMailBody(15, relativeTo: .subheadline))
+                            .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                             .textSelection(.enabled)
+
+                        if let scheme = model.serverURL?.scheme?.uppercased() {
+                            Label(scheme, systemImage: "lock.fill")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                        }
                     }
 
-                    Spacer(minLength: 8)
-
-                    if let scheme = model.serverURL?.scheme?.uppercased() {
-                        Label(scheme, systemImage: "lock.fill")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                    }
+                    Spacer(minLength: 0)
                 }
-                .padding(16)
-                .background(
-                    Color(uiColor: .secondarySystemGroupedBackground),
-                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                )
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity, alignment: .leading)
             } else if model.isLoading {
                 loadingRow("Loading server details")
-                    .padding(.vertical, 12)
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 Label("Server details unavailable", systemImage: "server.rack")
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 12)
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-
-            Text("This device connects directly to your QuickMail server over HTTPS.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
         }
     }
 
     private var sendingAddressSection: some View {
-        Section {
+        settingsPageSection(
+            "Sending",
+            detail: model.addresses.count > 1
+                ? "QuickMail preselects this address when you start a new message on this device."
+                : "This is the only sending address currently available on your account."
+        ) {
             if model.isLoading && model.addresses.isEmpty {
                 loadingRow("Loading sending addresses")
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else if model.addresses.isEmpty {
                 Label("No sending addresses available", systemImage: "at.badge.minus")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                Picker(selection: $model.selectedAddressID) {
-                    ForEach(model.addresses) { address in
-                        Text(addressTitle(address))
-                            .tag(address.id)
+                if model.addresses.count == 1 {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text("Default Sender")
+                        Spacer(minLength: 12)
+                        Text(selectedAddressTitle)
+                            .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                            .multilineTextAlignment(.trailing)
                     }
-                } label: {
-                    Text("Default Sender")
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Menu {
+                        Picker("Default Sender", selection: $model.selectedAddressID) {
+                            ForEach(model.addresses) { address in
+                                Text(addressTitle(address))
+                                    .tag(address.id)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Text("Default Sender")
+                                .foregroundStyle(QuickMailDesign.Palette.primaryText)
+
+                            Spacer(minLength: 12)
+
+                            Text(selectedAddressTitle)
+                                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                                .lineLimit(1)
+
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                                .accessibilityHidden(true)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Chooses the address preselected for new messages")
                 }
-                .pickerStyle(.navigationLink)
             }
-        } header: {
-            Text("Sending")
-        } footer: {
-            Text("QuickMail preselects this address when you start a new message on this device.")
         }
     }
 
     private var signatureSection: some View {
-        Section {
-            if model.isLoading && !model.hasLoadedSignature {
-                loadingRow("Loading signature")
-            } else {
-                ZStack(alignment: .topLeading) {
-                    if model.signatureDraft.isEmpty {
-                        Text("Add a signature to new messages…")
-                            .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 8)
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
-                    }
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Signature")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                .padding(.horizontal, 2)
 
-                    TextEditor(text: $model.signatureDraft)
-                        .frame(minHeight: min(signatureEditorHeight, 190))
-                        .scrollContentBackground(.hidden)
-                        .accessibilityLabel("Email signature")
-                        .onChange(of: model.signatureDraft) { _, value in
-                            if value.count > SettingsViewModel.signatureLimit {
-                                model.signatureDraft = String(value.prefix(SettingsViewModel.signatureLimit))
-                            }
+            Group {
+                if model.isLoading && !model.hasLoadedSignature {
+                    loadingRow("Loading signature")
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    TextField(
+                        "Add a signature to new messages…",
+                        text: $model.signatureDraft,
+                        axis: .vertical
+                    )
+                    .textFieldStyle(.plain)
+                    .lineLimit(2...7)
+                    .padding(14)
+                    .accessibilityLabel("Email signature")
+                    .onChange(of: model.signatureDraft) { _, value in
+                        if value.count > SettingsViewModel.signatureLimit {
+                            model.signatureDraft = String(value.prefix(SettingsViewModel.signatureLimit))
                         }
+                    }
                 }
             }
-        } header: {
-            Text("Signature")
-        } footer: {
+            .modifier(SettingsPanelModifier(contentPadding: 0))
+
             VStack(alignment: .leading, spacing: 5) {
                 signatureStatus
                 Text("Added to sent mail unless the selected sending address has its own signature.")
+                    .font(.quickMailBody(13, relativeTo: .footnote))
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
             }
+            .padding(.horizontal, 2)
         }
     }
 
     private var signatureStatus: some View {
         HStack(spacing: 12) {
             Text("\(model.signatureDraft.count) / \(SettingsViewModel.signatureLimit.formatted())")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.quickMailBody(13, relativeTo: .caption))
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                 .monospacedDigit()
                 .contentTransition(.numericText())
 
@@ -380,7 +702,7 @@ struct SettingsView: View {
             if model.signatureSaved {
                 Label("Saved", systemImage: "checkmark")
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     .accessibilityLabel("Signature saved")
             }
         }
@@ -400,6 +722,7 @@ struct SettingsView: View {
             }
         }
         .disabled(model.isSavingSignature || !model.signatureHasChanges)
+        .tint(Color.accentColor)
         .accessibilityHint(
             model.signatureHasChanges
                 ? "Saves the signature to your account"
@@ -408,29 +731,61 @@ struct SettingsView: View {
     }
 
     private var devicesSection: some View {
-        Section {
+        settingsPageSection(
+            "Connected Devices",
+            detail: "Revoke any device you no longer recognize or use."
+        ) {
             if model.isLoading && model.devices.isEmpty {
                 loadingRow("Loading connected devices")
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else if model.devices.isEmpty {
                 Label("No connected devices found", systemImage: "rectangle.stack.badge.minus")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 ForEach(model.devices) { device in
                     deviceRow(device)
+
+                    if device.id != model.devices.last?.id {
+                        QuickMailRule()
+                            .padding(.leading, 60)
+                            .accessibilityHidden(true)
+                    }
                 }
             }
-        } header: {
-            Text("Connected Devices")
-        } footer: {
-            Text("Revoke any device you no longer recognize or use.")
         }
     }
 
     private func deviceRow(_ device: DeviceSession) -> some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 6) {
+                    deviceIdentity(device)
+                    HStack {
+                        Spacer(minLength: 0)
+                        deviceAccessory(device)
+                    }
+                }
+            } else {
+                HStack(spacing: 12) {
+                    deviceIdentity(device)
+                    Spacer(minLength: 8)
+                    deviceAccessory(device)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func deviceIdentity(_ device: DeviceSession) -> some View {
         HStack(spacing: 12) {
             Image(systemName: model.symbolName(for: device))
                 .font(.body.weight(.medium))
-                .foregroundStyle(device.isCurrent ? Color.accentColor : Color.secondary)
+                .foregroundStyle(device.isCurrent ? QuickMailDesign.Palette.sage : QuickMailDesign.Palette.secondaryText)
                 .frame(width: 32, height: 44, alignment: .center)
                 .accessibilityHidden(true)
 
@@ -440,16 +795,11 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(model.deviceDetail(for: device))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.quickMailBody(13, relativeTo: .caption))
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
             }
             .accessibilityElement(children: .combine)
-
-            Spacer(minLength: 8)
-
-            deviceAccessory(device)
         }
-        .padding(.vertical, 4)
     }
 
     @ViewBuilder
@@ -461,7 +811,7 @@ struct SettingsView: View {
                 .accessibilityLabel("Revoking \(model.displayName(for: device))")
         } else if device.isCurrent {
             Image(systemName: "checkmark.seal.fill")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                 .frame(width: 44, height: 44)
                 .accessibilityLabel("This Device")
         } else {
@@ -483,25 +833,29 @@ struct SettingsView: View {
     }
 
     private var disconnectSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Session")
-                .font(.headline)
-                .foregroundStyle(.secondary)
+        settingsPageSection(
+            "Session",
+            detail: "Revokes this session on your server and removes the account and cached mail from this device."
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Disconnect This Device")
+                        .font(.body.weight(.medium))
+                    Text("Revoke access and sign out")
+                        .font(.quickMailBody(13, relativeTo: .caption))
+                        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                }
 
-            FloatingActionButton(role: .destructive) {
-                showingDisconnectConfirmation = true
-            } label: {
-                disconnectButtonLabel(
-                    "Disconnect"
-                )
+                Button(role: .destructive) {
+                    showingDisconnectConfirmation = true
+                } label: {
+                    disconnectButtonLabel("Disconnect")
+                }
+                .buttonStyle(SettingsDestructiveButtonStyle())
+                .disabled(model.isDisconnecting)
             }
-            .tint(.red)
-            .controlSize(.regular)
-            .disabled(model.isDisconnecting)
-
-            Text("Revokes this session on your server and removes the account and cached mail from this device.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -514,35 +868,44 @@ struct SettingsView: View {
                     .accessibilityLabel("Disconnecting")
             } else {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.quickMailSemibold(15, relativeTo: .subheadline))
                     .frame(minHeight: 32)
             }
         }
     }
 
     private var localDataSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Recovery")
-                .font(.headline)
-                .foregroundStyle(.secondary)
+        settingsPageSection(
+            "Recovery",
+            detail: "Use only when your server cannot be reached. You may still need to revoke this device on the web."
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Local App Data")
+                        .font(.body.weight(.medium))
+                    Text("Clear this device without contacting the server")
+                        .font(.quickMailBody(13, relativeTo: .caption))
+                        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                }
 
-            FloatingActionButton(role: .destructive) {
-                showingLocalWipeConfirmation = true
-            } label: {
-                disconnectButtonLabel("Remove Local Data")
+                Button(role: .destructive) {
+                    showingLocalWipeConfirmation = true
+                } label: {
+                    disconnectButtonLabel("Remove Local Data")
+                }
+                .buttonStyle(SettingsDestructiveButtonStyle())
+                .disabled(model.isDisconnecting)
             }
-            .tint(.red)
-            .controlSize(.regular)
-            .disabled(model.isDisconnecting)
-
-            Text("Use only when your server cannot be reached. You may still need to revoke this device on the web.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private var privacySection: some View {
-        Section {
+        settingsPageSection(
+            "Privacy",
+            detail: "When enabled, QuickMail hides message content after you leave the app and asks for \(appLock.biometryName) or your device passcode when you return."
+        ) {
             Toggle(
                 isOn: Binding(
                     get: { appLock.isEnabled },
@@ -554,40 +917,44 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("App Lock")
                     Text("Require authentication when returning to QuickMail")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.quickMailBody(13, relativeTo: .caption))
+                        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                 }
             }
             .disabled(!appLock.isAvailable && !appLock.isEnabled)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(minHeight: 58)
 
             if let message = appLock.errorMessage {
+                settingsInsetDivider
+
                 Label(message, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
+                    .font(.quickMailBody(13, relativeTo: .caption))
                     .foregroundStyle(.red)
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityLabel("App Lock unavailable. \(message)")
             }
-
-        } header: {
-            Text("Privacy")
-        } footer: {
-            Text("When enabled, QuickMail hides message content after you leave the app and asks for \(appLock.biometryName) or your device passcode when you return.")
         }
     }
 
     private var remoteImagesSection: some View {
-        Section {
+        settingsPageSection(
+            "Email Images",
+            detail: "Remote images can let senders know when and where you opened a message. When disabled, you can still show images for an individual email."
+        ) {
             Toggle(isOn: $showRemoteImagesByDefault) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Show Email Images")
                     Text("Automatically load images from the internet")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.quickMailBody(13, relativeTo: .caption))
+                        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                 }
             }
-        } header: {
-            Text("Email Images")
-        } footer: {
-            Text("Remote images can let senders know when and where you opened a message. When disabled, you can still show images for an individual email.")
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(minHeight: 58)
         }
     }
 
@@ -608,11 +975,19 @@ struct SettingsView: View {
         return "\(label) — \(address.address)"
     }
 
+    private var selectedAddressTitle: String {
+        guard let address = model.addresses.first(where: { $0.id == model.selectedAddressID })
+                ?? model.addresses.first else {
+            return "Unavailable"
+        }
+        return addressTitle(address)
+    }
+
     private func loadingRow(_ title: String) -> some View {
         HStack(spacing: 10) {
             ProgressView()
             Text(title)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
         }
     }
 
@@ -627,6 +1002,47 @@ struct SettingsView: View {
     private func disconnect(revokeOnServer: Bool) async {
         let warning = await model.disconnect(revokeOnServer: revokeOnServer)
         onDisconnected(warning)
+    }
+}
+
+private struct SettingsPanelModifier: ViewModifier {
+    var contentPadding: CGFloat = 16
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+
+        content
+            .padding(contentPadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                QuickMailDesign.Palette.paperRaised,
+                in: shape
+            )
+            .overlay {
+                shape.stroke(Color.clear, lineWidth: 0)
+            }
+    }
+}
+
+private struct SettingsDestructiveButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        let red = Color(uiColor: .systemRed)
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+
+        configuration.label
+            .foregroundStyle(red)
+            .padding(.horizontal, 16)
+            .frame(minHeight: 48)
+            .background(
+                red.opacity(0.08),
+                in: shape
+            )
+            .overlay {
+                shape.stroke(red.opacity(0.78), lineWidth: 1)
+            }
+            .opacity(isEnabled ? (configuration.isPressed ? 0.68 : 1) : 0.42)
     }
 }
 
@@ -698,6 +1114,8 @@ private final class SettingsViewModel: ObservableObject {
             installValidSelectedAddress()
             installServerURLs(from: credential?.origin)
             hasLoaded = true
+        } catch is CancellationError {
+            return
         } catch {
             operationError = error.localizedDescription
         }

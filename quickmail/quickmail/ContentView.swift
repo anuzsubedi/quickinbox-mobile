@@ -5,6 +5,7 @@ struct ContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var session: AppSession
     @State private var appLock = AppLockController()
+    @AppStorage(AppPreferences.appCanvasStyle) private var appCanvasStyle = AppCanvasStyle.paper
 
     init() {
         let mailboxCache = MailboxCache()
@@ -13,6 +14,7 @@ struct ContentView: View {
 
     var body: some View {
         appContent
+            .quickMailStyleRoot()
             .accessibilityHidden(appLock.isLocked)
             .allowsHitTesting(!appLock.isLocked)
             .environment(appLock)
@@ -27,6 +29,8 @@ struct ContentView: View {
             .onChange(of: scenePhase) { _, phase in
                 appLock.handleScenePhase(phase)
             }
+            .preferredColorScheme(appCanvasStyle.preferredColorScheme)
+            .environment(\.appCanvasStyle, appCanvasStyle)
     }
 
     @ViewBuilder
@@ -70,9 +74,7 @@ private struct LaunchView: View {
             Image("LaunchIcon")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 104, height: 104)
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .shadow(color: .black.opacity(0.22), radius: 18, y: 10)
+                .frame(width: 132, height: 92)
 
             VStack(spacing: QuickMailDesign.Spacing.sm) {
                 Text("QuickMail")
@@ -100,12 +102,12 @@ private struct OnboardingContainer: View {
         VStack(spacing: 0) {
             if let message {
                 Label(message, systemImage: "info.circle")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(.quickMailBody(16, relativeTo: .callout))
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
                     .padding(.vertical, 10)
-                    .background(.bar)
+                    .quickMailBarSurface()
             }
 
             OnboardingView(
@@ -130,12 +132,13 @@ private struct SessionRestoreErrorView: View {
             Text(message)
         } actions: {
             Button("Try Again", action: retry)
-                .buttonStyle(.borderedProminent)
+                .quickMailProminentButtonStyle()
             Button("Remove Local Data…", role: .destructive) {
                 isRemovalConfirmationPresented = true
             }
-                .buttonStyle(.bordered)
+                .quickMailDestructiveButtonStyle()
         }
+        .quickMailPageSurface()
         .confirmationDialog(
             "Remove QuickMail data from this iPhone?",
             isPresented: $isRemovalConfirmationPresented,

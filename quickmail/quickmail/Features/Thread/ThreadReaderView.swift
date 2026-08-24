@@ -19,6 +19,7 @@ struct ThreadReaderView: View {
     @State private var previewDirectory: URL?
     @State private var pendingDestructiveAction: MailAction?
     @State private var expandedMessageID: String?
+    @State private var hiddenPreviewMessageIDs: Set<String> = []
 
     init(
         api: QuickMailAPI,
@@ -131,7 +132,7 @@ struct ThreadReaderView: View {
         let messages = model.chronologicalMessages
 
         return ScrollView {
-            LazyVStack(alignment: .leading, spacing: 10) {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 conversationHeader(detail, messages: messages)
 
                 if messages.isEmpty {
@@ -144,6 +145,10 @@ struct ThreadReaderView: View {
                     .padding(.vertical, 72)
                 } else {
                     ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                        if index > 0 {
+                            messageSeparator
+                        }
+
                         if index == messages.count - 1 {
                             ThreadMessageView(
                                 message: message,
@@ -156,32 +161,30 @@ struct ThreadReaderView: View {
                         } else {
                             let isExpanded = expandedMessageID == message.id
 
-                            VStack(alignment: .leading, spacing: 0) {
-                                Button {
-                                    withAnimation(
-                                        reduceMotion ? nil : .easeInOut(duration: 0.2)
-                                    ) {
-                                        expandedMessageID = isExpanded ? nil : message.id
+                            DisclosureGroup(
+                                isExpanded: Binding(
+                                    get: { expandedMessageID == message.id },
+                                    set: { expands in
+                                        setMessageExpansion(expands, messageID: message.id)
                                     }
-                                } label: {
+                                )
+                            ) {
+                                ThreadMessageView(
+                                    message: message,
+                                    isNewest: false,
+                                    showsHeader: false,
+                                    downloadingAttachmentID: downloadingAttachmentID,
+                                    openAttachment: download
+                                )
+                                .padding(.top, 2)
+                                .padding(.leading, 44)
+                                .padding(.bottom, 12)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 0) {
                                     collapsedMessageLabel(message, isExpanded: isExpanded)
                                 }
-                                .buttonStyle(.plain)
-
-                                if isExpanded {
-                                    ThreadMessageView(
-                                        message: message,
-                                        isNewest: false,
-                                        showsHeader: false,
-                                        downloadingAttachmentID: downloadingAttachmentID,
-                                        openAttachment: download
-                                    )
-                                    .padding(.top, 14)
-                                    .padding(.leading, 44)
-                                    .padding(.bottom, 12)
-                                    .transition(.opacity.combined(with: .move(edge: .top)))
-                                }
                             }
+                            .tint(QuickMailDesign.Palette.secondaryText)
                             .padding(.vertical, 10)
                         }
                     }
@@ -205,13 +208,20 @@ struct ThreadReaderView: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.isArchived)
     }
 
+    private var messageSeparator: some View {
+        QuickMailRule()
+            .padding(.leading, 44)
+            .padding(.vertical, 2)
+            .accessibilityHidden(true)
+    }
+
     private var readerLoadingState: some View {
         VStack(spacing: 14) {
             ProgressView()
                 .controlSize(.large)
             Text("Opening conversation…")
                 .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
@@ -261,7 +271,7 @@ struct ThreadReaderView: View {
                     }
                 }
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                 .accessibilityElement(children: .combine)
             }
         }
@@ -283,47 +293,92 @@ struct ThreadReaderView: View {
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(message.direction == .outbound ? "Me" : message.fromAddress)
-                            .font(.subheadline.weight(.semibold))
+                            .font(collapsedSenderFont)
                             .lineLimit(1)
                         Spacer(minLength: 4)
                         Text(compactMessageDate(message.createdAt))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(collapsedMetadataFont)
+                            .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(message.direction == .outbound ? "Me" : message.fromAddress)
-                            .font(.subheadline.weight(.semibold))
+                            .font(collapsedSenderFont)
                         Text(compactMessageDate(message.createdAt))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(collapsedMetadataFont)
+                            .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     }
                 }
 
-                if !isExpanded {
-                    Text(messagePreview(message))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+                Text(messagePreview(message))
+                    .font(collapsedPreviewFont)
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                    .lineLimit(1)
+                    .opacity(hiddenPreviewMessageIDs.contains(message.id) ? 0 : 1)
+                    .accessibilityHidden(hiddenPreviewMessageIDs.contains(message.id))
+                    .transaction { transaction in
+                        transaction.animation = nil
+                        transaction.disablesAnimations = true
+                    }
             }
 
             if !message.attachments.isEmpty {
                 Image(systemName: "paperclip")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     .accessibilityLabel("Has attachments")
             }
 
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                .accessibilityHidden(true)
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityHint(isExpanded ? "Double-tap to collapse this message" : "Double-tap to expand this message")
+    }
+
+    private var collapsedSenderFont: Font {
+        .subheadline.weight(.semibold)
+    }
+
+    private var collapsedMetadataFont: Font {
+        .caption
+    }
+
+    private var collapsedPreviewFont: Font {
+        .subheadline
+    }
+
+    private func setMessageExpansion(_ expands: Bool, messageID: String) {
+        let previouslyExpandedID = expandedMessageID
+
+        if expands {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                _ = hiddenPreviewMessageIDs.insert(messageID)
+            }
+            expandedMessageID = messageID
+
+            if let previouslyExpandedID, previouslyExpandedID != messageID {
+                schedulePreviewShown(for: previouslyExpandedID)
+            }
+        } else {
+            expandedMessageID = nil
+            schedulePreviewShown(for: messageID)
+        }
+    }
+
+    private func schedulePreviewShown(for messageID: String) {
+        Task { @MainActor in
+            if !reduceMotion {
+                try? await Task.sleep(for: .milliseconds(350))
+            }
+            guard expandedMessageID != messageID else { return }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                hiddenPreviewMessageIDs.remove(messageID)
+            }
+        }
     }
 
     private func messagePreview(_ message: ThreadMessage) -> String {

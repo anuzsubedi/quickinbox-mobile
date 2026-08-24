@@ -161,14 +161,15 @@ struct MailboxFeatureView: View {
                 }
             }
         } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 7) {
+            HStack(alignment: .center, spacing: 8) {
                 Text(model.selectedMailbox.title)
                     .font(.title.bold())
                     .foregroundStyle(QuickMailDesign.Palette.primaryText)
                     .lineLimit(1)
                 Image(systemName: "chevron.down")
-                    .font(.caption.weight(.bold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                    .frame(width: 18, height: 18, alignment: .center)
             }
             .frame(minHeight: 44)
             .contentShape(Rectangle())
@@ -279,17 +280,18 @@ struct MailboxFeatureView: View {
             Section {
                 ForEach(0..<6, id: \.self) { _ in
                     MailboxLoadingRow()
+                        .listRowBackground(QuickMailDesign.Palette.paper)
                 }
             } header: {
                 Text("Recent")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     .textCase(nil)
             }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(Color(uiColor: .systemBackground))
+        .background(QuickMailDesign.Palette.paperGrouped)
         .allowsHitTesting(false)
         .overlay {
             ProgressView("Loading \(model.selectedMailbox.title.lowercased())…")
@@ -302,7 +304,10 @@ struct MailboxFeatureView: View {
             ForEach(threadSections) { section in
                 Section {
                     ForEach(section.threads) { thread in
-                        threadRow(thread)
+                        threadRow(
+                            thread,
+                            isLast: thread.id == model.threads.last?.id
+                        )
                     }
                 } header: {
                     Text(section.title)
@@ -310,6 +315,7 @@ struct MailboxFeatureView: View {
                         .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                         .textCase(nil)
                 }
+                .listSectionSeparator(.hidden, edges: [.top, .bottom])
             }
 
             if model.hasNextPage {
@@ -325,17 +331,17 @@ struct MailboxFeatureView: View {
             } else if model.total > model.threads.count {
                 Text("\(model.threads.count) of \(model.total)")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     .frame(maxWidth: .infinity)
                     .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)
-        .listSectionSpacing(.compact)
-        .listRowSpacing(4)
-        .contentMargins(.top, 8, for: .scrollContent)
+        .listSectionSpacing(20)
+        .listRowSpacing(0)
+        .contentMargins(.top, 12, for: .scrollContent)
         .scrollContentBackground(.hidden)
-        .background(Color(uiColor: .systemBackground))
+        .background(QuickMailDesign.Palette.paperGrouped)
         .animation(
             reduceMotion ? nil : .smooth(duration: 0.2),
             value: model.threads.map(\.id)
@@ -345,7 +351,7 @@ struct MailboxFeatureView: View {
         }
     }
 
-    private func threadRow(_ thread: ThreadSummary) -> some View {
+    private func threadRow(_ thread: ThreadSummary, isLast: Bool) -> some View {
         let isWorking = model.mutatingThreadIDs.contains(thread.id)
 
         return Button {
@@ -362,7 +368,7 @@ struct MailboxFeatureView: View {
                 isWorking: isWorking
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MailboxThreadButtonStyle())
         .disabled(isWorking)
         .tag(thread.id)
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
@@ -375,7 +381,11 @@ struct MailboxFeatureView: View {
             contextMenuActions(for: thread)
         }
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-        .listRowSeparator(.hidden)
+        .listRowBackground(QuickMailDesign.Palette.paper)
+        .listRowSeparator(.hidden, edges: .top)
+        .listRowSeparator(isLast ? .hidden : .visible, edges: .bottom)
+        .listRowSeparatorTint(QuickMailDesign.Palette.separator.opacity(0.58))
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 56 }
     }
 
     private var emptyState: some View {
@@ -396,15 +406,18 @@ struct MailboxFeatureView: View {
             } actions: {
                 if !model.searchText.isEmpty {
                     Button("Clear Search") { model.searchText = "" }
+                        .buttonStyle(.bordered)
                 } else if model.unreadOnly {
                     Button("Show All Mail") {
                         model.unreadOnly = false
                         Task { await model.reload(showInitialLoading: false) }
                     }
+                    .buttonStyle(.bordered)
                 } else {
                     Button("Check Again") {
                         Task { await model.reload() }
                     }
+                    .buttonStyle(.bordered)
                 }
             }
             .listRowSeparator(.hidden)
@@ -412,7 +425,7 @@ struct MailboxFeatureView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(Color(uiColor: .systemBackground))
+        .background(QuickMailDesign.Palette.paperGrouped)
         .refreshable {
             await model.refresh()
         }
@@ -431,7 +444,7 @@ struct MailboxFeatureView: View {
     private var cacheStatusBanner: some View {
         HStack(spacing: 10) {
             Image(systemName: model.refreshError == nil ? "clock.arrow.circlepath" : "wifi.slash")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -444,12 +457,12 @@ struct MailboxFeatureView: View {
                 if let refreshError = model.refreshError {
                     Text(refreshError)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                         .lineLimit(2)
                 } else if let cachedAt = model.cachedAt {
                     Text("Updated \(cachedAt.formatted(.relative(presentation: .named)))")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                 }
             }
 
@@ -658,13 +671,13 @@ private struct MailboxLoadingRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             RoundedRectangle(cornerRadius: 3)
-                .fill(Color.secondary.opacity(0.14))
+                .fill(QuickMailDesign.Palette.secondaryText.opacity(0.14))
                 .frame(width: 150, height: 12)
             RoundedRectangle(cornerRadius: 3)
-                .fill(Color.secondary.opacity(0.1))
+                .fill(QuickMailDesign.Palette.secondaryText.opacity(0.10))
                 .frame(height: 11)
             RoundedRectangle(cornerRadius: 3)
-                .fill(Color.secondary.opacity(0.08))
+                .fill(QuickMailDesign.Palette.secondaryText.opacity(0.08))
                 .frame(width: 220, height: 11)
         }
         .padding(.vertical, 9)
@@ -690,6 +703,18 @@ private struct MailboxSearchGlassStyle: ViewModifier {
                 in: RoundedRectangle(cornerRadius: 12)
             )
         }
+    }
+}
+
+private struct MailboxThreadButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                configuration.isPressed
+                    ? QuickMailDesign.Palette.fill.opacity(0.72)
+                    : Color.clear
+            )
+            .opacity(configuration.isPressed ? 0.86 : 1)
     }
 }
 

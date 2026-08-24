@@ -133,3 +133,51 @@ private struct PlatformFloatingButtonStyle: ViewModifier {
         }
     }
 }
+
+private struct AdaptiveProminentButtonModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content.buttonStyle(.borderedProminent)
+    }
+}
+
+private struct AdaptiveBorderedButtonModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content.buttonStyle(.bordered)
+    }
+}
+
+extension View {
+    func quickMailProminentButtonStyle() -> some View {
+        modifier(AdaptiveProminentButtonModifier())
+    }
+
+    func quickMailBorderedButtonStyle() -> some View {
+        modifier(AdaptiveBorderedButtonModifier())
+    }
+
+}
+
+private struct AdaptiveDisclosureButtonModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content.buttonStyle(.plain)
+    }
+}
+
+extension View {
+    func quickMailDisclosureButtonStyle() -> some View {
+        modifier(AdaptiveDisclosureButtonModifier())
+    }
+}
+
+private struct AdaptiveDestructiveButtonModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content.buttonStyle(.bordered)
+    }
+}
+
+extension View {
+    func quickMailDestructiveButtonStyle() -> some View {
+        modifier(AdaptiveDestructiveButtonModifier())
+    }
+
+}

@@ -14,8 +14,9 @@ struct ErrorStateView: View {
         } actions: {
             if let retry {
                 Button(retryTitle, action: retry)
-                    .buttonStyle(.borderedProminent)
+                    .quickMailProminentButtonStyle()
             }
         }
+        .quickMailPageSurface()
     }
 }

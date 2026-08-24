@@ -1,7 +1,7 @@
 import SwiftUI
 import WebKit
 
-/// Displays email HTML in an ephemeral, noninteractive WebKit surface.
+/// Displays email HTML in an ephemeral, navigation-disabled WebKit surface.
 ///
 /// JavaScript, cookies, forms, frames, and navigation are disabled. Remote images
 /// are loaded only after an explicit per-message choice or privacy preference.
@@ -50,8 +50,13 @@ private struct HardenedWebView: UIViewRepresentable {
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
-        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.isScrollEnabled = true
         webView.scrollView.bounces = false
+        webView.scrollView.bouncesZoom = true
+        webView.scrollView.minimumZoomScale = 1
+        webView.scrollView.maximumZoomScale = 5
+        webView.scrollView.showsVerticalScrollIndicator = false
+        webView.scrollView.showsHorizontalScrollIndicator = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.allowsLinkPreview = false
         // Selection and native <details> disclosure remain available. Link and
@@ -93,12 +98,13 @@ private struct HardenedWebView: UIViewRepresentable {
             contentSizeObservation = webView.scrollView.observe(
                 \.contentSize,
                 options: [.initial, .new]
-            ) { [weak self] _, change in
+            ) { [weak self] scrollView, change in
                 guard let measured = change.newValue?.height,
                       measured.isFinite,
                       measured > 0 else { return }
+                let unscaledHeight = measured / max(scrollView.zoomScale, 1)
                 DispatchQueue.main.async {
-                    self?.height = ceil(measured)
+                    self?.height = ceil(unscaledHeight)
                 }
             }
         }
@@ -110,6 +116,7 @@ private struct HardenedWebView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             let measured = webView.scrollView.contentSize.height
+                / max(webView.scrollView.zoomScale, 1)
             if measured.isFinite, measured > 0 {
                 height = ceil(measured)
             }
@@ -138,7 +145,10 @@ private struct HardenedWebView: UIViewRepresentable {
 }
 
 nonisolated enum HTMLMessageSanitizer {
-    static func document(from rawHTML: String, loadsRemoteImages: Bool = false) -> String {
+    static func document(
+        from rawHTML: String,
+        loadsRemoteImages: Bool = false
+    ) -> String {
         var body = rawHTML
         let isRichMessage = rawHTML.range(
             of: #"<(?:table|style|center)\b|\bbgcolor\s*="#,
@@ -149,7 +159,9 @@ nonisolated enum HTMLMessageSanitizer {
             options: [.regularExpression, .caseInsensitive]
         ) != nil
         let viewportWidth = isRichMessage ? designWidth(in: rawHTML) : nil
-        let viewport = viewportWidth.map { "width=\($0)" } ?? "width=device-width, initial-scale=1"
+        let viewport = viewportWidth.map {
+            "width=\($0), user-scalable=yes, maximum-scale=5"
+        } ?? "width=device-width, initial-scale=1, user-scalable=yes, maximum-scale=5"
 
         let senderStyles = matches(of: #"<style\b[^>]*>([\s\S]*?)</style\s*>"#, in: body)
             .map { sanitizeCSS($0, loadsRemoteImages: loadsRemoteImages) }
