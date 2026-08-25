@@ -9,9 +9,8 @@ ios
 ## Users
 
 QuickMail serves people who operate a self-hosted QuickMail account and want a
-focused, trustworthy way to read and send their mail from an iPhone. The app
-also adapts to iPad without turning the iPhone experience into a reduced desktop
-interface.
+focused, trustworthy way to read and send their mail from an iPhone. Version
+1.0 is intentionally iPhone-only.
 
 ## Product Purpose
 
@@ -31,7 +30,7 @@ the direct relationship between the device and that server.
 The primary context is frequent, short sessions on iPhone: checking new mail,
 triaging a conversation, replying, and returning to another task. Setup begins
 in the QuickMail web app, where the user creates a short-lived QR or manual
-pairing code. iPad supports a denser split-view workflow.
+pairing code.
 
 ## Capabilities and Constraints
 
@@ -39,6 +38,7 @@ pairing code. iPad supports a denser split-view workflow.
   attachment, mail-action, address, signature, device, app-lock, and offline
   cache behavior.
 - Minimum deployment is iOS 17.
+- Supported device family is iPhone.
 - Use genuine iOS 26 Liquid Glass APIs only on iOS 26 and later. Older systems
   use the native materials and control conventions mainstream for their OS.
 - Navigation, gestures, controls, sheets, alerts, and destructive confirmations

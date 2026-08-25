@@ -29,8 +29,8 @@ implied by the interface.
   navigation.
 - On iPhone, conversations push from a `NavigationStack`; the left-edge back
   gesture remains available.
-- On iPad, the mailbox index and selected conversation use a balanced native
-  split view.
+- Version 1.0 targets iPhone only; do not design or advertise an iPad layout for
+  this release.
 - The active mailbox name is an anchored native menu in the masthead. It changes
   mailboxes in place; mailbox navigation never opens a bottom sheet.
 - Compose and account/settings are explicit masthead actions. Reply remains the
@@ -40,8 +40,11 @@ implied by the interface.
 
 ## Color and material
 
-- **Ink:** the app accent's deep indigo family. It owns primary actions and
-  brand punctuation, never a large navigation background.
+- **Classic Cream:** the default Normal canvas pairs warm ivory reading
+  surfaces, cocoa text, muted sage support, and caramel interactive accents.
+- **Ink:** the Paper, White, and AMOLED canvases retain the app accent's deep
+  indigo family. It owns primary actions and brand punctuation, never a large
+  navigation background.
 - **Paper:** semantic `systemBackground` for mail and reading content.
 - **Canvas:** semantic grouped backgrounds for Settings and secondary flows.
 - **Sage:** a muted secondary identity accent for account monograms and rare
@@ -58,6 +61,8 @@ implied by the interface.
 ## Typography
 
 - San Francisco semantic text styles carry the interface and Dynamic Type.
+  Cormorant Garamond Semibold is reserved for the QuickMail wordmark and the
+  single onboarding headline; it is never used for operational UI.
 - The mailbox title is the strongest top-level type. It names the current
   mailbox, not the brand or a greeting.
 - Rows use sender, subject, preview, then time/state metadata. Unread mail gains
@@ -125,9 +130,14 @@ implied by the interface.
 
 ## Onboarding
 
-- Pairing is scanner-first. The first screen has one clear explanation, one
-  prominent **Scan Pairing Code** action, and a secondary **Enter Code
-  Manually** disclosure.
+- Pairing is scanner-first. The first screen uses one prominent **Scan QR Code**
+  action and a secondary **Enter Code** action.
+- Normal onboarding uses a centered wordmark, one warm server-to-phone mail
+  illustration, a two-line promise, and paired actions. It stays a single
+  screen rather than becoming a carousel or using decorative framing.
+- Scanner and manual-entry screens expose a native info action that explains
+  where to find the QR code, server URL, and pairing code in QuickMail on the
+  web.
 - The relationship is described plainly: the code comes from QuickMail on the
   web, HTTPS is required, and the session is kept in Keychain.
 - Use one restrained brand moment derived from the iOS identity. Do not build a

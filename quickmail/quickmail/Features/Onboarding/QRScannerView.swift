@@ -11,6 +11,7 @@ struct QRScannerView: View {
     @Environment(\.openURL) private var openURL
     @State private var state: ScannerState = .checking
     @State private var didDeliverResult = false
+    @State private var showsPairingHelp = false
 
     var body: some View {
         NavigationStack {
@@ -50,9 +51,23 @@ struct QRScannerView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
+
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showsPairingHelp = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                    }
+                    .accessibilityLabel("Where to find the QR code")
+                }
             }
         }
         .task { await prepareScanner() }
+        .alert("Where to Find the QR Code", isPresented: $showsPairingHelp) {
+            Button("Got It", role: .cancel) { }
+        } message: {
+            Text("In QuickMail on the web, open Settings, then Connect mobile app. Keep the QR code visible on your computer and scan it with this camera.")
+        }
     }
 
     private var scanner: some View {

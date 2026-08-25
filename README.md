@@ -4,12 +4,12 @@ A native SwiftUI companion for a self-hosted [QuickMail](https://github.com/Divi
 
 QuickMail for iOS pairs with a server by QR code or manual code, then provides
 native inbox, conversation, compose, search, attachment, privacy, and connected
-device experiences on iPhone and iPad.
+device experiences on iPhone.
 
 ## Requirements
 
 - Xcode 26 or newer
-- iOS 17 or iPadOS 17 or newer
+- iPhone running iOS 17 or newer
 - A QuickMail server with the mobile pairing API and migration
   `0012_mobile_pairing.sql`
 - Migration `0013_archive.sql` for Archive and Unarchive support
@@ -22,7 +22,8 @@ this app or perform archive actions.
 
 1. Open `quickmail/quickmail.xcodeproj`.
 2. Select the `quickmail` scheme.
-3. Choose your own bundle identifier and signing team locally.
+3. Confirm the `dev.anuz.quickmail` bundle identifier and choose your signing
+   team locally.
 4. Build for an iOS simulator or device.
 
 Command-line compile check:
@@ -50,3 +51,5 @@ privacy decisions, metadata draft, and reviewer-access requirements.
 ## License
 
 QuickMail is available under the MIT License. See [`LICENSE.md`](LICENSE.md).
+Bundled font software remains under the SIL Open Font License, Version 1.1.
+See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
