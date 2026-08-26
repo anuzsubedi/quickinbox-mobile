@@ -280,7 +280,7 @@ private struct MailboxAvatar: View {
     private var unreadBadge: some View {
         ZStack {
             Circle()
-                .fill(Color.accentColor)
+                .fill(QuickMailDesign.Palette.interactiveTint)
             Image(systemName: "envelope.fill")
                 .font(.system(size: 8, weight: .bold))
                 .foregroundStyle(.white)

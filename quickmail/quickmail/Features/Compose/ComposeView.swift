@@ -62,13 +62,13 @@ struct ComposeView: View {
                         if model.isSending {
                             ProgressView()
                                 .controlSize(.small)
-                                .tint(Color.accentColor)
+                                .tint(QuickMailDesign.Palette.interactiveTint)
                                 .accessibilityLabel("Sending")
                         } else {
                             Text("Send")
                         }
                     }
-                    .tint(Color.accentColor)
+                    .tint(QuickMailDesign.Palette.interactiveTint)
                     .disabled(!model.canSend)
                 }
             }

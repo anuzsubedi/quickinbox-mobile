@@ -31,6 +31,7 @@ struct ContentView: View {
             }
             .preferredColorScheme(selectedTheme.preferredColorScheme)
             .environment(\.appTheme, selectedTheme)
+            .tint(QuickMailDesign.Palette.interactiveTint)
     }
 
     private var selectedTheme: AppTheme {
@@ -82,7 +83,7 @@ private struct LaunchView: View {
 
             VStack(spacing: QuickMailDesign.Spacing.sm) {
                 Text("QuickMail")
-                    .font(.title.bold())
+                    .font(.quickMailBrand(42, relativeTo: .title))
                     .foregroundStyle(.white)
             }
 

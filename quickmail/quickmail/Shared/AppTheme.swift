@@ -13,6 +13,7 @@ struct AppThemePalette: Sendable {
     let separator: Color
     let fill: Color
     let signalInk: Color
+    let interactiveTint: Color
     let sage: Color
     let sageStrong: Color
     let sageWash: Color
@@ -33,9 +34,17 @@ struct AppTheme: Identifiable, Sendable {
 }
 
 enum AppThemeRegistry {
-    static let defaultThemeID = "paper"
+    static let defaultThemeID = "classicCream"
 
     static let all: [AppTheme] = [
+        AppTheme(
+            id: "classicCream",
+            title: "Classic Cream",
+            detail: "Warm ivory, cocoa ink, and a quiet caramel accent",
+            preferredColorScheme: .light,
+            lightPalette: classicCreamPalette,
+            darkPalette: classicCreamPalette
+        ),
         AppTheme(
             id: "paper",
             title: "Adaptive Paper",
@@ -128,7 +137,8 @@ enum AppThemeRegistry {
         secondary: Color,
         separator: Color,
         fill: Color,
-        isDark: Bool
+        isDark: Bool,
+        interactiveTint: Color? = nil
     ) -> AppThemePalette {
         AppThemePalette(
             grouped: grouped,
@@ -141,6 +151,9 @@ enum AppThemeRegistry {
             signalInk: isDark
                 ? Color(red: 0.620, green: 0.700, blue: 1.000)
                 : Color(red: 0.080, green: 0.090, blue: 0.300),
+            interactiveTint: interactiveTint ?? (isDark
+                ? Color(red: 0.620, green: 0.700, blue: 1.000)
+                : Color(red: 0.080, green: 0.090, blue: 0.300)),
             sage: isDark
                 ? Color(red: 0.490, green: 0.710, blue: 0.596)
                 : Color(red: 0.204, green: 0.400, blue: 0.318),
@@ -152,6 +165,21 @@ enum AppThemeRegistry {
                 : Color(red: 0.855, green: 0.910, blue: 0.875)
         )
     }
+
+    private static let classicCreamPalette = AppThemePalette(
+        grouped: Color(red: 248 / 255, green: 239 / 255, blue: 222 / 255),
+        paper: Color(red: 255 / 255, green: 248 / 255, blue: 233 / 255),
+        raised: Color(red: 255 / 255, green: 252 / 255, blue: 244 / 255),
+        primaryText: Color(red: 0.14, green: 0.105, blue: 0.075),
+        secondaryText: Color(red: 0.38, green: 0.33, blue: 0.27),
+        separator: Color(red: 0.31, green: 0.24, blue: 0.17).opacity(0.14),
+        fill: Color(red: 0.14, green: 0.105, blue: 0.075).opacity(0.07),
+        signalInk: Color(red: 143 / 255, green: 102 / 255, blue: 57 / 255),
+        interactiveTint: Color(red: 143 / 255, green: 102 / 255, blue: 57 / 255),
+        sage: Color(red: 112 / 255, green: 125 / 255, blue: 95 / 255),
+        sageStrong: Color(red: 143 / 255, green: 102 / 255, blue: 57 / 255),
+        sageWash: Color(red: 112 / 255, green: 125 / 255, blue: 95 / 255).opacity(0.18)
+    )
 }
 
 private struct AppThemeKey: EnvironmentKey {
@@ -170,6 +198,7 @@ extension EnvironmentValues {
 
 enum AppThemeColorRole: Sendable {
     case grouped, paper, raised, primaryText, secondaryText, separator, fill
+    case interactiveTint
     case signalInk, sage, sageStrong, sageWash
 }
 
@@ -190,6 +219,7 @@ struct AppThemeColorStyle: ShapeStyle, View {
         case .secondaryText: palette.secondaryText
         case .separator: palette.separator
         case .fill: palette.fill
+        case .interactiveTint: palette.interactiveTint
         case .signalInk: palette.signalInk
         case .sage: palette.sage
         case .sageStrong: palette.sageStrong

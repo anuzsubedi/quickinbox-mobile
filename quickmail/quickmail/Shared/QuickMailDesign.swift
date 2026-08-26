@@ -1,7 +1,23 @@
+import CoreText
 import SwiftUI
 import UIKit
 
+enum QuickMailFontLoader {
+    private static let fontName = "CormorantGaramond-SemiBold"
+
+    static func registerFonts() {
+        guard let url = Bundle.main.url(forResource: fontName, withExtension: "ttf") else {
+            return
+        }
+        CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+    }
+}
+
 extension Font {
+    static func quickMailBrand(_ size: CGFloat, relativeTo style: TextStyle = .largeTitle) -> Font {
+        .custom("CormorantGaramond-SemiBold", size: size, relativeTo: style)
+    }
+
     static func quickMailDisplay(_ size: CGFloat, relativeTo style: TextStyle = .largeTitle) -> Font {
         .system(size: size, weight: .bold, design: .default)
     }
@@ -54,7 +70,8 @@ enum QuickMailDesign {
         static let ink = AppThemeColorStyle(.primaryText)
         static let inkMuted = AppThemeColorStyle(.secondaryText)
         static let signalInk = AppThemeColorStyle(.signalInk)
-        static let floatingActionTint = signalInk
+        static let interactiveTint = AppThemeColorStyle(.interactiveTint)
+        static let floatingActionTint = interactiveTint
         static let sage = AppThemeColorStyle(.sage)
         static let sageStrong = AppThemeColorStyle(.sageStrong)
         static let sageWash = AppThemeColorStyle(.sageWash)
@@ -83,7 +100,12 @@ enum QuickMailDesign {
 }
 
 private struct QuickMailStyleRootModifier: ViewModifier {
-    func body(content: Content) -> some View { content.font(.body).foregroundStyle(QuickMailDesign.Palette.primaryText).tint(Color.accentColor) }
+    func body(content: Content) -> some View {
+        content
+            .font(.body)
+            .foregroundStyle(QuickMailDesign.Palette.primaryText)
+            .tint(QuickMailDesign.Palette.interactiveTint)
+    }
 }
 private struct QuickMailPageSurfaceModifier: ViewModifier {
     func body(content: Content) -> some View {
@@ -160,7 +182,7 @@ enum MetadataPillTone: Sendable {
     fileprivate var foreground: AnyShapeStyle {
         switch self {
         case .neutral: AnyShapeStyle(QuickMailDesign.Palette.secondaryText)
-        case .info: AnyShapeStyle(Color.accentColor)
+        case .info: AnyShapeStyle(QuickMailDesign.Palette.interactiveTint)
         case .success: AnyShapeStyle(Color(uiColor: .systemGreen))
         case .warning: AnyShapeStyle(Color(uiColor: .systemOrange))
         case .critical: AnyShapeStyle(Color(uiColor: .systemRed))
