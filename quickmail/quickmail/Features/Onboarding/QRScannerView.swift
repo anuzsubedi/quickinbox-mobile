@@ -10,108 +10,215 @@ struct QRScannerView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
     @State private var state: ScannerState = .checking
     @State private var didDeliverResult = false
     @State private var showsPairingHelp = false
+    @State private var shouldRecheckAfterSettings = false
 
     var body: some View {
-        NavigationStack {
-            Group {
-                switch state {
-                case .checking:
-                    ProgressView("Preparing camera…")
-                case .ready:
-                    scanner
-                case .permissionDenied:
-                    ContentUnavailableView {
-                        Label("Camera Access Needed", systemImage: "camera.fill")
-                    } description: {
-                        Text("Allow camera access in Settings, or enter the server and pairing code manually.")
-                    } actions: {
-                        Button("Open Settings") {
-                            guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
-                            openURL(settingsURL)
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                case .unavailable(let message):
-                    ContentUnavailableView {
-                        Label("Scanner Unavailable", systemImage: "qrcode.viewfinder")
-                    } description: {
-                        Text(message)
-                    }
-                case .failed(let message):
-                    ErrorStateView(title: "Couldn’t Start Scanner", message: message) {
-                        Task { await prepareScanner() }
-                    }
-                }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                Button {
-                    dismiss()
-                    onEnterManually()
-                } label: {
-                    Label("Enter Code Manually", systemImage: "keyboard")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.bordered)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(.bar)
-                .accessibilityHint("Closes the scanner and opens manual pairing fields")
-            }
-            .navigationTitle("Scan Pairing Code")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showsPairingHelp = true
-                    } label: {
-                        Image(systemName: "info.circle")
-                    }
-                    .accessibilityLabel("Where to find the QR code")
-                }
-            }
+        ZStack {
+            Color.black.ignoresSafeArea()
+            scannerContent
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            scannerHeader
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            manualEntryRegion
         }
         .task { await prepareScanner() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, shouldRecheckAfterSettings else { return }
+            shouldRecheckAfterSettings = false
+            Task { await prepareScanner() }
+        }
         .alert("Where to Find the QR Code", isPresented: $showsPairingHelp) {
             Button("Got It", role: .cancel) { }
         } message: {
-            Text("In QuickMail on the web, open Settings, then Connect mobile app. Keep the QR code visible on your computer and scan it with this camera.")
+            Text("In QuickMail on the web, open Settings, then Connect mobile app. Keep the code visible on your computer and scan it with this camera.")
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder
+    private var scannerContent: some View {
+        switch state {
+        case .checking:
+            scannerStatus(
+                title: "Preparing camera...",
+                message: "QuickMail is checking camera access.",
+                showsProgress: true
+            )
+        case .ready:
+            liveScanner
+        case .permissionDenied:
+            scannerStatus(
+                title: "Camera Access Needed",
+                message: "Allow camera access in Settings, or enter the server and pairing code manually.",
+                actionTitle: "Open Settings",
+                action: openSettings
+            )
+        case .unavailable(let message):
+            scannerStatus(
+                title: "Scanner Unavailable",
+                message: message
+            )
+        case .failed(let message):
+            scannerStatus(
+                title: "Couldn't Start Scanner",
+                message: message,
+                actionTitle: "Try Again",
+                action: { Task { await prepareScanner() } }
+            )
         }
     }
 
-    private var scanner: some View {
+    private var scannerHeader: some View {
         ZStack {
-            DataScannerRepresentable(
-                onValue: deliver,
-                onFailure: { message in state = .failed(message) }
-            )
-            .ignoresSafeArea(edges: .bottom)
+            Text("Scan QR code")
+                .font(.system(.headline, design: .default, weight: .semibold))
+                .foregroundStyle(.white)
 
-            VStack {
+            HStack {
+                Button("Cancel") {
+                    dismiss()
+                }
+                .frame(minWidth: 44, minHeight: 44)
+
                 Spacer()
-                scannerGuidance
-                    .padding()
+
+                Button("How to pair") {
+                    showsPairingHelp = true
+                }
+                .font(.system(.subheadline, design: .default, weight: .semibold))
+                .frame(minWidth: 44, minHeight: 44)
             }
         }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+        .background(Color.black.opacity(0.72))
     }
 
-    private var scannerGuidance: some View {
-        Label(
-            "Point the camera at the QR code in QuickMail Settings",
-            systemImage: "qrcode"
-        )
-        .font(.subheadline.weight(.medium))
-        .multilineTextAlignment(.center)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-        .background(.regularMaterial, in: Capsule())
+    private var manualEntryRegion: some View {
+        VStack(spacing: 0) {
+            Button {
+                dismiss()
+                onEnterManually()
+            } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: "keyboard")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Enter code manually")
+                        .font(.system(.headline, design: .default, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(
+                    ScannerStyle.coral,
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Closes the scanner and opens manual pairing fields")
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+        }
+        .background(ScannerStyle.ink)
+    }
+
+    private var liveScanner: some View {
+        GeometryReader { geometry in
+            ZStack {
+                DataScannerRepresentable(
+                    onValue: deliver,
+                    onFailure: { message in state = .failed(message) }
+                )
+                .ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    Spacer(minLength: 48)
+
+                    ScannerCornerBrackets()
+                        .stroke(
+                            .white.opacity(0.94),
+                            style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
+                        )
+                        .frame(
+                            width: viewfinderSide(in: geometry.size),
+                            height: viewfinderSide(in: geometry.size)
+                        )
+                        .accessibilityHidden(true)
+
+                    Text("Align the code inside the frame")
+                        .font(.system(.subheadline, design: .default, weight: .medium))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.45), radius: 4, y: 1)
+                        .padding(.top, 20)
+
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, 28)
+                .padding(.top, 44)
+                .padding(.bottom, 112)
+            }
+        }
+        .ignoresSafeArea()
+    }
+
+    private func scannerStatus(
+        title: String,
+        message: String,
+        showsProgress: Bool = false,
+        actionTitle: String? = nil,
+        action: (() -> Void)? = nil
+    ) -> some View {
+        VStack(spacing: 14) {
+            if showsProgress {
+                ProgressView()
+                    .tint(.white)
+                    .controlSize(.large)
+            } else {
+                Image(systemName: "camera.viewfinder")
+                    .font(.system(size: 36, weight: .medium))
+                    .foregroundStyle(ScannerStyle.sage)
+                    .accessibilityHidden(true)
+            }
+
+            Text(title)
+                .font(.system(.title3, design: .default, weight: .semibold))
+                .multilineTextAlignment(.center)
+
+            Text(message)
+                .font(.system(.body, design: .default, weight: .regular))
+                .foregroundStyle(.white.opacity(0.78))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .buttonStyle(.borderedProminent)
+                    .tint(ScannerStyle.coral)
+                    .padding(.top, 4)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 28)
+        .frame(maxWidth: 440)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func viewfinderSide(in size: CGSize) -> CGFloat {
+        min(320, max(160, min(size.width - 56, size.height * 0.48)))
+    }
+
+    private func openSettings() {
+        guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+        shouldRecheckAfterSettings = true
+        openURL(settingsURL)
     }
 
     @MainActor
@@ -148,6 +255,37 @@ struct QRScannerView: View {
         didDeliverResult = true
         onScan(value)
         dismiss()
+    }
+}
+
+private enum ScannerStyle {
+    static let ink = Color(red: 0.055, green: 0.071, blue: 0.078)
+    static let coral = Color(red: 0.875, green: 0.365, blue: 0.302)
+    static let sage = Color(red: 0.510, green: 0.650, blue: 0.560)
+}
+
+private struct ScannerCornerBrackets: Shape {
+    func path(in rect: CGRect) -> Path {
+        let length = min(rect.width, rect.height) * 0.18
+        var path = Path()
+
+        path.move(to: CGPoint(x: rect.minX + length, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + length))
+
+        path.move(to: CGPoint(x: rect.maxX - length, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + length))
+
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY - length))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX + length, y: rect.maxY))
+
+        path.move(to: CGPoint(x: rect.maxX, y: rect.maxY - length))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX - length, y: rect.maxY))
+
+        return path
     }
 }
 

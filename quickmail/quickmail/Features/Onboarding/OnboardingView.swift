@@ -1,12 +1,13 @@
-import CoreText
 import SwiftUI
 
 struct OnboardingView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     private let api: QuickMailAPI
     private let credentialStore: CredentialStore
     private let onAuthenticated: @MainActor (Credential, User) -> Void
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     @State private var serverOrigin = ""
     @State private var pairingCode = ""
@@ -18,7 +19,6 @@ struct OnboardingView: View {
     @State private var showsManualPairing = false
     @State private var showsManualPairingHelp = false
     @State private var showsPrivacyPolicy = false
-    @State private var hasAppeared = false
     @FocusState private var focusedField: Field?
 
     init(
@@ -26,7 +26,6 @@ struct OnboardingView: View {
         credentialStore: CredentialStore,
         onAuthenticated: @escaping @MainActor (Credential, User) -> Void
     ) {
-        OnboardingStyle.registerBrandFont()
         self.api = api
         self.credentialStore = credentialStore
         self.onAuthenticated = onAuthenticated
@@ -37,26 +36,24 @@ struct OnboardingView: View {
             ZStack {
                 OnboardingStyle.canvas.ignoresSafeArea()
 
-                GeometryReader { geometry in
+                VStack(spacing: 0) {
+                    onboardingHeader
+
                     ScrollView {
-                        onboardingContent(minHeight: geometry.size.height)
+                        onboardingContent
                     }
+                    .scrollIndicators(.hidden)
                     .scrollBounceBehavior(.basedOnSize)
                 }
             }
-            .toolbar(.hidden, for: .navigationBar)
-            .overlay(alignment: .topTrailing) {
-                onboardingInfoButton
-                    .padding(.top, 8)
-                    .padding(.trailing, 16)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                primaryActionRegion
             }
+            .toolbar(.hidden, for: .navigationBar)
         }
         .preferredColorScheme(.light)
         .interactiveDismissDisabled(isConnecting)
-        .task {
-            revealContent()
-        }
-        .sheet(isPresented: $isScannerPresented) {
+        .fullScreenCover(isPresented: $isScannerPresented) {
             QRScannerView(
                 onScan: receiveScannedValue,
                 onEnterManually: showManualPairingAfterScanner
@@ -76,6 +73,7 @@ struct OnboardingView: View {
                         }
                     }
             }
+            .tint(OnboardingStyle.coral)
         }
         .alert("Check QuickMail Server", isPresented: $showsScannedOriginConfirmation) {
             Button("Cancel", role: .cancel) {
@@ -94,111 +92,158 @@ struct OnboardingView: View {
         }
     }
 
-    private func onboardingContent(minHeight: CGFloat) -> some View {
-        VStack(spacing: 0) {
+    private var onboardingHeader: some View {
+        HStack(alignment: .center, spacing: 16) {
             Text("QuickMail")
-                .font(OnboardingStyle.brandFont(44, relativeTo: .largeTitle))
+                .font(.system(.title2, design: .rounded, weight: .bold))
                 .foregroundStyle(OnboardingStyle.ink)
-                .frame(maxWidth: .infinity)
                 .accessibilityAddTraits(.isHeader)
-                .onboardingReveal(hasAppeared, delay: 0, reduceMotion: reduceMotion)
 
-            Spacer(minLength: 18)
+            Spacer(minLength: 12)
 
-            Image("OnboardingPairingHero")
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: 360)
-                .accessibilityHidden(true)
-                .onboardingReveal(hasAppeared, delay: 0.06, reduceMotion: reduceMotion)
+            Button("Privacy") {
+                showsPrivacyPolicy = true
+            }
+            .font(.system(.subheadline, design: .default, weight: .semibold))
+            .foregroundStyle(OnboardingStyle.coral)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+            .accessibilityHint("Opens the QuickMail Privacy Policy")
+        }
+        .frame(maxWidth: 620)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, horizontalPadding)
+        .padding(.top, 6)
+        .padding(.bottom, 6)
+    }
 
-            Text("Connect to your hosted\nQuickmail Server")
-                .font(OnboardingStyle.brandFont(34, relativeTo: .title))
-                .foregroundStyle(OnboardingStyle.ink)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 10)
-                .onboardingReveal(hasAppeared, delay: 0.12, reduceMotion: reduceMotion)
+    private var onboardingContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if showsHero {
+                pairingHero
+            }
 
-            Spacer(minLength: 26)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Connect to your hosted QuickMail server")
+                    .font(.system(.largeTitle, design: .default, weight: .bold))
+                    .foregroundStyle(OnboardingStyle.ink)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            VStack(spacing: 12) {
-                scanButton
+                Text("Open QuickMail on the web, then go to Settings > Connect mobile app. Scan the code shown there.")
+                    .font(.system(.body, design: .default, weight: .regular))
+                    .foregroundStyle(OnboardingStyle.mutedInk)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 16)
+
+                trustLine
 
                 if let errorMessage {
                     connectionError(message: errorMessage)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .onboardingReveal(hasAppeared, delay: 0.18, reduceMotion: reduceMotion)
-
-            Spacer(minLength: 22)
         }
-        .frame(maxWidth: 430)
-        .padding(.horizontal, 24)
-        .padding(.top, 12)
-        .padding(.bottom, 16)
-        .frame(minHeight: minHeight)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: 620, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.horizontal, horizontalPadding)
+        .padding(.top, showsHero ? 2 : 24)
+        .padding(.bottom, 28)
     }
 
-    private var scanButton: some View {
-        Button {
-            AppFeedback.play(.moveConfirmed)
-            focusedField = nil
-            errorMessage = nil
-            isScannerPresented = true
-        } label: {
-            HStack(spacing: 10) {
-                if isConnecting {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(.white)
-                } else {
-                    Image(systemName: "qrcode.viewfinder")
-                        .font(.headline.weight(.semibold))
-                }
-
-                Text(isConnecting ? "Connecting..." : "Scan QR Code")
-                    .font(.quickMailSemibold(17, relativeTo: .headline))
-            }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 54)
+    private var pairingHero: some View {
+        Image("OnboardingConnectionHero")
+            .resizable()
+            .scaledToFit()
+            .frame(maxWidth: 560)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
             .background(
-                OnboardingStyle.tint,
-                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                OnboardingStyle.artMat,
+                in: RoundedRectangle(cornerRadius: 28, style: .continuous)
             )
-        }
-        .buttonStyle(.plain)
-        .disabled(isConnecting)
-        .opacity(isConnecting ? 0.72 : 1)
-        .accessibilityHint("Opens the camera to scan the pairing QR code")
+            .accessibilityHidden(true)
+            .padding(.bottom, 30)
     }
 
-    private var onboardingInfoButton: some View {
-        Button {
-            showsPrivacyPolicy = true
-        } label: {
-            Image(systemName: "info.circle")
-                .font(.title3.weight(.medium))
-                .foregroundStyle(OnboardingStyle.tint)
-                .frame(width: 44, height: 44)
+    private var trustLine: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "lock.shield")
+                .font(.footnote.weight(.semibold))
+                .accessibilityHidden(true)
+
+            Text("Connection uses HTTPS. Pairing credentials are stored in Keychain.")
+                .font(.footnote)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .accessibilityLabel("Privacy Policy")
+        .foregroundStyle(OnboardingStyle.mutedInk)
+        .padding(.top, 18)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var primaryActionRegion: some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(OnboardingStyle.separator)
+                .frame(height: 1)
+                .accessibilityHidden(true)
+
+            Button {
+                AppFeedback.play(.moveConfirmed)
+                focusedField = nil
+                errorMessage = nil
+                isScannerPresented = true
+            } label: {
+                HStack(spacing: 10) {
+                    if isConnecting {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "qrcode.viewfinder")
+                            .font(.headline.weight(.semibold))
+                    }
+
+                    Text(isConnecting ? "Connecting..." : "Scan QR code")
+                        .font(.system(.headline, design: .default, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(
+                    OnboardingStyle.coral,
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(isConnecting)
+            .opacity(isConnecting ? 0.72 : 1)
+            .accessibilityHint("Opens the camera to scan the pairing QR code")
+            .padding(.horizontal, horizontalPadding)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+        }
+        .background(OnboardingStyle.canvas)
     }
 
     private func connectionError(message: String) -> some View {
         Label {
             Text(message)
-                .font(.footnote)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
         } icon: {
             Image(systemName: "exclamationmark.circle.fill")
-                .font(.footnote)
+                .font(.callout.weight(.semibold))
         }
-        .foregroundStyle(Color(uiColor: .systemRed))
-        .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+        .foregroundStyle(OnboardingStyle.error)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            OnboardingStyle.error.opacity(0.09),
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+        .padding(.top, 20)
         .accessibilityElement(children: .combine)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: message)
     }
 
     private var manualPairingSheet: some View {
@@ -234,11 +279,11 @@ struct OnboardingView: View {
                     Section {
                         Label(errorMessage, systemImage: "exclamationmark.circle.fill")
                             .font(.callout)
-                            .foregroundStyle(Color(uiColor: .systemRed))
+                            .foregroundStyle(OnboardingStyle.error)
                     }
                 }
             }
-            .tint(OnboardingStyle.tint)
+            .tint(OnboardingStyle.coral)
             .navigationTitle("Enter Pairing Code")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -272,7 +317,7 @@ struct OnboardingView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .tint(OnboardingStyle.tint)
+                .tint(OnboardingStyle.coral)
                 .disabled(isConnecting || serverOrigin.isEmpty || pairingCode.isEmpty)
                 .padding(16)
                 .quickMailBarSurface()
@@ -296,15 +341,12 @@ struct OnboardingView: View {
         return "Only continue if \(host) is the QuickMail server shown in your browser."
     }
 
-    private func revealContent() {
-        guard !hasAppeared else { return }
-        if reduceMotion {
-            hasAppeared = true
-        } else {
-            withAnimation(.easeOut(duration: 0.6)) {
-                hasAppeared = true
-            }
-        }
+    private var showsHero: Bool {
+        !dynamicTypeSize.isAccessibilitySize && verticalSizeClass != .compact
+    }
+
+    private var horizontalPadding: CGFloat {
+        horizontalSizeClass == .regular ? 32 : 20
     }
 
     private func receiveScannedValue(_ value: String) {
@@ -394,40 +436,11 @@ struct OnboardingView: View {
 }
 
 private enum OnboardingStyle {
-    private static let brandFontName = "CormorantGaramond-SemiBold"
-    private static let fontRegistration: Void = {
-        guard let url = Bundle.main.url(forResource: brandFontName, withExtension: "ttf") else {
-            return
-        }
-        CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
-    }()
-
-    // Matches the illustration's edge pixels without adding an app theme.
-    static let canvas = Color(red: 254 / 255, green: 249 / 255, blue: 238 / 255)
-    static let ink = Color(red: 0.20, green: 0.14, blue: 0.10)
-    static let tint = Color(red: 143 / 255, green: 102 / 255, blue: 57 / 255)
-
-    static func registerBrandFont() {
-        _ = fontRegistration
-    }
-
-    static func brandFont(_ size: CGFloat, relativeTo style: Font.TextStyle) -> Font {
-        .custom(brandFontName, size: size, relativeTo: style)
-    }
-}
-
-private extension View {
-    func onboardingReveal(
-        _ appeared: Bool,
-        delay: Double,
-        reduceMotion: Bool
-    ) -> some View {
-        self
-            .opacity(appeared ? 1 : 0)
-            .offset(y: appeared || reduceMotion ? 0 : 10)
-            .animation(
-                reduceMotion ? nil : .easeOut(duration: 0.4).delay(delay),
-                value: appeared
-            )
-    }
+    static let canvas = Color(red: 1.0, green: 0.976, blue: 0.941)
+    static let artMat = Color(red: 0.965, green: 0.850, blue: 0.790)
+    static let ink = Color(red: 0.122, green: 0.161, blue: 0.196)
+    static let mutedInk = Color(red: 0.310, green: 0.357, blue: 0.345)
+    static let coral = Color(red: 0.875, green: 0.365, blue: 0.302)
+    static let separator = Color(red: 0.122, green: 0.161, blue: 0.196).opacity(0.12)
+    static let error = Color(uiColor: .systemRed)
 }
