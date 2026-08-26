@@ -4,7 +4,7 @@
 
 <!--
 THESIS: Postmark Desk makes a private mailbox feel like intentional correspondence, replacing generic navigation chrome with one compact mail-first hierarchy.
-OWN-WORLD: Crisp semantic paper, ink typography, sage postmark seals, a compact type-led masthead, flat editorial rows, and restrained native controls.
+OWN-WORLD: Crisp semantic paper, ink typography, sage postmark seals, a compact type-led masthead, flat mail rows, and restrained native controls.
 STORY: The user immediately sees where they are, what needs attention, and can read, triage, or write without navigating through app chrome.
 FIRST VIEWPORT: The active mailbox menu, status, search, Compose, and account identity form one compact masthead above a sender-led stream marked by quiet postmark seals.
 FORM: Postmark Desk, rebuilt from live iOS 27 simulator evidence rather than inherited large-title, toolbar-glass, or bottom-sheet conventions.
@@ -40,8 +40,6 @@ implied by the interface.
 
 ## Color and material
 
-- **Classic Cream:** the default Normal canvas pairs warm ivory reading
-  surfaces, cocoa text, muted sage support, and caramel interactive accents.
 - **Ink:** the Paper, White, and AMOLED canvases retain the app accent's deep
   indigo family. It owns primary actions and brand punctuation, never a large
   navigation background.
@@ -61,8 +59,6 @@ implied by the interface.
 ## Typography
 
 - San Francisco semantic text styles carry the interface and Dynamic Type.
-  Cormorant Garamond Semibold is reserved for the QuickMail wordmark and the
-  single onboarding headline; it is never used for operational UI.
 - The mailbox title is the strongest top-level type. It names the current
   mailbox, not the brand or a greeting.
 - Rows use sender, subject, preview, then time/state metadata. Unread mail gains
@@ -130,11 +126,9 @@ implied by the interface.
 
 ## Onboarding
 
-- Pairing is scanner-first. The first screen uses one prominent **Scan QR Code**
-  action and a secondary **Enter Code** action.
-- Normal onboarding uses a centered wordmark, one warm server-to-phone mail
-  illustration, a two-line promise, and paired actions. It stays a single
-  screen rather than becoming a carousel or using decorative framing.
+- Pairing is scanner-first. The first screen shows the server-to-phone mail
+  illustration, with one prominent **Scan Pairing Code** action and a secondary
+  **Enter Code Manually** action on the same screen.
 - Scanner and manual-entry screens expose a native info action that explains
   where to find the QR code, server URL, and pairing code in QuickMail on the
   web.

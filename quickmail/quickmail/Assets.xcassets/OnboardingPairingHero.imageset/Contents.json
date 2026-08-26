@@ -1,9 +1,19 @@
 {
   "images" : [
     {
-      "filename" : "OnboardingPairingHero-v3.png",
+      "filename" : "OnboardingPairingHero.png",
       "idiom" : "universal",
       "scale" : "1x"
+    },
+    {
+      "filename" : "OnboardingPairingHero@2x.png",
+      "idiom" : "universal",
+      "scale" : "2x"
+    },
+    {
+      "filename" : "OnboardingPairingHero@3x.png",
+      "idiom" : "universal",
+      "scale" : "3x"
     }
   ],
   "info" : {

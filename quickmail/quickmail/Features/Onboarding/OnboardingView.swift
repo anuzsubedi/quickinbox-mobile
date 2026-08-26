@@ -17,6 +17,7 @@ struct OnboardingView: View {
     @State private var pendingScannedPayload: ValidatedPairingPayload?
     @State private var showsScannedOriginConfirmation = false
     @State private var showsManualPairing = false
+    @State private var showsManualPairingHelp = false
     @State private var hasAppeared = false
     @FocusState private var focusedField: Field?
 
@@ -312,6 +313,15 @@ struct OnboardingView: View {
                     }
                     .disabled(isConnecting)
                 }
+
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showsManualPairingHelp = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                    }
+                    .accessibilityLabel("Where to find the pairing code")
+                }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 PlatformPrimaryActionButton(action: connectManually) {
@@ -331,6 +341,11 @@ struct OnboardingView: View {
                 .background(.bar)
             }
             .interactiveDismissDisabled(isConnecting)
+            .alert("Where to Find the Pairing Code", isPresented: $showsManualPairingHelp) {
+                Button("Got It", role: .cancel) { }
+            } message: {
+                Text("In QuickMail on the web, open Settings, then Connect mobile app. Copy the server URL and 22-character pairing code shown there.")
+            }
         }
     }
 

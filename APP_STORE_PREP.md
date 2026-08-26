@@ -42,8 +42,6 @@ Current local submission-tooling check:
   reason `CA92.1`.
 - `ITSAppUsesNonExemptEncryption = NO`. QuickMail uses Apple-provided HTTPS and
   hashing rather than shipping its own non-exempt encryption implementation.
-- Barlow Condensed and Bebas Neue notices and the complete SIL Open Font License
-  are bundled in the app and accessible from Settings > Third-Party Notices.
 
 ### Release blockers
 
@@ -71,11 +69,6 @@ Current local submission-tooling check:
   compose/send, reply/forward, search, settings, revoke, and sign out.
 - [x] Limit the target to iPhone with a consistent iOS 17.0 deployment target
   for Debug and Release.
-- [x] Add redistribution notices and the SIL Open Font License for bundled
-  `Bebas Neue` and `Barlow Condensed` fonts to the repository and the app.
-- [ ] Confirm the Release UI is intentional. Editorial mode is currently hidden
-  in shipped builds by `editorialModeEnabledInShippedBuilds = false`, even
-  though it appears in Debug builds.
 - [ ] Create the App Store Connect app record, sign an archive with Apple
   Distribution, upload it, and select the processed build for version 1.0.
 - [ ] Complete all App Store Connect metadata, privacy, age-rating, content
@@ -215,7 +208,6 @@ as well as providing manual values so review is not camera-dependent.
 - [ ] Publish Privacy Policy and Support URLs, then add the Privacy Policy link
   inside Settings. Apple's privacy guideline requires the link both in App
   Store Connect and in an easily accessible location inside the app.
-- [x] Add the font licenses/notices required for redistribution.
 - [ ] Freeze the compatible server API/migration version used by the release.
 - [ ] Decide whether QuickMail is free or paid. Banking and tax setup is needed
   for paid distribution; do not add non-Apple purchase calls to action without
