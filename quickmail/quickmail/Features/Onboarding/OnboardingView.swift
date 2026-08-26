@@ -34,7 +34,7 @@ struct OnboardingView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                onboardingBackground
+                QuickMailDesign.Palette.paperGrouped.ignoresSafeArea()
 
                 GeometryReader { geometry in
                     ScrollView {
@@ -43,14 +43,11 @@ struct OnboardingView: View {
                     .scrollBounceBehavior(.basedOnSize)
                 }
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                primaryActions
-            }
             .toolbar(.hidden, for: .navigationBar)
         }
         .interactiveDismissDisabled(isConnecting)
         .task {
-            await revealContent()
+            revealContent()
         }
         .sheet(isPresented: $isScannerPresented) {
             QRScannerView(onScan: receiveScannedValue)
@@ -75,180 +72,93 @@ struct OnboardingView: View {
         }
     }
 
-    private var onboardingBackground: some View {
-        let palette = appTheme.palette(for: colorScheme)
-        return ZStack {
-            QuickMailDesign.Palette.paperGrouped
-
-            LinearGradient(
-                colors: [
-                    palette.signalInk.opacity(0.13),
-                    .clear
-                ],
-                startPoint: .topLeading,
-                endPoint: .center
-            )
-
-            RadialGradient(
-                colors: [
-                    Color.accentColor.opacity(0.08),
-                    .clear
-                ],
-                center: .bottomTrailing,
-                startRadius: 0,
-                endRadius: 360
-            )
-        }
-        .ignoresSafeArea()
+    private var onboardingPalette: AppThemePalette {
+        appTheme.palette(for: colorScheme)
     }
 
     private func onboardingContent(minHeight: CGFloat) -> some View {
         VStack(spacing: 0) {
-            brand
+            Text("QuickMail")
+                .font(.quickMailBrand(44, relativeTo: .largeTitle))
+                .foregroundStyle(QuickMailDesign.Palette.primaryText)
+                .frame(maxWidth: .infinity)
+                .accessibilityAddTraits(.isHeader)
+                .onboardingReveal(hasAppeared, delay: 0, reduceMotion: reduceMotion)
 
-            introduction
-                .padding(.top, 30)
+            Spacer(minLength: 18)
 
-            pairingHero
-                .padding(.top, 22)
-
-            webLocation
-                .padding(.top, 18)
-
-            securityNote
-                .padding(.top, 12)
-
-            Spacer(minLength: 28)
-
-            connectionError
-                .padding(.top, errorMessage == nil ? 0 : 20)
-        }
-        .frame(maxWidth: 480)
-        .padding(.horizontal, 24)
-        .padding(.top, 16)
-        .padding(.bottom, 28)
-        .frame(minHeight: minHeight)
-        .frame(maxWidth: .infinity)
-        .opacity(hasAppeared ? 1 : 0)
-    }
-
-    private var brand: some View {
-        HStack(spacing: 9) {
-            Image("LaunchIcon")
+            Image("OnboardingPairingHero")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 52, height: 40)
+                .frame(maxWidth: 360)
+                .accessibilityHidden(true)
+                .onboardingReveal(hasAppeared, delay: 0.06, reduceMotion: reduceMotion)
 
-            Text("QuickMail")
-                .font(.title3.weight(.semibold))
-        }
-        .frame(maxWidth: .infinity, alignment: .center)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var introduction: some View {
-        VStack(spacing: 10) {
-            Text("Pair your iPhone")
-                .font(.largeTitle.weight(.bold))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text("Scan the one-time code shown in QuickMail on the web.")
-                .font(.body)
-                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var pairingHero: some View {
-        Image("OnboardingPairingHero")
-            .resizable()
-            .scaledToFit()
-            .aspectRatio(3 / 2, contentMode: .fit)
-            .frame(maxWidth: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(QuickMailDesign.Palette.separator, lineWidth: 0.5)
-            }
-            .accessibilityHidden(true)
-    }
-
-    private var webLocation: some View {
-        Label {
-            Text("Settings  ›  Connect mobile app")
-                .font(.subheadline.weight(.medium))
-        } icon: {
-            Image(systemName: "safari.fill")
-                .foregroundStyle(.tint)
-        }
-        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("On the web, open Settings, then Connect mobile app")
-    }
-
-    @ViewBuilder
-    private var connectionError: some View {
-        if let errorMessage {
-            Label(errorMessage, systemImage: "exclamationmark.circle.fill")
-                .font(.callout)
+            Text("Your private inbox\nbegins here.")
+                .font(.quickMailBrand(34, relativeTo: .title))
                 .foregroundStyle(QuickMailDesign.Palette.primaryText)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(14)
-                .background(Color(uiColor: .systemRed).opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16)
-                        .strokeBorder(Color(uiColor: .systemRed).opacity(0.28), lineWidth: 0.5)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 10)
+                .onboardingReveal(hasAppeared, delay: 0.12, reduceMotion: reduceMotion)
+
+            Spacer(minLength: 26)
+
+            VStack(spacing: 12) {
+                scanButton
+                manualPairingButton
+
+                if let errorMessage {
+                    connectionError(message: errorMessage)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
-                .accessibilityElement(children: .combine)
-        }
-    }
-
-    private var securityNote: some View {
-        Label("One-time code · Saved in Keychain", systemImage: "lock.shield.fill")
-            .font(.footnote)
-            .foregroundStyle(QuickMailDesign.Palette.secondaryText)
-            .frame(maxWidth: .infinity)
-            .accessibilityElement(children: .combine)
-    }
-
-    private var primaryActions: some View {
-        VStack(spacing: 4) {
-            PlatformPrimaryActionButton {
-                AppFeedback.play(.moveConfirmed)
-                focusedField = nil
-                errorMessage = nil
-                isScannerPresented = true
-            } label: {
-                HStack(spacing: 10) {
-                    if isConnecting {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "qrcode.viewfinder")
-                            .font(.title3.weight(.semibold))
-                    }
-
-                    Text(isConnecting ? "Connecting…" : "Scan Pairing Code")
-                        .font(.headline)
-                }
-                .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .disabled(isConnecting)
+            .onboardingReveal(hasAppeared, delay: 0.18, reduceMotion: reduceMotion)
 
-            manualPairingButton
+            Spacer(minLength: 22)
+
+            privacyPolicyFooter
+                .onboardingReveal(hasAppeared, delay: 0.24, reduceMotion: reduceMotion)
         }
-        .frame(maxWidth: 480)
+        .frame(maxWidth: 430)
         .padding(.horizontal, 24)
         .padding(.top, 12)
-        .padding(.bottom, 6)
+        .padding(.bottom, 16)
+        .frame(minHeight: minHeight)
         .frame(maxWidth: .infinity)
-        .background(.bar)
+    }
+
+    private var scanButton: some View {
+        Button {
+            AppFeedback.play(.moveConfirmed)
+            focusedField = nil
+            errorMessage = nil
+            isScannerPresented = true
+        } label: {
+            HStack(spacing: 10) {
+                if isConnecting {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.white)
+                } else {
+                    Image(systemName: "qrcode.viewfinder")
+                        .font(.headline.weight(.semibold))
+                }
+
+                Text(isConnecting ? "Connecting..." : "Scan QR Code")
+                    .font(.quickMailSemibold(17, relativeTo: .headline))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: 54)
+            .background(
+                onboardingPalette.interactiveTint,
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isConnecting)
+        .opacity(isConnecting ? 0.72 : 1)
+        .accessibilityHint("Opens the camera to scan the pairing QR code")
     }
 
     private var manualPairingButton: some View {
@@ -257,18 +167,56 @@ struct OnboardingView: View {
             errorMessage = nil
             showsManualPairing = true
         } label: {
-            Label("Enter Code Manually", systemImage: "keyboard")
-                .font(.subheadline.weight(.semibold))
-                .frame(minHeight: 44)
+            Text("Enter Code Manually")
+                .font(.quickMailSemibold(17, relativeTo: .headline))
+                .foregroundStyle(onboardingPalette.interactiveTint)
+                .frame(maxWidth: .infinity, minHeight: 54)
+                .background(
+                    QuickMailDesign.Palette.paperRaised,
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(QuickMailDesign.Palette.separator, lineWidth: 0.5)
+                }
         }
         .buttonStyle(.plain)
-        .foregroundStyle(QuickMailDesign.Palette.primaryText)
         .disabled(isConnecting)
+        .accessibilityHint("Opens fields for the server URL and pairing code")
+    }
+
+    private var privacyPolicyFooter: some View {
+        NavigationLink {
+            InAppWebView(url: AppLinks.privacyPolicy)
+                .navigationTitle("Privacy Policy")
+                .navigationBarTitleDisplayMode(.inline)
+        } label: {
+            Text("Privacy Policy")
+                .font(.caption)
+                .underline()
+                .foregroundStyle(onboardingPalette.interactiveTint)
+                .frame(minHeight: 44)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func connectionError(message: String) -> some View {
+        Label {
+            Text(message)
+                .font(.footnote)
+        } icon: {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.footnote)
+        }
+        .foregroundStyle(Color(uiColor: .systemRed))
+        .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+        .accessibilityElement(children: .combine)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: message)
     }
 
     private var manualPairingSheet: some View {
         NavigationStack {
-            Form {
+            QuickMailForm {
                 Section("Server") {
                     TextField("https://mail.example.com", text: $serverOrigin)
                         .textContentType(.URL)
@@ -303,6 +251,7 @@ struct OnboardingView: View {
                     }
                 }
             }
+            .tint(onboardingPalette.interactiveTint)
             .navigationTitle("Enter Pairing Code")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -331,14 +280,15 @@ struct OnboardingView: View {
                                 .controlSize(.small)
                                 .tint(.white)
                         }
-                        Text(isConnecting ? "Connecting…" : "Connect")
-                            .font(.headline)
+                        Text(isConnecting ? "Connecting..." : "Connect")
+                            .font(.quickMailSemibold(17, relativeTo: .headline))
                     }
                     .frame(maxWidth: .infinity, minHeight: 44)
                 }
+                .tint(onboardingPalette.interactiveTint)
                 .disabled(isConnecting || serverOrigin.isEmpty || pairingCode.isEmpty)
                 .padding(16)
-                .background(.bar)
+                .quickMailBarSurface()
             }
             .interactiveDismissDisabled(isConnecting)
             .alert("Where to Find the Pairing Code", isPresented: $showsManualPairingHelp) {
@@ -350,12 +300,16 @@ struct OnboardingView: View {
     }
 
     private var scannedOriginConfirmationMessage: String {
-        guard let payload = pendingScannedPayload else { return "Confirm the server before connecting." }
-        let host = payload.origin.host(percentEncoded: false) ?? payload.origin.host ?? payload.origin.absoluteString
+        guard let payload = pendingScannedPayload else {
+            return "Confirm the server before connecting."
+        }
+        let host = payload.origin.host(percentEncoded: false)
+            ?? payload.origin.host
+            ?? payload.origin.absoluteString
         return "Only continue if \(host) is the QuickMail server shown in your browser."
     }
 
-    private func revealContent() async {
+    private func revealContent() {
         guard !hasAppeared else { return }
         if reduceMotion {
             hasAppeared = true
@@ -434,11 +388,27 @@ struct OnboardingView: View {
            !message.isEmpty {
             return message
         }
-        return "QuickMail couldn’t complete pairing. Try again."
+        return "QuickMail couldn't complete pairing. Try again."
     }
 
     private enum Field: Hashable {
         case server
         case code
+    }
+}
+
+private extension View {
+    func onboardingReveal(
+        _ appeared: Bool,
+        delay: Double,
+        reduceMotion: Bool
+    ) -> some View {
+        self
+            .opacity(appeared ? 1 : 0)
+            .offset(y: appeared || reduceMotion ? 0 : 10)
+            .animation(
+                reduceMotion ? nil : .easeOut(duration: 0.4).delay(delay),
+                value: appeared
+            )
     }
 }
