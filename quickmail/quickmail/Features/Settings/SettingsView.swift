@@ -128,17 +128,6 @@ struct SettingsView: View {
                             systemImage: "hand.raised"
                         )
                     }
-
-                    settingsGroupDivider
-
-                    NavigationLink {
-                        thirdPartyNoticesPage
-                    } label: {
-                        settingsDestinationLabel(
-                            "Third-Party Notices",
-                            systemImage: "doc.text"
-                        )
-                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -428,34 +417,6 @@ struct SettingsView: View {
         } message: {
             Text("QuickMail will remove its saved account and mailbox data without contacting your server. This device may still need to be revoked on the web.")
         }
-    }
-
-    private var thirdPartyNoticesPage: some View {
-        settingsPage {
-            settingsPageSection(
-                "Open Source Licenses",
-                detail: "Copyright notices and license terms for software included with QuickMail."
-            ) {
-                Text(thirdPartyNotices)
-                    .font(.footnote.monospaced())
-                    .foregroundStyle(QuickMailDesign.Palette.primaryText)
-                    .textSelection(.enabled)
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .navigationTitle("Third-Party Notices")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private var thirdPartyNotices: String {
-        guard let url = Bundle.main.url(
-            forResource: "ThirdPartyNotices",
-            withExtension: "txt"
-        ), let contents = try? String(contentsOf: url, encoding: .utf8) else {
-            return "Third-party notices could not be loaded."
-        }
-        return contents
     }
 
     private var privacyPolicyPage: some View {

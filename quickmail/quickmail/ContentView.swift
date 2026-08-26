@@ -83,7 +83,7 @@ private struct LaunchView: View {
 
             VStack(spacing: QuickMailDesign.Spacing.sm) {
                 Text("QuickMail")
-                    .font(.quickMailBrand(42, relativeTo: .title))
+                    .font(.title.bold())
                     .foregroundStyle(.white)
             }
 

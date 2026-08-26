@@ -1,23 +1,7 @@
-import CoreText
 import SwiftUI
 import UIKit
 
-enum QuickMailFontLoader {
-    private static let fontName = "CormorantGaramond-SemiBold"
-
-    static func registerFonts() {
-        guard let url = Bundle.main.url(forResource: fontName, withExtension: "ttf") else {
-            return
-        }
-        CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
-    }
-}
-
 extension Font {
-    static func quickMailBrand(_ size: CGFloat, relativeTo style: TextStyle = .largeTitle) -> Font {
-        .custom("CormorantGaramond-SemiBold", size: size, relativeTo: style)
-    }
-
     static func quickMailDisplay(_ size: CGFloat, relativeTo style: TextStyle = .largeTitle) -> Font {
         .system(size: size, weight: .bold, design: .default)
     }

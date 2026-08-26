@@ -42,10 +42,8 @@ Current local submission-tooling check:
   reason `CA92.1`.
 - `ITSAppUsesNonExemptEncryption = NO`. QuickMail uses Apple-provided HTTPS and
   hashing rather than shipping its own non-exempt encryption implementation.
-- Settings includes Support, Privacy Policy, and Third-Party Notices links;
-  onboarding also exposes the Privacy Policy link.
-- Cormorant Garamond licensing and the complete SIL Open Font License are
-  bundled in the repository and app.
+- Settings includes Support and Privacy Policy links; onboarding also exposes
+  the Privacy Policy link.
 
 ### Release blockers
 
@@ -73,8 +71,6 @@ Current local submission-tooling check:
   compose/send, reply/forward, search, settings, revoke, and sign out.
 - [x] Limit the target to iPhone with a consistent iOS 17.0 deployment target
   for Debug and Release.
-- [x] Add the Cormorant Garamond redistribution notice and SIL Open Font
-  License to the repository and app.
 - [ ] Create the App Store Connect app record, sign an archive with Apple
   Distribution, upload it, and select the processed build for version 1.0.
 - [ ] Complete all App Store Connect metadata, privacy, age-rating, content

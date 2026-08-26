@@ -79,7 +79,7 @@ struct OnboardingView: View {
     private func onboardingContent(minHeight: CGFloat) -> some View {
         VStack(spacing: 0) {
             Text("QuickMail")
-                .font(.quickMailBrand(44, relativeTo: .largeTitle))
+                .font(.largeTitle.weight(.bold))
                 .foregroundStyle(QuickMailDesign.Palette.primaryText)
                 .frame(maxWidth: .infinity)
                 .accessibilityAddTraits(.isHeader)
@@ -95,7 +95,7 @@ struct OnboardingView: View {
                 .onboardingReveal(hasAppeared, delay: 0.06, reduceMotion: reduceMotion)
 
             Text("Your private inbox\nbegins here.")
-                .font(.quickMailBrand(34, relativeTo: .title))
+                .font(.title.weight(.semibold))
                 .foregroundStyle(QuickMailDesign.Palette.primaryText)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
