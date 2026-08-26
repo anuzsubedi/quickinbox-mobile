@@ -403,8 +403,8 @@ private enum OnboardingStyle {
         CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
     }()
 
-    // Matches the illustration's warm paper background without adding an app theme.
-    static let canvas = Color(red: 247 / 255, green: 240 / 255, blue: 228 / 255)
+    // Matches the illustration's edge pixels without adding an app theme.
+    static let canvas = Color(red: 254 / 255, green: 249 / 255, blue: 238 / 255)
     static let raised = Color(red: 255 / 255, green: 250 / 255, blue: 240 / 255)
     static let ink = Color(red: 0.20, green: 0.14, blue: 0.10)
     static let tint = Color(red: 143 / 255, green: 102 / 255, blue: 57 / 255)
