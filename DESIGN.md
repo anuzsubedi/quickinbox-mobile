@@ -40,6 +40,8 @@ implied by the interface.
 
 ## Color and material
 
+- **Classic Cream:** the default theme pairs warm ivory reading surfaces,
+  cocoa text, muted sage support, and caramel interactive accents.
 - **Ink:** the Paper, White, and AMOLED canvases retain the app accent's deep
   indigo family. It owns primary actions and brand punctuation, never a large
   navigation background.
@@ -59,6 +61,8 @@ implied by the interface.
 ## Typography
 
 - San Francisco semantic text styles carry the interface and Dynamic Type.
+- Cormorant Garamond Semibold is reserved for the QuickMail wordmark and the
+  single onboarding headline; it is never used for operational UI.
 - The mailbox title is the strongest top-level type. It names the current
   mailbox, not the brand or a greeting.
 - Rows use sender, subject, preview, then time/state metadata. Unread mail gains
@@ -126,9 +130,13 @@ implied by the interface.
 
 ## Onboarding
 
-- Pairing is scanner-first. The first screen shows the server-to-phone mail
-  illustration, with one prominent **Scan Pairing Code** action and a secondary
-  **Enter Code Manually** action on the same screen.
+- Pairing is scanner-first. The first screen centers the server-to-phone mail
+  illustration, with one prominent **Scan QR Code** action followed by a
+  secondary **Enter Code Manually** action.
+- The first screen includes a Privacy Policy link. Support, Privacy Policy, and
+  bundled-font notices are also available from the Settings About section.
+- The centered onboarding flow preserves Reduce Motion and keeps pairing form
+  rows at a 44-point minimum.
 - Scanner and manual-entry screens expose a native info action that explains
   where to find the QR code, server URL, and pairing code in QuickMail on the
   web.

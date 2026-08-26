@@ -51,3 +51,5 @@ privacy decisions, metadata draft, and reviewer-access requirements.
 ## License
 
 QuickMail is available under the MIT License. See [`LICENSE.md`](LICENSE.md).
+The bundled Cormorant Garamond font remains under the SIL Open Font License,
+Version 1.1. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

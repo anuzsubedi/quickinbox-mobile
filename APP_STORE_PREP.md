@@ -1,6 +1,6 @@
 # QuickMail iOS App Review preparation
 
-Last audited: August 24, 2026.
+Last audited: August 25, 2026.
 
 This checklist intentionally contains no production URLs, credentials, Apple
 IDs, signing team identifiers, or other operator-specific information.
@@ -42,6 +42,10 @@ Current local submission-tooling check:
   reason `CA92.1`.
 - `ITSAppUsesNonExemptEncryption = NO`. QuickMail uses Apple-provided HTTPS and
   hashing rather than shipping its own non-exempt encryption implementation.
+- Settings includes Support, Privacy Policy, and Third-Party Notices links;
+  onboarding also exposes the Privacy Policy link.
+- Cormorant Garamond licensing and the complete SIL Open Font License are
+  bundled in the repository and app.
 
 ### Release blockers
 
@@ -55,8 +59,8 @@ Current local submission-tooling check:
   the public upstream repository.
 - [ ] Publish permanent Privacy Policy and Support pages. The support page must
   contain real contact information.
-- [ ] Add an easily accessible Privacy Policy link inside the iOS app after its
-  permanent URL is known.
+- [x] Add an easily accessible Privacy Policy link inside Settings and
+  onboarding. Verify the public policy URL before submission.
 - [ ] Finalize and deploy an isolated review server with synthetic mail only.
 - [ ] Deploy the publisher-hosted server with the mobile-pairing and
   Archive/Unarchive migrations and APIs required by `README.md`. Upstream
@@ -69,6 +73,8 @@ Current local submission-tooling check:
   compose/send, reply/forward, search, settings, revoke, and sign out.
 - [x] Limit the target to iPhone with a consistent iOS 17.0 deployment target
   for Debug and Release.
+- [x] Add the Cormorant Garamond redistribution notice and SIL Open Font
+  License to the repository and app.
 - [ ] Create the App Store Connect app record, sign an archive with Apple
   Distribution, upload it, and select the processed build for version 1.0.
 - [ ] Complete all App Store Connect metadata, privacy, age-rating, content
@@ -152,8 +158,8 @@ as well as providing manual values so review is not camera-dependent.
 > iOS app does not create accounts; server administrators provision them on the
 > web. This review identity is non-admin and contains synthetic mail only.
 >
-> To sign in, tap Continue, then either scan the attached QR code or choose
-> Enter Details. Server: [REVIEW SERVER ORIGIN]. Pairing code: [REVIEW CODE].
+> To sign in, tap Scan QR Code and scan the attached QR code, or choose Enter
+> Code Manually. Server: [REVIEW SERVER ORIGIN]. Pairing code: [REVIEW CODE].
 > The code is reusable for App Review and expires on [DATE].
 >
 > Camera access is used only to scan the pairing QR and is optional. Face ID is
@@ -205,9 +211,10 @@ as well as providing manual values so review is not camera-dependent.
 
 - [ ] Register the explicit App ID `dev.anuz.quickmail` and use it in the App
   Store Connect record.
-- [ ] Publish Privacy Policy and Support URLs, then add the Privacy Policy link
-  inside Settings. Apple's privacy guideline requires the link both in App
-  Store Connect and in an easily accessible location inside the app.
+- [x] Add Privacy Policy and Support destinations to Settings and the Privacy
+  Policy link to onboarding. Publish and verify the public URLs before review;
+  Apple's privacy guideline requires the link both in App Store Connect and in
+  an easily accessible location inside the app.
 - [ ] Freeze the compatible server API/migration version used by the release.
 - [ ] Decide whether QuickMail is free or paid. Banking and tax setup is needed
   for paid distribution; do not add non-Apple purchase calls to action without
