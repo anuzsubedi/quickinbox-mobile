@@ -156,7 +156,6 @@ enum AppThemeRegistry {
                 : Color(red: 0.855, green: 0.910, blue: 0.875)
         )
     }
-
 }
 
 private struct AppThemeKey: EnvironmentKey {
