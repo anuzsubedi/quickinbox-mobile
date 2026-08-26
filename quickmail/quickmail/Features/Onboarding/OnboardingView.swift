@@ -1,3 +1,4 @@
+import CoreText
 import SwiftUI
 
 struct OnboardingView: View {
@@ -24,6 +25,7 @@ struct OnboardingView: View {
         credentialStore: CredentialStore,
         onAuthenticated: @escaping @MainActor (Credential, User) -> Void
     ) {
+        OnboardingStyle.registerBrandFont()
         self.api = api
         self.credentialStore = credentialStore
         self.onAuthenticated = onAuthenticated
@@ -74,7 +76,7 @@ struct OnboardingView: View {
     private func onboardingContent(minHeight: CGFloat) -> some View {
         VStack(spacing: 0) {
             Text("QuickMail")
-                .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                .font(OnboardingStyle.brandFont(44, relativeTo: .largeTitle))
                 .foregroundStyle(OnboardingStyle.ink)
                 .frame(maxWidth: .infinity)
                 .accessibilityAddTraits(.isHeader)
@@ -90,7 +92,7 @@ struct OnboardingView: View {
                 .onboardingReveal(hasAppeared, delay: 0.06, reduceMotion: reduceMotion)
 
             Text("Your private inbox\nbegins here.")
-                .font(.system(.title, design: .serif, weight: .semibold))
+                .font(OnboardingStyle.brandFont(34, relativeTo: .title))
                 .foregroundStyle(OnboardingStyle.ink)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -393,12 +395,28 @@ struct OnboardingView: View {
 }
 
 private enum OnboardingStyle {
+    private static let brandFontName = "CormorantGaramond-SemiBold"
+    private static let fontRegistration: Void = {
+        guard let url = Bundle.main.url(forResource: brandFontName, withExtension: "ttf") else {
+            return
+        }
+        CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+    }()
+
     // Matches the illustration's warm paper background without adding an app theme.
     static let canvas = Color(red: 247 / 255, green: 240 / 255, blue: 228 / 255)
     static let raised = Color(red: 255 / 255, green: 250 / 255, blue: 240 / 255)
     static let ink = Color(red: 0.20, green: 0.14, blue: 0.10)
     static let tint = Color(red: 143 / 255, green: 102 / 255, blue: 57 / 255)
     static let separator = Color(red: 0.31, green: 0.24, blue: 0.17).opacity(0.18)
+
+    static func registerBrandFont() {
+        _ = fontRegistration
+    }
+
+    static func brandFont(_ size: CGFloat, relativeTo style: Font.TextStyle) -> Font {
+        .custom(brandFontName, size: size, relativeTo: style)
+    }
 }
 
 private extension View {
