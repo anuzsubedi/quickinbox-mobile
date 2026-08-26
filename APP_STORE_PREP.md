@@ -32,7 +32,7 @@ Current local submission-tooling check:
 - Native SwiftUI app targeting iPhone on iOS 17 or later.
 - App icon variants and the user-facing display name `QuickMail`.
 - Camera and Face ID purpose strings. Camera pairing is optional because the
-  server URL and code can also be entered manually.
+  server URL and code can also be entered manually from inside the scanner.
 - HTTPS-only production server validation.
 - Bearer credentials stored in Keychain and removable cached mail.
 - App Lock, remote-image privacy controls, device revocation, local data wipe,
@@ -154,8 +154,8 @@ as well as providing manual values so review is not camera-dependent.
 > iOS app does not create accounts; server administrators provision them on the
 > web. This review identity is non-admin and contains synthetic mail only.
 >
-> To sign in, tap Scan QR Code and scan the attached QR code. For manual entry,
-> open the scanner and choose Enter Code Manually. Server: [REVIEW SERVER
+> To sign in, tap Scan QR code and scan the attached QR code. For manual entry,
+> open the scanner and choose Enter code manually. Server: [REVIEW SERVER
 > ORIGIN]. Pairing code: [REVIEW CODE].
 > The code is reusable for App Review and expires on [DATE].
 >

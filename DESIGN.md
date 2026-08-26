@@ -126,23 +126,24 @@ implied by the interface.
 
 ## Onboarding
 
-- Pairing is scanner-first. The first screen centers the server-to-phone mail
-  illustration with one prominent **Scan QR Code** action. Manual entry is a
-  secondary action inside the scanner, where it remains available when camera
-  access is denied or scanning is unavailable.
-- A compact info action exposes the Privacy Policy before pairing. Support and
-  Privacy Policy are also available from the Settings About section.
-- The centered onboarding flow preserves Reduce Motion and keeps pairing form
-  rows at a 44-point minimum.
-- Scanner and manual-entry screens expose a native info action that explains
-  where to find the QR code, server URL, and pairing code in QuickMail on the
-  web.
-- The relationship is described plainly: the code comes from QuickMail on the
-  web, HTTPS is required, and the session is kept in Keychain.
-- Use one restrained brand moment derived from the iOS identity. Do not build a
-  marketing carousel, ornamental hero, or multi-card setup page.
+- Pairing is scanner-first. The light-only landing screen uses a rounded native
+  QuickMail wordmark, a visible **Privacy** text action, a left-aligned headline,
+  and one prominent **Scan QR code** action pinned to the bottom safe-area
+  region.
+- The original transparent server-to-iPhone illustration sits on a warm blush
+  art mat. It is decorative only and contains no scannable QR pattern. The hero
+  yields to copy at accessibility text sizes and in compact-height layouts.
+- The relationship is described plainly: open QuickMail on the web, choose
+  Settings > Connect mobile app, then scan. The landing also states that the
+  connection uses HTTPS and pairing credentials are stored in Keychain.
+- Manual entry is available only from inside the scanner, including permission
+  denied, unsupported-device, unavailable-camera, and scanner-failure states.
+- The scanner uses an edge-to-edge camera surface, custom corner brackets,
+  concise guidance, and a solid bottom region for **Enter code manually**.
 - Camera permission, scanned-host confirmation, errors, progress, and manual
-  entry use system sheets, alerts, fields, and controls.
+  entry use system sheets, alerts, fields, and controls. Support and Privacy
+  Policy remain available from Settings, with the Privacy Policy also exposed
+  before pairing.
 
 ## Settings
 
