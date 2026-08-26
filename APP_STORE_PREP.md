@@ -154,8 +154,9 @@ as well as providing manual values so review is not camera-dependent.
 > iOS app does not create accounts; server administrators provision them on the
 > web. This review identity is non-admin and contains synthetic mail only.
 >
-> To sign in, tap Scan QR Code and scan the attached QR code, or choose Enter
-> Code Manually. Server: [REVIEW SERVER ORIGIN]. Pairing code: [REVIEW CODE].
+> To sign in, tap Scan QR Code and scan the attached QR code. For manual entry,
+> open the scanner and choose Enter Code Manually. Server: [REVIEW SERVER
+> ORIGIN]. Pairing code: [REVIEW CODE].
 > The code is reusable for App Review and expires on [DATE].
 >
 > Camera access is used only to scan the pairing QR and is optional. Face ID is

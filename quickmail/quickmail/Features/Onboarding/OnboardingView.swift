@@ -17,6 +17,7 @@ struct OnboardingView: View {
     @State private var showsScannedOriginConfirmation = false
     @State private var showsManualPairing = false
     @State private var showsManualPairingHelp = false
+    @State private var showsPrivacyPolicy = false
     @State private var hasAppeared = false
     @FocusState private var focusedField: Field?
 
@@ -44,6 +45,11 @@ struct OnboardingView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+            .overlay(alignment: .topTrailing) {
+                onboardingInfoButton
+                    .padding(.top, 8)
+                    .padding(.trailing, 16)
+            }
         }
         .preferredColorScheme(.light)
         .interactiveDismissDisabled(isConnecting)
@@ -51,10 +57,25 @@ struct OnboardingView: View {
             revealContent()
         }
         .sheet(isPresented: $isScannerPresented) {
-            QRScannerView(onScan: receiveScannedValue)
+            QRScannerView(
+                onScan: receiveScannedValue,
+                onEnterManually: showManualPairingAfterScanner
+            )
         }
         .sheet(isPresented: $showsManualPairing) {
             manualPairingSheet
+        }
+        .sheet(isPresented: $showsPrivacyPolicy) {
+            NavigationStack {
+                InAppWebView(url: AppLinks.privacyPolicy)
+                    .navigationTitle("Privacy Policy")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showsPrivacyPolicy = false }
+                        }
+                    }
+            }
         }
         .alert("Check QuickMail Server", isPresented: $showsScannedOriginConfirmation) {
             Button("Cancel", role: .cancel) {
@@ -91,7 +112,7 @@ struct OnboardingView: View {
                 .accessibilityHidden(true)
                 .onboardingReveal(hasAppeared, delay: 0.06, reduceMotion: reduceMotion)
 
-            Text("Your private inbox\nbegins here.")
+            Text("Connect to your hosted\nQuickmail Server")
                 .font(OnboardingStyle.brandFont(34, relativeTo: .title))
                 .foregroundStyle(OnboardingStyle.ink)
                 .multilineTextAlignment(.center)
@@ -103,7 +124,6 @@ struct OnboardingView: View {
 
             VStack(spacing: 12) {
                 scanButton
-                manualPairingButton
 
                 if let errorMessage {
                     connectionError(message: errorMessage)
@@ -113,9 +133,6 @@ struct OnboardingView: View {
             .onboardingReveal(hasAppeared, delay: 0.18, reduceMotion: reduceMotion)
 
             Spacer(minLength: 22)
-
-            privacyPolicyFooter
-                .onboardingReveal(hasAppeared, delay: 0.24, reduceMotion: reduceMotion)
         }
         .frame(maxWidth: 430)
         .padding(.horizontal, 24)
@@ -158,43 +175,16 @@ struct OnboardingView: View {
         .accessibilityHint("Opens the camera to scan the pairing QR code")
     }
 
-    private var manualPairingButton: some View {
+    private var onboardingInfoButton: some View {
         Button {
-            AppFeedback.selection()
-            errorMessage = nil
-            showsManualPairing = true
+            showsPrivacyPolicy = true
         } label: {
-            Text("Enter Code Manually")
-                .font(.quickMailSemibold(17, relativeTo: .headline))
+            Image(systemName: "info.circle")
+                .font(.title3.weight(.medium))
                 .foregroundStyle(OnboardingStyle.tint)
-                .frame(maxWidth: .infinity, minHeight: 54)
-                .background(
-                    OnboardingStyle.raised,
-                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(OnboardingStyle.separator, lineWidth: 0.5)
-                }
+                .frame(width: 44, height: 44)
         }
-        .buttonStyle(.plain)
-        .disabled(isConnecting)
-        .accessibilityHint("Opens fields for the server URL and pairing code")
-    }
-
-    private var privacyPolicyFooter: some View {
-        NavigationLink {
-            InAppWebView(url: AppLinks.privacyPolicy)
-                .navigationTitle("Privacy Policy")
-                .navigationBarTitleDisplayMode(.inline)
-        } label: {
-            Text("Privacy Policy")
-                .font(.caption)
-                .underline()
-                .foregroundStyle(OnboardingStyle.tint)
-                .frame(minHeight: 44)
-        }
-        .frame(maxWidth: .infinity)
+        .accessibilityLabel("Privacy Policy")
     }
 
     private func connectionError(message: String) -> some View {
@@ -330,6 +320,15 @@ struct OnboardingView: View {
         }
     }
 
+    private func showManualPairingAfterScanner() {
+        isScannerPresented = false
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            errorMessage = nil
+            showsManualPairing = true
+        }
+    }
+
     private func connectManually() {
         focusedField = nil
         do {
@@ -405,10 +404,8 @@ private enum OnboardingStyle {
 
     // Matches the illustration's edge pixels without adding an app theme.
     static let canvas = Color(red: 254 / 255, green: 249 / 255, blue: 238 / 255)
-    static let raised = Color(red: 255 / 255, green: 250 / 255, blue: 240 / 255)
     static let ink = Color(red: 0.20, green: 0.14, blue: 0.10)
     static let tint = Color(red: 143 / 255, green: 102 / 255, blue: 57 / 255)
-    static let separator = Color(red: 0.31, green: 0.24, blue: 0.17).opacity(0.18)
 
     static func registerBrandFont() {
         _ = fontRegistration

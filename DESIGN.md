@@ -127,10 +127,11 @@ implied by the interface.
 ## Onboarding
 
 - Pairing is scanner-first. The first screen centers the server-to-phone mail
-  illustration, with one prominent **Scan QR Code** action followed by a
-  secondary **Enter Code Manually** action.
-- The first screen includes a Privacy Policy link. Support and Privacy Policy
-  are also available from the Settings About section.
+  illustration with one prominent **Scan QR Code** action. Manual entry is a
+  secondary action inside the scanner, where it remains available when camera
+  access is denied or scanning is unavailable.
+- A compact info action exposes the Privacy Policy before pairing. Support and
+  Privacy Policy are also available from the Settings About section.
 - The centered onboarding flow preserves Reduce Motion and keeps pairing form
   rows at a 44-point minimum.
 - Scanner and manual-entry screens expose a native info action that explains

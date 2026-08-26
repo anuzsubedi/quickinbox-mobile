@@ -6,6 +6,7 @@ import VisionKit
 
 struct QRScannerView: View {
     let onScan: (String) -> Void
+    let onEnterManually: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
@@ -44,6 +45,21 @@ struct QRScannerView: View {
                         Task { await prepareScanner() }
                     }
                 }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Button {
+                    dismiss()
+                    onEnterManually()
+                } label: {
+                    Label("Enter Code Manually", systemImage: "keyboard")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.bar)
+                .accessibilityHint("Closes the scanner and opens manual pairing fields")
             }
             .navigationTitle("Scan Pairing Code")
             .navigationBarTitleDisplayMode(.inline)
