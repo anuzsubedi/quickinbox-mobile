@@ -107,6 +107,39 @@ struct SettingsView: View {
                         )
                     }
                 }
+
+                settingsGroup(title: "About") {
+                    NavigationLink {
+                        supportPage
+                    } label: {
+                        settingsDestinationLabel(
+                            "Support",
+                            systemImage: "questionmark.circle"
+                        )
+                    }
+
+                    settingsGroupDivider
+
+                    NavigationLink {
+                        privacyPolicyPage
+                    } label: {
+                        settingsDestinationLabel(
+                            "Privacy Policy",
+                            systemImage: "hand.raised"
+                        )
+                    }
+
+                    settingsGroupDivider
+
+                    NavigationLink {
+                        thirdPartyNoticesPage
+                    } label: {
+                        settingsDestinationLabel(
+                            "Third-Party Notices",
+                            systemImage: "doc.text"
+                        )
+                    }
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 18)
@@ -147,6 +180,7 @@ struct SettingsView: View {
         // dismissing and reopening the sheet.
         .preferredColorScheme(settingsPreferredColorScheme)
         .environment(\.appTheme, selectedTheme)
+        .tint(settingsPalette.interactiveTint)
     }
 
     private var accountOverview: some View {
@@ -243,15 +277,15 @@ struct SettingsView: View {
 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(isSelected ? Color.accentColor : settingsPalette.secondaryText.opacity(0.5))
+                    .foregroundStyle(isSelected ? settingsPalette.interactiveTint : settingsPalette.secondaryText.opacity(0.5))
                     .accessibilityHidden(true)
             }
             .padding(12)
             .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
-            .background(isSelected ? Color.accentColor.opacity(0.09) : settingsPalette.fill, in: shape)
+            .background(isSelected ? settingsPalette.interactiveTint.opacity(0.09) : settingsPalette.fill, in: shape)
             .overlay {
                 shape.stroke(
-                    isSelected ? Color.accentColor.opacity(0.85) : settingsPalette.separator,
+                    isSelected ? settingsPalette.interactiveTint.opacity(0.85) : settingsPalette.separator,
                     lineWidth: isSelected ? 1.5 : 0.5
                 )
             }
@@ -396,6 +430,83 @@ struct SettingsView: View {
         }
     }
 
+    private var thirdPartyNoticesPage: some View {
+        settingsPage {
+            settingsPageSection(
+                "Open Source Licenses",
+                detail: "Copyright notices and license terms for software included with QuickMail."
+            ) {
+                Text(thirdPartyNotices)
+                    .font(.footnote.monospaced())
+                    .foregroundStyle(QuickMailDesign.Palette.primaryText)
+                    .textSelection(.enabled)
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .navigationTitle("Third-Party Notices")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var thirdPartyNotices: String {
+        guard let url = Bundle.main.url(
+            forResource: "ThirdPartyNotices",
+            withExtension: "txt"
+        ), let contents = try? String(contentsOf: url, encoding: .utf8) else {
+            return "Third-party notices could not be loaded."
+        }
+        return contents
+    }
+
+    private var privacyPolicyPage: some View {
+        InAppWebView(url: AppLinks.privacyPolicy)
+            .navigationTitle("Privacy Policy")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var supportPage: some View {
+        settingsPage {
+            settingsPageSection(
+                "Get Help",
+                detail: "Questions, feedback, or a problem to report - we're here."
+            ) {
+                Link(destination: AppLinks.supportEmail) {
+                    HStack(spacing: 12) {
+                        Label("Email Support", systemImage: "envelope")
+                            .font(.body)
+                        Spacer(minLength: 8)
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption.weight(.semibold))
+                            .accessibilityHidden(true)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .accessibilityHint("Opens your mail app with QuickMail support pre-addressed")
+
+                settingsGroupDivider
+
+                Link(destination: AppLinks.issueTracker) {
+                    HStack(spacing: 12) {
+                        Label("Report an Issue on GitHub", systemImage: "exclamationmark.bubble")
+                            .font(.body)
+                        Spacer(minLength: 8)
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption.weight(.semibold))
+                            .accessibilityHidden(true)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .accessibilityHint("Opens the QuickMail issue tracker in the browser")
+            }
+        }
+        .navigationTitle("Support")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
     private func settingsPage<Content: View>(
         spacing: CGFloat = 24,
         @ViewBuilder content: () -> Content
@@ -463,10 +574,10 @@ struct SettingsView: View {
         HStack(spacing: 12) {
             Image(systemName: systemImage)
                 .font(.body)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(settingsPalette.interactiveTint)
                 .frame(width: 32, height: 32)
                 .background(
-                    Color.accentColor.opacity(0.12),
+                    settingsPalette.interactiveTint.opacity(0.12),
                     in: RoundedRectangle(cornerRadius: 8, style: .continuous)
                 )
 
@@ -811,7 +922,7 @@ struct SettingsView: View {
             }
         }
         .disabled(model.isSavingSignature || !model.signatureHasChanges)
-        .tint(Color.accentColor)
+        .tint(settingsPalette.interactiveTint)
         .accessibilityHint(
             model.signatureHasChanges
                 ? "Saves the signature to your account"
