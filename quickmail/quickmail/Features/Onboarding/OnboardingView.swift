@@ -2,8 +2,6 @@ import SwiftUI
 
 struct OnboardingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.appTheme) private var appTheme
-    @Environment(\.colorScheme) private var colorScheme
 
     private let api: QuickMailAPI
     private let credentialStore: CredentialStore
@@ -34,7 +32,7 @@ struct OnboardingView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                QuickMailDesign.Palette.paperGrouped.ignoresSafeArea()
+                OnboardingStyle.canvas.ignoresSafeArea()
 
                 GeometryReader { geometry in
                     ScrollView {
@@ -45,6 +43,7 @@ struct OnboardingView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
         }
+        .preferredColorScheme(.light)
         .interactiveDismissDisabled(isConnecting)
         .task {
             revealContent()
@@ -72,15 +71,11 @@ struct OnboardingView: View {
         }
     }
 
-    private var onboardingPalette: AppThemePalette {
-        appTheme.palette(for: colorScheme)
-    }
-
     private func onboardingContent(minHeight: CGFloat) -> some View {
         VStack(spacing: 0) {
             Text("QuickMail")
-                .font(.largeTitle.weight(.bold))
-                .foregroundStyle(QuickMailDesign.Palette.primaryText)
+                .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                .foregroundStyle(OnboardingStyle.ink)
                 .frame(maxWidth: .infinity)
                 .accessibilityAddTraits(.isHeader)
                 .onboardingReveal(hasAppeared, delay: 0, reduceMotion: reduceMotion)
@@ -95,8 +90,8 @@ struct OnboardingView: View {
                 .onboardingReveal(hasAppeared, delay: 0.06, reduceMotion: reduceMotion)
 
             Text("Your private inbox\nbegins here.")
-                .font(.title.weight(.semibold))
-                .foregroundStyle(QuickMailDesign.Palette.primaryText)
+                .font(.system(.title, design: .serif, weight: .semibold))
+                .foregroundStyle(OnboardingStyle.ink)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 10)
@@ -151,7 +146,7 @@ struct OnboardingView: View {
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity, minHeight: 54)
             .background(
-                onboardingPalette.interactiveTint,
+                OnboardingStyle.tint,
                 in: RoundedRectangle(cornerRadius: 14, style: .continuous)
             )
         }
@@ -169,15 +164,15 @@ struct OnboardingView: View {
         } label: {
             Text("Enter Code Manually")
                 .font(.quickMailSemibold(17, relativeTo: .headline))
-                .foregroundStyle(onboardingPalette.interactiveTint)
+                .foregroundStyle(OnboardingStyle.tint)
                 .frame(maxWidth: .infinity, minHeight: 54)
                 .background(
-                    QuickMailDesign.Palette.paperRaised,
+                    OnboardingStyle.raised,
                     in: RoundedRectangle(cornerRadius: 14, style: .continuous)
                 )
                 .overlay {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(QuickMailDesign.Palette.separator, lineWidth: 0.5)
+                        .stroke(OnboardingStyle.separator, lineWidth: 0.5)
                 }
         }
         .buttonStyle(.plain)
@@ -194,7 +189,7 @@ struct OnboardingView: View {
             Text("Privacy Policy")
                 .font(.caption)
                 .underline()
-                .foregroundStyle(onboardingPalette.interactiveTint)
+                .foregroundStyle(OnboardingStyle.tint)
                 .frame(minHeight: 44)
         }
         .frame(maxWidth: .infinity)
@@ -251,7 +246,7 @@ struct OnboardingView: View {
                     }
                 }
             }
-            .tint(onboardingPalette.interactiveTint)
+            .tint(OnboardingStyle.tint)
             .navigationTitle("Enter Pairing Code")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -285,7 +280,7 @@ struct OnboardingView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .tint(onboardingPalette.interactiveTint)
+                .tint(OnboardingStyle.tint)
                 .disabled(isConnecting || serverOrigin.isEmpty || pairingCode.isEmpty)
                 .padding(16)
                 .quickMailBarSurface()
@@ -395,6 +390,15 @@ struct OnboardingView: View {
         case server
         case code
     }
+}
+
+private enum OnboardingStyle {
+    // Matches the illustration's warm paper background without adding an app theme.
+    static let canvas = Color(red: 247 / 255, green: 240 / 255, blue: 228 / 255)
+    static let raised = Color(red: 255 / 255, green: 250 / 255, blue: 240 / 255)
+    static let ink = Color(red: 0.20, green: 0.14, blue: 0.10)
+    static let tint = Color(red: 143 / 255, green: 102 / 255, blue: 57 / 255)
+    static let separator = Color(red: 0.31, green: 0.24, blue: 0.17).opacity(0.18)
 }
 
 private extension View {
