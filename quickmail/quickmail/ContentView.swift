@@ -6,6 +6,7 @@ struct ContentView: View {
     @State private var session: AppSession
     @State private var appLock = AppLockController()
     @AppStorage(AppPreferences.appThemeID) private var appThemeID = AppThemeRegistry.defaultThemeID
+    @AppStorage(AppPreferences.appTintID) private var appTintID = AppTintRegistry.defaultTintID
 
     init() {
         let mailboxCache = MailboxCache()
@@ -36,6 +37,7 @@ struct ContentView: View {
 
     private var selectedTheme: AppTheme {
         AppThemeRegistry.theme(id: appThemeID)
+            .applying(AppTintRegistry.tint(id: appTintID))
     }
 
     @ViewBuilder

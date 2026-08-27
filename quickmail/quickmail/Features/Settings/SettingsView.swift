@@ -8,14 +8,19 @@ struct SettingsView: View {
     @StateObject private var model: SettingsViewModel
     @AppStorage(AppPreferences.showRemoteImagesByDefault) private var showRemoteImagesByDefault = false
     @AppStorage(AppPreferences.appThemeID) private var appThemeID = AppThemeRegistry.defaultThemeID
+    @AppStorage(AppPreferences.appTintID) private var appTintID = AppTintRegistry.defaultTintID
     private let onDisconnected: (String?) -> Void
 
     private var appearanceSummary: String {
-        selectedTheme.title
+        "\(selectedTheme.title) · \(selectedTint.title)"
     }
 
     private var selectedTheme: AppTheme {
-        AppThemeRegistry.theme(id: appThemeID)
+        AppThemeRegistry.theme(id: appThemeID).applying(selectedTint)
+    }
+
+    private var selectedTint: AppTint {
+        AppTintRegistry.tint(id: appTintID)
     }
 
     private var settingsPalette: AppThemePalette {
@@ -237,13 +242,28 @@ struct SettingsView: View {
                     themeChoice(theme)
                 }
             }
+
+            settingsOverviewHeading(
+                "Accent",
+                detail: "Tint native controls and Liquid Glass without changing the canvas."
+            )
+            .padding(.top, 8)
+
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 88), spacing: 10)],
+                spacing: 10
+            ) {
+                ForEach(AppTintRegistry.all) { tint in
+                    tintChoice(tint)
+                }
+            }
         }
         .modifier(SettingsPanelModifier())
     }
 
     private func themeChoice(_ theme: AppTheme) -> some View {
         let isSelected = theme.id == selectedTheme.id
-        let previewPalette = theme.palette(for: colorScheme)
+        let previewPalette = theme.applying(selectedTint).palette(for: colorScheme)
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
 
         return Button {
@@ -271,7 +291,7 @@ struct SettingsView: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
-            .background(isSelected ? settingsPalette.interactiveTint.opacity(0.09) : settingsPalette.fill, in: shape)
+            .background(settingsPalette.fill, in: shape)
             .overlay {
                 shape.stroke(
                     isSelected ? settingsPalette.interactiveTint.opacity(0.85) : settingsPalette.separator,
@@ -303,10 +323,55 @@ struct SettingsView: View {
                     .frame(width: 20, height: 2)
             }
             .padding(7)
+
+            Circle()
+                .fill(palette.interactiveTint)
+                .frame(width: 9, height: 9)
+                .padding(6)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
         .frame(width: 52, height: 46)
         .overlay { shape.stroke(palette.separator, lineWidth: 0.75) }
         .accessibilityHidden(true)
+    }
+
+    private func tintChoice(_ tint: AppTint) -> some View {
+        let isSelected = tint.id == selectedTint.id
+        let effectiveScheme = selectedTheme.preferredColorScheme ?? colorScheme
+        let color = tint.color(for: effectiveScheme)
+
+        return Button {
+            guard tint.id != selectedTint.id else { return }
+            appTintID = tint.id
+            AppFeedback.selection()
+        } label: {
+            VStack(spacing: 8) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 28, height: 28)
+                    .overlay {
+                        if isSelected {
+                            Image(systemName: "checkmark")
+                                .font(.caption.bold())
+                                .foregroundStyle(tint.onColor(for: effectiveScheme))
+                        }
+                    }
+
+                Text(tint.title)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(settingsPalette.primaryText)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, minHeight: 68)
+            .background(settingsPalette.fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(isSelected ? color : settingsPalette.separator, lineWidth: isSelected ? 1.5 : 0.5)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(tint.title)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
     }
 
     private func settingsOverviewHeading(_ title: String, detail: String) -> some View {

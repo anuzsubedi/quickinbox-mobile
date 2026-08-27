@@ -14,6 +14,13 @@ struct MailboxFeatureView: View {
     private let onMailboxChanged: () -> Void
     private let onSelectThread: (ThreadSummary) -> Void
 
+    private enum ContentPhase: Hashable {
+        case loading
+        case error
+        case empty
+        case list
+    }
+
     init(
         api: QuickMailAPI,
         userID: String,
@@ -72,12 +79,20 @@ struct MailboxFeatureView: View {
         VStack(spacing: 0) {
             mailboxMasthead
 
-            if model.isShowingCachedData || model.refreshError != nil {
+            if model.refreshError != nil {
                 cacheStatusBanner
                     .transition(QuickMailDesign.Motion.revealTransition(reduceMotion: reduceMotion))
             }
 
-            contentState
+            ZStack {
+                contentState
+                    .id(contentPhase)
+                    .transition(.opacity)
+            }
+            .animation(
+                QuickMailDesign.Motion.resolved(.easeOut(duration: 0.2), reduceMotion: reduceMotion),
+                value: contentPhase
+            )
         }
             .safeAreaInset(edge: .bottom) {
                 composeDock
@@ -87,7 +102,7 @@ struct MailboxFeatureView: View {
             .sensoryFeedback(.selection, trigger: selectionFeedbackTrigger)
             .animation(
                 QuickMailDesign.Motion.resolved(QuickMailDesign.Motion.stateChange, reduceMotion: reduceMotion),
-                value: model.isShowingCachedData || model.refreshError != nil
+                value: model.refreshError != nil
             )
             .task {
                 if model.currentPage == 0 {
@@ -130,7 +145,11 @@ struct MailboxFeatureView: View {
                         selectionFeedbackTrigger += 1
                         Task { await model.reload(showInitialLoading: false) }
                     } label: {
-                        Label("Unread", systemImage: "envelope.badge")
+                        Label(
+                            "Unread",
+                            systemImage: model.unreadOnly ? "envelope.badge.fill" : "envelope.badge"
+                        )
+                        .contentTransition(.symbolEffect(.replace))
                     }
                     .modifier(MailboxFilterButtonStyle(isActive: model.unreadOnly))
                     .controlSize(.small)
@@ -142,6 +161,10 @@ struct MailboxFeatureView: View {
                             : "Shows unread inbox conversations only"
                     )
                     .accessibilityAddTraits(model.unreadOnly ? .isSelected : [])
+                    .animation(
+                        QuickMailDesign.Motion.resolved(QuickMailDesign.Motion.selection, reduceMotion: reduceMotion),
+                        value: model.unreadOnly
+                    )
                 }
             }
             .accessibilityElement(children: .contain)
@@ -291,18 +314,21 @@ struct MailboxFeatureView: View {
         }
     }
 
+    private var contentPhase: ContentPhase {
+        if model.isInitialLoading && model.threads.isEmpty { return .loading }
+        if model.initialError != nil && model.threads.isEmpty { return .error }
+        if model.threads.isEmpty { return .empty }
+        return .list
+    }
+
     private var mailboxLoadingState: some View {
         List {
-            Section {
-                ForEach(0..<6, id: \.self) { _ in
-                    MailboxLoadingRow()
-                        .listRowBackground(QuickMailDesign.Palette.paper)
-                }
-            } header: {
-                Text("Recent")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
-                    .textCase(nil)
+            ForEach(0..<6, id: \.self) { _ in
+                MailboxLoadingRow()
+                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.visible, edges: .bottom)
+                    .alignmentGuide(.listRowSeparatorLeading) { _ in 56 }
             }
         }
         .listStyle(.plain)
@@ -352,10 +378,6 @@ struct MailboxFeatureView: View {
         .contentMargins(.top, 12, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .background(QuickMailDesign.Palette.paper)
-        .animation(
-            reduceMotion ? nil : .smooth(duration: 0.2),
-            value: model.threads.map(\.id)
-        )
         .refreshable {
             await model.refresh()
         }
@@ -452,38 +474,28 @@ struct MailboxFeatureView: View {
 
     private var cacheStatusBanner: some View {
         HStack(spacing: 10) {
-            Image(systemName: model.refreshError == nil ? "clock.arrow.circlepath" : "wifi.slash")
+            Image(systemName: "wifi.slash")
                 .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(
-                    model.refreshError == nil
-                        ? "Showing saved mail"
-                        : "Couldn’t refresh \(model.selectedMailbox.title)"
-                )
+                Text("Couldn’t refresh \(model.selectedMailbox.title)")
                     .font(.subheadline.weight(.semibold))
                 if let refreshError = model.refreshError {
                     Text(refreshError)
                         .font(.caption)
                         .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                         .lineLimit(2)
-                } else if let cachedAt = model.cachedAt {
-                    Text("Updated \(cachedAt.formatted(.relative(presentation: .named)))")
-                        .font(.caption)
-                        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                 }
             }
 
             Spacer()
 
-            if model.refreshError != nil {
-                Button("Retry") {
-                    model.dismissRefreshError()
-                    Task { await model.reload(showInitialLoading: false) }
-                }
-                .buttonStyle(.bordered)
+            Button("Retry") {
+                model.dismissRefreshError()
+                Task { await model.reload(showInitialLoading: false) }
             }
+            .buttonStyle(.bordered)
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
@@ -678,18 +690,27 @@ struct MailboxFeatureView: View {
 
 private struct MailboxLoadingRow: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            RoundedRectangle(cornerRadius: 3)
-                .fill(QuickMailDesign.Palette.secondaryText.opacity(0.14))
-                .frame(width: 150, height: 12)
-            RoundedRectangle(cornerRadius: 3)
-                .fill(QuickMailDesign.Palette.secondaryText.opacity(0.10))
-                .frame(height: 11)
-            RoundedRectangle(cornerRadius: 3)
-                .fill(QuickMailDesign.Palette.secondaryText.opacity(0.08))
-                .frame(width: 220, height: 11)
+        HStack(alignment: .top, spacing: 12) {
+            Circle()
+                .fill(QuickMailDesign.Palette.fill)
+                .frame(width: 42, height: 42)
+
+            VStack(alignment: .leading, spacing: 7) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(QuickMailDesign.Palette.secondaryText.opacity(0.14))
+                    .frame(width: 132, height: 12)
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(QuickMailDesign.Palette.secondaryText.opacity(0.10))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 11)
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(QuickMailDesign.Palette.secondaryText.opacity(0.08))
+                    .frame(width: 196, height: 11)
+            }
+            .padding(.top, 2)
         }
-        .padding(.vertical, 9)
+        .padding(.vertical, 13)
+        .frame(maxWidth: .infinity, minHeight: 90, alignment: .leading)
         .accessibilityHidden(true)
     }
 }
@@ -702,13 +723,19 @@ private struct MailboxThreadSection: Identifiable {
 }
 
 private struct MailboxSearchGlassStyle: ViewModifier {
+    @Environment(\.appTheme) private var appTheme
+    @Environment(\.colorScheme) private var colorScheme
+
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content.glassEffect(.regular.interactive(), in: .rect(cornerRadius: QuickMailDesign.Radius.control))
+            content.glassEffect(
+                .regular.interactive().tint(appTheme.palette(for: colorScheme).interactiveTint),
+                in: .rect(cornerRadius: QuickMailDesign.Radius.control)
+            )
         } else {
             content.background(
-                QuickMailDesign.Palette.paperRaised,
+                QuickMailDesign.Palette.fill,
                 in: RoundedRectangle(cornerRadius: QuickMailDesign.Radius.control, style: .continuous)
             )
         }
@@ -720,8 +747,7 @@ private struct MailboxThreadButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         return configuration.label
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
-            .opacity(configuration.isPressed ? 0.84 : 1)
+            .opacity(configuration.isPressed ? 0.72 : 1)
             .animation(
                 QuickMailDesign.Motion.resolved(QuickMailDesign.Motion.press, reduceMotion: reduceMotion),
                 value: configuration.isPressed
@@ -741,24 +767,29 @@ private struct SettingsShortcutStyle: ViewModifier {
 }
 
 private struct MailboxFilterButtonStyle: ViewModifier {
+    @Environment(\.appTheme) private var appTheme
+    @Environment(\.colorScheme) private var colorScheme
+
     let isActive: Bool
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            if isActive {
-                content
-                    .buttonStyle(.glassProminent)
-
-            } else {
-                content.buttonStyle(.glass)
-            }
-        } else if isActive {
             content
-                .buttonStyle(.borderedProminent)
-
+                .buttonStyle(.glass)
+                .tint(
+                    isActive
+                        ? appTheme.palette(for: colorScheme).interactiveTint
+                        : appTheme.palette(for: colorScheme).secondaryText
+                )
         } else {
-            content.buttonStyle(.bordered)
+            content
+                .buttonStyle(.bordered)
+                .tint(
+                    isActive
+                        ? appTheme.palette(for: colorScheme).interactiveTint
+                        : appTheme.palette(for: colorScheme).secondaryText
+                )
         }
     }
 }

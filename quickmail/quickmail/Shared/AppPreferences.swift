@@ -6,4 +6,5 @@ nonisolated enum AppPreferences {
     static let showRemoteImagesByDefault = "quickmail.privacy.showRemoteImagesByDefault"
     // Keep the original storage key so existing theme choices migrate automatically.
     static let appThemeID = "quickmail.appearance.appCanvasStyle"
+    static let appTintID = "quickmail.appearance.appTint"
 }
