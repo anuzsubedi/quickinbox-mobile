@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ThreadSummaryRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let thread: ThreadSummary
     let mailbox: MailboxKind
@@ -37,6 +38,10 @@ struct ThreadSummaryRow: View {
         .frame(maxWidth: .infinity, minHeight: 90, alignment: .leading)
         .foregroundStyle(QuickMailDesign.Palette.primaryText)
         .contentShape(Rectangle())
+        .animation(
+            QuickMailDesign.Motion.resolved(QuickMailDesign.Motion.selection, reduceMotion: reduceMotion),
+            value: thread.isRead
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(accessibilityValue)
@@ -266,28 +271,22 @@ private struct MailboxAvatar: View {
         ZStack {
             ParticipantMonogram(name: name, isEmphasized: false, size: 38)
 
+            Circle()
+                .stroke(QuickMailDesign.Palette.separator.opacity(0.7), lineWidth: 1)
+                .frame(width: 42, height: 42)
+
             if isUnread {
-                unreadBadge
-                    .frame(width: 16, height: 16)
-                    .offset(x: 14, y: 14)
+                Circle()
+                    .trim(from: 0.08, to: 0.68)
+                    .stroke(
+                        QuickMailDesign.Palette.sageStrong,
+                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-42))
+                    .frame(width: 42, height: 42)
             }
         }
         .frame(width: 44, height: 44)
         .accessibilityHidden(true)
-    }
-
-    @ViewBuilder
-    private var unreadBadge: some View {
-        ZStack {
-            Circle()
-                .fill(QuickMailDesign.Palette.interactiveTint)
-            Image(systemName: "envelope.fill")
-                .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(.white)
-        }
-            .overlay {
-                Circle()
-                    .stroke(QuickMailDesign.Palette.paper, lineWidth: 2)
-            }
     }
 }

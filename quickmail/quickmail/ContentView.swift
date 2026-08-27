@@ -74,26 +74,43 @@ struct ContentView: View {
 }
 
 private struct LaunchView: View {
-    var body: some View {
-        VStack(spacing: 22) {
-            Image("LaunchIcon")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 132, height: 92)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showsProgress = false
 
-            VStack(spacing: QuickMailDesign.Spacing.sm) {
-                Text("QuickMail")
-                    .font(.title.bold())
-                    .foregroundStyle(.white)
-            }
+    var body: some View {
+        VStack(spacing: QuickMailDesign.Spacing.xl) {
+            QuickMailMark(size: .system(size: 34, weight: .semibold))
+                .foregroundStyle(QuickMailDesign.Palette.interactiveTint)
+                .frame(width: 84, height: 84)
+                .background(QuickMailDesign.Palette.fill, in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(QuickMailDesign.Palette.separator.opacity(0.55), lineWidth: 0.5)
+                }
+
+            Text("QuickMail")
+                .font(.title.bold())
+                .foregroundStyle(QuickMailDesign.Palette.primaryText)
 
             ProgressView()
-                .tint(.white)
                 .controlSize(.small)
-                .accessibilityLabel("Opening QuickMail")
+                .tint(QuickMailDesign.Palette.interactiveTint)
+                .opacity(showsProgress ? 1 : 0)
+                .accessibilityHidden(!showsProgress)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(QuickMailDesign.Palette.signalInk)
+        .background(QuickMailDesign.Palette.paper)
+        .accessibilityLabel("Opening QuickMail")
+        .task {
+            do {
+                try await Task.sleep(for: .milliseconds(800))
+            } catch {
+                return
+            }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
+                showsProgress = true
+            }
+        }
     }
 }
 

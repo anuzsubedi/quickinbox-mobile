@@ -14,6 +14,20 @@ extension Font {
     static func quickMailBold(_ size: CGFloat = 17, relativeTo style: TextStyle = .body) -> Font {
         .system(style, design: .default, weight: .bold)
     }
+
+    /// Poppins display face used by onboarding surfaces. Scales with Dynamic Type.
+    static func onboardingBrand(_ size: CGFloat, _ weight: Font.Weight = .regular, relativeTo style: TextStyle = .body) -> Font {
+        .custom(onboardingBrandName(weight), size: size, relativeTo: style)
+    }
+
+    private static func onboardingBrandName(_ weight: Font.Weight) -> String {
+        switch weight {
+        case .bold, .heavy, .black: "Poppins-Bold"
+        case .semibold: "Poppins-SemiBold"
+        case .medium: "Poppins-Medium"
+        default: "Poppins-Regular"
+        }
+    }
 }
 
 enum QuickMailDesign {
@@ -26,11 +40,12 @@ enum QuickMailDesign {
         static let xl: CGFloat = 20
         static let xxl: CGFloat = 24
         static let xxxl: CGFloat = 32
+        static let page: CGFloat = 20
     }
     enum Radius {
-        static let control: CGFloat = 10
-        static let card: CGFloat = 14
-        static let panel: CGFloat = 20
+        static let control: CGFloat = 14
+        static let card: CGFloat = 18
+        static let panel: CGFloat = 24
     }
     enum Layout {
         static let readableWidth: CGFloat = 720
@@ -55,6 +70,7 @@ enum QuickMailDesign {
         static let inkMuted = AppThemeColorStyle(.secondaryText)
         static let signalInk = AppThemeColorStyle(.signalInk)
         static let interactiveTint = AppThemeColorStyle(.interactiveTint)
+        static let onInteractive = AppThemeColorStyle(.onInteractive)
         static let floatingActionTint = interactiveTint
         static let sage = AppThemeColorStyle(.sage)
         static let sageStrong = AppThemeColorStyle(.sageStrong)
@@ -70,10 +86,10 @@ enum QuickMailDesign {
         static let secondaryText = inkMuted
     }
     enum Motion {
-        static let press = Animation.easeOut(duration: 0.10)
-        static let selection = Animation.easeInOut(duration: 0.16)
-        static let stateChange = Animation.snappy(duration: 0.26, extraBounce: 0)
-        static let insertion = Animation.spring(duration: 0.34, bounce: 0.08)
+        static let press = Animation.spring(duration: 0.18, bounce: 0.18)
+        static let selection = Animation.easeInOut(duration: 0.18)
+        static let stateChange = Animation.snappy(duration: 0.3, extraBounce: 0.04)
+        static let insertion = Animation.spring(duration: 0.4, bounce: 0.12)
         static let dismissal = Animation.easeInOut(duration: 0.22)
         static func resolved(_ animation: Animation, reduceMotion: Bool) -> Animation? { reduceMotion ? nil : animation }
         static func revealTransition(reduceMotion: Bool) -> AnyTransition { reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity) }
@@ -113,6 +129,9 @@ extension View {
     func quickMailFormSurface() -> some View { modifier(QuickMailFormSurfaceModifier()) }
     func quickMailListRowSurface() -> some View { modifier(QuickMailListRowSurfaceModifier()) }
     func quickMailBarSurface() -> some View { modifier(QuickMailBarSurfaceModifier()) }
+    func quickMailCard(padding: CGFloat = QuickMailDesign.Spacing.lg) -> some View {
+        modifier(QuickMailCardModifier(padding: padding))
+    }
 }
 
 struct QuickMailPanelShape: Shape {
@@ -120,6 +139,51 @@ struct QuickMailPanelShape: Shape {
     func path(in rect: CGRect) -> Path { RoundedRectangle(cornerRadius: normalCornerRadius, style: .continuous).path(in: rect) }
 }
 struct QuickMailCapsuleShape: Shape { func path(in rect: CGRect) -> Path { Capsule().path(in: rect) } }
+
+struct QuickMailCardModifier: ViewModifier {
+    @Environment(\.appTheme) private var appTheme
+    @Environment(\.colorScheme) private var colorScheme
+    var padding: CGFloat = QuickMailDesign.Spacing.lg
+
+    func body(content: Content) -> some View {
+        let palette = appTheme.palette(for: colorScheme)
+        let shape = RoundedRectangle(cornerRadius: QuickMailDesign.Radius.card, style: .continuous)
+        content
+            .padding(padding)
+            .background(palette.raised, in: shape)
+            .overlay { shape.stroke(palette.separator.opacity(0.5), lineWidth: 0.5) }
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.16 : 0.055), radius: 14, y: 5)
+    }
+}
+
+struct QuickMailPressButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.975 : 1)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1) : 0.45)
+            .animation(
+                QuickMailDesign.Motion.resolved(QuickMailDesign.Motion.press, reduceMotion: reduceMotion),
+                value: configuration.isPressed
+            )
+    }
+}
+
+struct AnimatedMailGlyph: View {
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(QuickMailDesign.Palette.fill)
+                .frame(width: 92, height: 92)
+            Image(systemName: "envelope.fill")
+                .font(.system(size: 34, weight: .medium))
+                .foregroundStyle(QuickMailDesign.Palette.interactiveTint)
+        }
+        .accessibilityHidden(true)
+    }
+}
 
 struct QuickMailForm<Content: View>: View {
     private let hidesRowSeparators: Bool

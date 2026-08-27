@@ -130,7 +130,7 @@ struct SettingsView: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, QuickMailDesign.Spacing.page)
             .padding(.top, 18)
             .padding(.bottom, 40)
             .frame(maxWidth: QuickMailDesign.contentMaxWidth)
@@ -476,7 +476,7 @@ struct SettingsView: View {
             LazyVStack(alignment: .leading, spacing: spacing) {
                 content()
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, QuickMailDesign.Spacing.page)
             .padding(.top, 18)
             .padding(.bottom, 40)
             .frame(maxWidth: QuickMailDesign.contentMaxWidth)
@@ -1116,6 +1116,7 @@ struct SettingsView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .frame(minHeight: 58)
+            .onChange(of: showRemoteImagesByDefault) { AppFeedback.play(.toggleConfirmed) }
         }
     }
 
@@ -1172,7 +1173,7 @@ private struct SettingsPanelModifier: ViewModifier {
     var contentPadding: CGFloat = 16
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: QuickMailDesign.Radius.card, style: .continuous)
         let palette = appTheme.palette(for: colorScheme)
 
         content

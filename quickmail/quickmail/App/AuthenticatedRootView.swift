@@ -22,7 +22,9 @@ struct AuthenticatedRootView: View {
                 compactLayout
             }
         }
-        .sheet(isPresented: $isSettingsPresented) {
+        .sheet(isPresented: $isSettingsPresented, onDismiss: {
+            AppFeedback.play(.navigationExited)
+        }) {
             NavigationStack {
                 SettingsView(
                     api: api,
@@ -50,8 +52,11 @@ struct AuthenticatedRootView: View {
         .onChange(of: horizontalSizeClass) { _, sizeClass in
             adaptSelection(to: sizeClass)
         }
-        .onChange(of: compactPath) { _, path in
+        .onChange(of: compactPath) { oldPath, path in
             if horizontalSizeClass != .regular, path.isEmpty {
+                if !oldPath.isEmpty {
+                    AppFeedback.play(.navigationExited)
+                }
                 selectedThread = nil
             }
         }
@@ -84,6 +89,7 @@ struct AuthenticatedRootView: View {
                         onMailboxMutation: refreshMailbox,
                         onExit: exitRegularThread
                     )
+                    .id(selectedThread.id)
                 } else {
                     conversationPlaceholder
                 }
@@ -104,6 +110,7 @@ struct AuthenticatedRootView: View {
                 )
             },
             onOpenSettings: {
+                AppFeedback.play(.navigationEntered)
                 isSettingsPresented = true
             },
             onMailboxChanged: resetMailboxSelection,
@@ -112,16 +119,25 @@ struct AuthenticatedRootView: View {
     }
 
     private var conversationPlaceholder: some View {
-        ContentUnavailableView {
-            Label("Nothing Open", systemImage: "envelope.open")
-        } description: {
-            Text("Select a conversation to read it here.")
+        VStack(spacing: 18) {
+            AnimatedMailGlyph()
+            Text("No Conversation Selected")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(QuickMailDesign.Palette.primaryText)
+            Text("Select a conversation from the sidebar to read it here.")
+                .font(.subheadline)
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                .multilineTextAlignment(.center)
         }
-        .foregroundStyle(QuickMailDesign.Palette.secondaryText)
-        .quickMailPageSurface()
+        .padding(32)
+        .quickMailCard()
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(QuickMailDesign.Palette.paperGrouped)
     }
 
     private func openThread(_ summary: ThreadSummary) {
+        AppFeedback.play(.navigationEntered)
         let selection = ThreadSelection(summary: summary)
         selectedThread = selection
 
@@ -149,6 +165,7 @@ struct AuthenticatedRootView: View {
 
     private func exitRegularThread() {
         if horizontalSizeClass == .regular {
+            AppFeedback.play(.navigationExited)
             selectedThread = nil
         }
     }
