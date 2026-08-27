@@ -74,6 +74,7 @@ struct MailboxFeatureView: View {
 
             if model.isShowingCachedData || model.refreshError != nil {
                 cacheStatusBanner
+                    .transition(QuickMailDesign.Motion.revealTransition(reduceMotion: reduceMotion))
             }
 
             contentState
@@ -84,6 +85,10 @@ struct MailboxFeatureView: View {
             .background(QuickMailDesign.Palette.paper)
             .toolbar(.hidden, for: .navigationBar)
             .sensoryFeedback(.selection, trigger: selectionFeedbackTrigger)
+            .animation(
+                QuickMailDesign.Motion.resolved(QuickMailDesign.Motion.stateChange, reduceMotion: reduceMotion),
+                value: model.isShowingCachedData || model.refreshError != nil
+            )
             .task {
                 if model.currentPage == 0 {
                     await model.bootstrap()
@@ -143,9 +148,9 @@ struct MailboxFeatureView: View {
 
             mailboxSearchField
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 6)
-        .padding(.bottom, 10)
+        .padding(.horizontal, QuickMailDesign.Layout.horizontalMargin)
+        .padding(.top, 10)
+        .padding(.bottom, 14)
         .background(QuickMailDesign.Palette.paper)
     }
 
@@ -155,10 +160,15 @@ struct MailboxFeatureView: View {
                 Button {
                     selectMailbox(mailbox)
                 } label: {
-                    if mailbox == model.selectedMailbox {
-                        Label(mailbox.title, systemImage: "checkmark")
-                    } else {
-                        Label(mailbox.title, systemImage: mailbox.systemImage)
+                    Label {
+                        HStack {
+                            Text(mailbox.title)
+                            if mailbox == model.selectedMailbox {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    } icon: {
+                        Image(systemName: mailbox.systemImage)
                     }
                 }
             }
@@ -168,6 +178,7 @@ struct MailboxFeatureView: View {
                     .font(.title.bold())
                     .foregroundStyle(QuickMailDesign.Palette.primaryText)
                     .lineLimit(1)
+                    .contentTransition(.opacity)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(QuickMailDesign.Palette.secondaryText)
@@ -177,6 +188,10 @@ struct MailboxFeatureView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .animation(
+            QuickMailDesign.Motion.resolved(QuickMailDesign.Motion.selection, reduceMotion: reduceMotion),
+            value: model.selectedMailbox
+        )
         .menuOrder(.fixed)
         .accessibilityLabel("Mailbox")
         .accessibilityValue(model.selectedMailbox.title)
@@ -205,13 +220,12 @@ struct MailboxFeatureView: View {
                 ) {
                     onCompose(nil)
                 }
-
                 .controlSize(.large)
                 .accessibilityHint("Creates a new message")
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 8)
+        .padding(.horizontal, QuickMailDesign.Spacing.xl)
+        .padding(.top, QuickMailDesign.Spacing.sm)
         .padding(.bottom, 6)
     }
 
@@ -293,12 +307,9 @@ struct MailboxFeatureView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(QuickMailDesign.Palette.paperGrouped)
+        .background(QuickMailDesign.Palette.paper)
         .allowsHitTesting(false)
-        .overlay {
-            ProgressView("Loading \(model.selectedMailbox.title.lowercased())…")
-                .accessibilityHidden(false)
-        }
+        .accessibilityLabel("Loading \(model.selectedMailbox.title.lowercased())")
     }
 
     private var threadList: some View {
@@ -306,10 +317,7 @@ struct MailboxFeatureView: View {
             ForEach(threadSections) { section in
                 Section {
                     ForEach(section.threads) { thread in
-                        threadRow(
-                            thread,
-                            isLast: thread.id == model.threads.last?.id
-                        )
+                        threadRow(thread)
                     }
                 } header: {
                     Text(section.title)
@@ -343,7 +351,7 @@ struct MailboxFeatureView: View {
         .listRowSpacing(0)
         .contentMargins(.top, 12, for: .scrollContent)
         .scrollContentBackground(.hidden)
-        .background(QuickMailDesign.Palette.paperGrouped)
+        .background(QuickMailDesign.Palette.paper)
         .animation(
             reduceMotion ? nil : .smooth(duration: 0.2),
             value: model.threads.map(\.id)
@@ -353,11 +361,10 @@ struct MailboxFeatureView: View {
         }
     }
 
-    private func threadRow(_ thread: ThreadSummary, isLast: Bool) -> some View {
+    private func threadRow(_ thread: ThreadSummary) -> some View {
         let isWorking = model.mutatingThreadIDs.contains(thread.id)
 
         return Button {
-            model.selectedThreadID = thread.id
             if thread.isDraft {
                 onCompose(thread.latestID)
             } else {
@@ -383,9 +390,9 @@ struct MailboxFeatureView: View {
             contextMenuActions(for: thread)
         }
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-        .listRowBackground(QuickMailDesign.Palette.paper)
+        .listRowBackground(Color.clear)
         .listRowSeparator(.hidden, edges: .top)
-        .listRowSeparator(isLast ? .hidden : .visible, edges: .bottom)
+        .listRowSeparator(.visible, edges: .bottom)
         .listRowSeparatorTint(appTheme.palette(for: colorScheme).separator.opacity(0.58))
         .alignmentGuide(.listRowSeparatorLeading) { _ in 56 }
     }
@@ -427,7 +434,7 @@ struct MailboxFeatureView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(QuickMailDesign.Palette.paperGrouped)
+        .background(QuickMailDesign.Palette.paper)
         .refreshable {
             await model.refresh()
         }
@@ -480,7 +487,7 @@ struct MailboxFeatureView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
-        .background(.bar)
+        .background(QuickMailDesign.Palette.paperRaised)
         .overlay(alignment: .bottom) {
             Divider()
         }
@@ -698,29 +705,27 @@ private struct MailboxSearchGlassStyle: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content.glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
+            content.glassEffect(.regular.interactive(), in: .rect(cornerRadius: QuickMailDesign.Radius.control))
         } else {
             content.background(
                 QuickMailDesign.Palette.paperRaised,
-                in: RoundedRectangle(cornerRadius: 12)
+                in: RoundedRectangle(cornerRadius: QuickMailDesign.Radius.control, style: .continuous)
             )
         }
     }
 }
 
 private struct MailboxThreadButtonStyle: ButtonStyle {
-    @Environment(\.appTheme) private var appTheme
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
-        let palette = appTheme.palette(for: colorScheme)
         return configuration.label
-            .background(
-                configuration.isPressed
-                    ? palette.fill.opacity(0.72)
-                    : Color.clear
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
+            .opacity(configuration.isPressed ? 0.84 : 1)
+            .animation(
+                QuickMailDesign.Motion.resolved(QuickMailDesign.Motion.press, reduceMotion: reduceMotion),
+                value: configuration.isPressed
             )
-            .opacity(configuration.isPressed ? 0.86 : 1)
     }
 }
 

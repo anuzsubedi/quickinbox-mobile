@@ -96,6 +96,7 @@ final class AppSession {
             if let cachedUser = credential.cachedUser ?? locallyCachedUser() {
                 guard generation == restoreGeneration else { return }
                 phase = .authenticated(cachedUser)
+                await Task.yield()
             }
 
             let user = try await api.currentUser()

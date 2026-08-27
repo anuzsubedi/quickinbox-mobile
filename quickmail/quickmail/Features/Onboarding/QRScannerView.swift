@@ -75,58 +75,64 @@ struct QRScannerView: View {
     }
 
     private var scannerHeader: some View {
-        ZStack {
-            Text("Scan QR code")
-                .font(.system(.headline, design: .default, weight: .semibold))
-                .foregroundStyle(.white)
-
-            HStack {
-                Button("Cancel") {
-                    dismiss()
-                }
-                .frame(minWidth: 44, minHeight: 44)
-
-                Spacer()
-
-                Button("How to pair") {
-                    showsPairingHelp = true
-                }
-                .font(.system(.subheadline, design: .default, weight: .semibold))
-                .frame(minWidth: 44, minHeight: 44)
+        HStack {
+            Button {
+                dismiss()
+            } label: {
+                Text("Cancel")
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .modifier(ScannerGlassModifier(shape: .capsule))
             }
+            .buttonStyle(.plain)
+            .frame(minWidth: 44, minHeight: 44)
+
+            Spacer()
+
+            Button {
+                showsPairingHelp = true
+            } label: {
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: 19, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 38, height: 38)
+                    .modifier(ScannerGlassModifier(shape: .circle))
+            }
+            .buttonStyle(.plain)
+            .frame(minWidth: 44, minHeight: 44)
+            .accessibilityLabel("How to pair")
+            .accessibilityHint("Explains where to find the QR code")
         }
         .foregroundStyle(.white)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4)
-        .background(Color.black.opacity(0.72))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
     }
 
     private var manualEntryRegion: some View {
         VStack(spacing: 0) {
             Button {
-                dismiss()
                 onEnterManually()
             } label: {
                 HStack(spacing: 9) {
                     Image(systemName: "keyboard")
                         .font(.subheadline.weight(.semibold))
+                        .accessibilityHidden(true)
+
                     Text("Enter code manually")
-                        .font(.system(.headline, design: .default, weight: .semibold))
+                        .font(.system(.callout, design: .default, weight: .semibold))
                 }
                 .foregroundStyle(.white)
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .background(
-                    ScannerStyle.coral,
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                )
+                .frame(maxWidth: .infinity, minHeight: 54)
+                .modifier(ScannerGlassModifier(shape: RoundedRectangle(cornerRadius: 27, style: .continuous)))
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityHint("Closes the scanner and opens manual pairing fields")
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 20)
             .padding(.top, 12)
             .padding(.bottom, 8)
         }
-        .background(ScannerStyle.ink)
     }
 
     private var liveScanner: some View {
@@ -142,28 +148,31 @@ struct QRScannerView: View {
                     Spacer(minLength: 48)
 
                     ScannerCornerBrackets()
-                        .stroke(
-                            .white.opacity(0.94),
-                            style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
-                        )
+                        .stroke(.white.opacity(0.94), style: StrokeStyle(lineWidth: 4.5, lineCap: .round, lineJoin: .round))
                         .frame(
                             width: viewfinderSide(in: geometry.size),
                             height: viewfinderSide(in: geometry.size)
                         )
+                        .background {
+                            RoundedRectangle(cornerRadius: viewfinderSide(in: geometry.size) * 0.14, style: .continuous)
+                                .fill(.white.opacity(0.06))
+                        }
+                        .overlay {
+                            Text("Find nearby QR to scan")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.white.opacity(0.85))
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(.black.opacity(0.4), in: .capsule)
+                        }
                         .accessibilityHidden(true)
-
-                    Text("Align the code inside the frame")
-                        .font(.system(.subheadline, design: .default, weight: .medium))
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.45), radius: 4, y: 1)
-                        .padding(.top, 20)
 
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.horizontal, 28)
                 .padding(.top, 44)
-                .padding(.bottom, 112)
+                .padding(.bottom, 116)
             }
         }
         .ignoresSafeArea()
@@ -176,32 +185,39 @@ struct QRScannerView: View {
         actionTitle: String? = nil,
         action: (() -> Void)? = nil
     ) -> some View {
-        VStack(spacing: 14) {
-            if showsProgress {
-                ProgressView()
-                    .tint(.white)
-                    .controlSize(.large)
-            } else {
-                Image(systemName: "camera.viewfinder")
-                    .font(.system(size: 36, weight: .medium))
-                    .foregroundStyle(ScannerStyle.sage)
-                    .accessibilityHidden(true)
+        VStack(spacing: 18) {
+            ZStack {
+                Circle()
+                    .fill(.white.opacity(0.08))
+
+                if showsProgress {
+                    ProgressView()
+                        .tint(.white)
+                        .controlSize(.regular)
+                } else {
+                    Image(systemName: "camera.viewfinder")
+                        .font(.system(size: 30, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.9))
+                }
             }
+            .frame(width: 84, height: 84)
+            .accessibilityHidden(true)
 
             Text(title)
                 .font(.system(.title3, design: .default, weight: .semibold))
                 .multilineTextAlignment(.center)
 
             Text(message)
-                .font(.system(.body, design: .default, weight: .regular))
-                .foregroundStyle(.white.opacity(0.78))
+                .font(.callout)
+                .foregroundStyle(.white.opacity(0.75))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
                     .buttonStyle(.borderedProminent)
-                    .tint(ScannerStyle.coral)
+                    .tint(.white)
+                    .foregroundStyle(.black)
                     .padding(.top, 4)
             }
         }
@@ -258,32 +274,60 @@ struct QRScannerView: View {
     }
 }
 
-private enum ScannerStyle {
-    static let ink = Color(red: 0.055, green: 0.071, blue: 0.078)
-    static let coral = Color(red: 0.875, green: 0.365, blue: 0.302)
-    static let sage = Color(red: 0.510, green: 0.650, blue: 0.560)
+private struct ScannerGlassModifier<S: InsettableShape>: ViewModifier {
+    let shape: S
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular.interactive(), in: shape)
+        } else {
+            content
+                .background(.white.opacity(0.12), in: shape)
+                .overlay {
+                    shape
+                        .strokeBorder(.white.opacity(0.18), lineWidth: 0.5)
+                }
+        }
+    }
 }
 
 private struct ScannerCornerBrackets: Shape {
     func path(in rect: CGRect) -> Path {
-        let length = min(rect.width, rect.height) * 0.18
+        let length = min(rect.width, rect.height) * 0.16
+        let radius: CGFloat = 28
         var path = Path()
 
-        path.move(to: CGPoint(x: rect.minX + length, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + length))
+        path.move(to: CGPoint(x: rect.minX + length + radius, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.minX + radius, y: rect.minY))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.minX, y: rect.minY + radius),
+            control: CGPoint(x: rect.minX, y: rect.minY)
+        )
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + length + radius))
 
-        path.move(to: CGPoint(x: rect.maxX - length, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + length))
+        path.move(to: CGPoint(x: rect.maxX - length - radius, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - radius, y: rect.minY))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.maxX, y: rect.minY + radius),
+            control: CGPoint(x: rect.maxX, y: rect.minY)
+        )
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + length + radius))
 
-        path.move(to: CGPoint(x: rect.minX, y: rect.maxY - length))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX + length, y: rect.maxY))
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY - length - radius))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - radius))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.minX + radius, y: rect.maxY),
+            control: CGPoint(x: rect.minX, y: rect.maxY)
+        )
+        path.addLine(to: CGPoint(x: rect.minX + length + radius, y: rect.maxY))
 
-        path.move(to: CGPoint(x: rect.maxX, y: rect.maxY - length))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.maxX - length, y: rect.maxY))
+        path.move(to: CGPoint(x: rect.maxX, y: rect.maxY - length - radius))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - radius))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.maxX - radius, y: rect.maxY),
+            control: CGPoint(x: rect.maxX, y: rect.maxY)
+        )
+        path.addLine(to: CGPoint(x: rect.maxX - length - radius, y: rect.maxY))
 
         return path
     }
@@ -312,7 +356,7 @@ private struct DataScannerRepresentable: UIViewControllerRepresentable {
             recognizesMultipleItems: false,
             isHighFrameRateTrackingEnabled: false,
             isPinchToZoomEnabled: true,
-            isGuidanceEnabled: true,
+            isGuidanceEnabled: false,
             isHighlightingEnabled: true
         )
         controller.delegate = context.coordinator

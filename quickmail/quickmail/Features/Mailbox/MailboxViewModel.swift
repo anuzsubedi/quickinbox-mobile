@@ -12,7 +12,6 @@ final class MailboxViewModel {
     var selectedMailbox: MailboxKind = .inbox
     var searchText = ""
     var unreadOnly = false
-    var selectedThreadID: String?
 
     private(set) var threads: [ThreadSummary] = []
     private(set) var total = 0
@@ -41,6 +40,9 @@ final class MailboxViewModel {
     func bootstrap() async {
         guard currentPage == 0 else { return }
         await restoreCachedInbox()
+        if !threads.isEmpty {
+            await Task.yield()
+        }
         await reload(showInitialLoading: threads.isEmpty)
     }
 
@@ -48,7 +50,6 @@ final class MailboxViewModel {
         requestGeneration += 1
         searchText = ""
         unreadOnly = false
-        selectedThreadID = nil
         threads = []
         total = 0
         currentPage = 0
@@ -246,9 +247,6 @@ final class MailboxViewModel {
     private func remove(_ thread: ThreadSummary) {
         threads.removeAll { $0.id == thread.id }
         total = max(0, total - 1)
-        if selectedThreadID == thread.id {
-            selectedThreadID = nil
-        }
     }
 
     private func deduplicated(_ values: [ThreadSummary]) -> [ThreadSummary] {

@@ -14,6 +14,7 @@ struct AppThemePalette: Sendable {
     let fill: Color
     let signalInk: Color
     let interactiveTint: Color
+    let onInteractive: Color
     let sage: Color
     let sageStrong: Color
     let sageWash: Color
@@ -145,6 +146,9 @@ enum AppThemeRegistry {
             interactiveTint: isDark
                 ? Color(red: 0.620, green: 0.700, blue: 1.000)
                 : Color(red: 0.080, green: 0.090, blue: 0.300),
+            onInteractive: isDark
+                ? Color(red: 0.055, green: 0.065, blue: 0.075)
+                : .white,
             sage: isDark
                 ? Color(red: 0.490, green: 0.710, blue: 0.596)
                 : Color(red: 0.204, green: 0.400, blue: 0.318),
@@ -174,7 +178,7 @@ extension EnvironmentValues {
 
 enum AppThemeColorRole: Sendable {
     case grouped, paper, raised, primaryText, secondaryText, separator, fill
-    case interactiveTint
+    case interactiveTint, onInteractive
     case signalInk, sage, sageStrong, sageWash
 }
 
@@ -196,6 +200,7 @@ struct AppThemeColorStyle: ShapeStyle, View {
         case .separator: palette.separator
         case .fill: palette.fill
         case .interactiveTint: palette.interactiveTint
+        case .onInteractive: palette.onInteractive
         case .signalInk: palette.signalInk
         case .sage: palette.sage
         case .sageStrong: palette.sageStrong

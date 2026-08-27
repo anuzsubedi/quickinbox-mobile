@@ -8,6 +8,8 @@ struct OnboardingView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.appTheme) private var appTheme
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var serverOrigin = ""
     @State private var pairingCode = ""
@@ -17,6 +19,7 @@ struct OnboardingView: View {
     @State private var pendingScannedPayload: ValidatedPairingPayload?
     @State private var showsScannedOriginConfirmation = false
     @State private var showsManualPairing = false
+    @State private var opensManualPairingAfterScanner = false
     @State private var showsManualPairingHelp = false
     @State private var showsPrivacyPolicy = false
     @FocusState private var focusedField: Field?
@@ -34,26 +37,22 @@ struct OnboardingView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                OnboardingStyle.canvas.ignoresSafeArea()
+                QuickMailDesign.Palette.paper.ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    onboardingHeader
-
+                GeometryReader { layout in
                     ScrollView {
                         onboardingContent
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: layout.size.height)
                     }
                     .scrollIndicators(.hidden)
                     .scrollBounceBehavior(.basedOnSize)
                 }
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                primaryActionRegion
-            }
             .toolbar(.hidden, for: .navigationBar)
         }
-        .preferredColorScheme(.light)
         .interactiveDismissDisabled(isConnecting)
-        .fullScreenCover(isPresented: $isScannerPresented) {
+        .fullScreenCover(isPresented: $isScannerPresented, onDismiss: scannerDidDismiss) {
             QRScannerView(
                 onScan: receiveScannedValue,
                 onEnterManually: showManualPairingAfterScanner
@@ -73,7 +72,7 @@ struct OnboardingView: View {
                         }
                     }
             }
-            .tint(OnboardingStyle.coral)
+            .tint(QuickMailDesign.Palette.interactiveTint)
         }
         .alert("Check QuickMail Server", isPresented: $showsScannedOriginConfirmation) {
             Button("Cancel", role: .cancel) {
@@ -81,7 +80,6 @@ struct OnboardingView: View {
             }
             Button("Connect") {
                 guard let payload = pendingScannedPayload else { return }
-                AppFeedback.play(.moveConfirmed)
                 pendingScannedPayload = nil
                 serverOrigin = payload.origin.absoluteString
                 pairingCode = payload.code
@@ -92,138 +90,147 @@ struct OnboardingView: View {
         }
     }
 
-    private var onboardingHeader: some View {
-        HStack(alignment: .center, spacing: 16) {
-            Text("QuickMail")
-                .font(.system(.title2, design: .rounded, weight: .bold))
-                .foregroundStyle(OnboardingStyle.ink)
-                .accessibilityAddTraits(.isHeader)
-
-            Spacer(minLength: 12)
-
-            Button("Privacy") {
-                showsPrivacyPolicy = true
-            }
-            .font(.system(.subheadline, design: .default, weight: .semibold))
-            .foregroundStyle(OnboardingStyle.coral)
-            .frame(minWidth: 44, minHeight: 44)
-            .contentShape(Rectangle())
-            .accessibilityHint("Opens the QuickMail Privacy Policy")
-        }
-        .frame(maxWidth: 620)
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, horizontalPadding)
-        .padding(.top, 6)
-        .padding(.bottom, 6)
-    }
-
     private var onboardingContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(spacing: 0) {
+            Spacer(minLength: 32)
+
+            HStack {
+                Text("QuickMail")
+                    .font(.onboardingBrand(24, .bold, relativeTo: .title2))
+                    .kerning(0.2)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 44)
+                    .background(QuickMailDesign.Palette.paperRaised, in: Capsule())
+                    .overlay { Capsule().stroke(QuickMailDesign.Palette.separator, lineWidth: 0.5) }
+                    .accessibilityAddTraits(.isHeader)
+
+                Spacer()
+
+                Button("Privacy") { showsPrivacyPolicy = true }
+                    .font(.subheadline.weight(.semibold))
+                    .frame(minHeight: 44)
+            }
+            .foregroundStyle(QuickMailDesign.Palette.primaryText)
+            .frame(maxWidth: 560)
+
+            Spacer(minLength: 24)
+
             if showsHero {
-                pairingHero
+                heroArtwork
+
+                Spacer(minLength: 24)
             }
 
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Connect to your hosted QuickMail server")
-                    .font(.system(.largeTitle, design: .default, weight: .bold))
-                    .foregroundStyle(OnboardingStyle.ink)
-                    .lineSpacing(2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Connect to your")
+                    .font(.onboardingBrand(33, .regular, relativeTo: .largeTitle))
+
+                Text("QuickMail Server")
+                    .font(.onboardingBrand(33, .semibold, relativeTo: .largeTitle))
+            }
+            .foregroundStyle(QuickMailDesign.Palette.primaryText)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: 560, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Open QuickMail on the web, choose Settings > Connect mobile app, then scan the code shown there.")
+                    .font(.callout)
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text("Open QuickMail on the web, then go to Settings > Connect mobile app. Scan the code shown there.")
-                    .font(.system(.body, design: .default, weight: .regular))
-                    .foregroundStyle(OnboardingStyle.mutedInk)
-                    .lineSpacing(4)
+                Label("Connected over HTTPS. Pairing credentials stay protected in Keychain.", systemImage: "lock.shield")
+                    .font(.footnote)
+                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 16)
+            }
+            .frame(maxWidth: 560, alignment: .leading)
+            .padding(.top, 18)
 
-                trustLine
+            Spacer(minLength: 40)
 
+            VStack(spacing: 20) {
                 if let errorMessage {
                     connectionError(message: errorMessage)
                 }
+
+                scanButton
+
+                privacyFooter
             }
+            .padding(.bottom, 16)
         }
-        .frame(maxWidth: 620, alignment: .leading)
-        .frame(maxWidth: .infinity, alignment: .center)
         .padding(.horizontal, horizontalPadding)
-        .padding(.top, showsHero ? 2 : 24)
-        .padding(.bottom, 28)
     }
 
-    private var pairingHero: some View {
+    private var heroArtwork: some View {
         Image("OnboardingConnectionHero")
             .resizable()
             .scaledToFit()
             .frame(maxWidth: 560)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity)
-            .background(
-                OnboardingStyle.artMat,
-                in: RoundedRectangle(cornerRadius: 28, style: .continuous)
-            )
+            .padding(.horizontal, 8)
             .accessibilityHidden(true)
-            .padding(.bottom, 30)
     }
 
-    private var trustLine: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "lock.shield")
-                .font(.footnote.weight(.semibold))
-                .accessibilityHidden(true)
-
-            Text("Connection uses HTTPS. Pairing credentials are stored in Keychain.")
-                .font(.footnote)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .foregroundStyle(OnboardingStyle.mutedInk)
-        .padding(.top, 18)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var primaryActionRegion: some View {
-        VStack(spacing: 0) {
-            Rectangle()
-                .fill(OnboardingStyle.separator)
-                .frame(height: 1)
-                .accessibilityHidden(true)
-
-            Button {
-                AppFeedback.play(.moveConfirmed)
-                focusedField = nil
-                errorMessage = nil
-                isScannerPresented = true
-            } label: {
-                HStack(spacing: 10) {
-                    if isConnecting {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "qrcode.viewfinder")
-                            .font(.headline.weight(.semibold))
-                    }
-
-                    Text(isConnecting ? "Connecting..." : "Scan QR code")
-                        .font(.system(.headline, design: .default, weight: .semibold))
+    private var scanButton: some View {
+        Button {
+            focusedField = nil
+            errorMessage = nil
+            isScannerPresented = true
+        } label: {
+            HStack(spacing: 11) {
+                if isConnecting {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(QuickMailDesign.Palette.primaryText)
+                } else {
+                    Image(systemName: "qrcode.viewfinder")
+                        .font(.system(size: 20, weight: .semibold))
+                        .accessibilityHidden(true)
                 }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .background(
-                    OnboardingStyle.coral,
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                )
+
+                Text(isConnecting ? "Connecting..." : "Scan QR Code")
+                    .font(.system(.headline, design: .default, weight: .semibold))
             }
-            .buttonStyle(.plain)
-            .disabled(isConnecting)
-            .opacity(isConnecting ? 0.72 : 1)
-            .accessibilityHint("Opens the camera to scan the pairing QR code")
-            .padding(.horizontal, horizontalPadding)
-            .padding(.top, 12)
-            .padding(.bottom, 8)
+            .foregroundStyle(QuickMailDesign.Palette.primaryText)
+            .frame(maxWidth: .infinity, minHeight: 58)
+            .modifier(ScanButtonSurfaceModifier())
+            .contentShape(Rectangle())
         }
-        .background(OnboardingStyle.canvas)
+        .buttonStyle(QuickMailPressButtonStyle())
+        .disabled(isConnecting)
+        .opacity(isConnecting ? 0.72 : 1)
+        .accessibilityHint("Opens the camera to scan the pairing QR code")
+    }
+
+    private var privacyFooter: some View {
+        Text(footerAttributedText)
+            .font(.callout)
+            .multilineTextAlignment(.center)
+            .environment(\.openURL, OpenURLAction { _ in
+                showsPrivacyPolicy = true
+                return .handled
+            })
+            .padding(.top, 6)
+    }
+
+    private var footerAttributedText: AttributedString {
+        let ink = appTheme.palette(for: colorScheme).primaryText
+        let muted = appTheme.palette(for: colorScheme).secondaryText
+
+        var text = AttributedString("By continuing, you agree to the ")
+        text.foregroundColor = muted
+
+        var link = AttributedString("Privacy Policy")
+        link.link = AppLinks.privacyPolicy
+        link.foregroundColor = ink
+
+        var trailing = AttributedString(".")
+        trailing.foregroundColor = muted
+
+        return text + link + trailing
     }
 
     private func connectionError(message: String) -> some View {
@@ -235,57 +242,118 @@ struct OnboardingView: View {
             Image(systemName: "exclamationmark.circle.fill")
                 .font(.callout.weight(.semibold))
         }
-        .foregroundStyle(OnboardingStyle.error)
+        .foregroundStyle(Color(uiColor: .systemRed))
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            OnboardingStyle.error.opacity(0.09),
+            Color(uiColor: .systemRed).opacity(0.09),
             in: RoundedRectangle(cornerRadius: 14, style: .continuous)
         )
-        .padding(.top, 20)
         .accessibilityElement(children: .combine)
     }
 
     private var manualPairingSheet: some View {
         NavigationStack {
-            QuickMailForm {
-                Section("Server") {
-                    TextField("https://mail.example.com", text: $serverOrigin)
-                        .textContentType(.URL)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .submitLabel(.next)
-                        .focused($focusedField, equals: .server)
-                        .onSubmit { focusedField = .code }
-                }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    manualPairingHeader
 
-                Section {
-                    TextField("22-character code", text: $pairingCode)
-                        .textContentType(.oneTimeCode)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .fontDesign(.monospaced)
-                        .submitLabel(.go)
-                        .focused($focusedField, equals: .code)
-                        .onSubmit(connectManually)
-                } header: {
-                    Text("Pairing Code")
-                } footer: {
-                    Text("Find both values in QuickMail on the web.")
-                }
+                    pairingStepsCard
 
-                if let errorMessage {
-                    Section {
-                        Label(errorMessage, systemImage: "exclamationmark.circle.fill")
-                            .font(.callout)
-                            .foregroundStyle(OnboardingStyle.error)
+                    VStack(alignment: .leading, spacing: 16) {
+                        pairingFieldCard(title: "Server Address") {
+                            TextField(
+                                "https://mail.example.com",
+                                text: $serverOrigin,
+                                prompt: Text("mail.example.com")
+                                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                            )
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.next)
+                            .focused($focusedField, equals: .server)
+                            .onSubmit { focusedField = .code }
+                        }
+
+                        pairingFieldCard(title: "Pairing Code") {
+                            TextField(
+                                "22-character code",
+                                text: $pairingCode,
+                                prompt: Text("22-character code")
+                                    .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                            )
+                            .textContentType(.oneTimeCode)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .font(.system(.body, design: .monospaced, weight: .medium))
+                            .submitLabel(.go)
+                            .focused($focusedField, equals: .code)
+                            .onSubmit(connectManually)
+                        }
+
+                        Button {
+                            showsManualPairingHelp = true
+                        } label: {
+                            Label("Where to find these values?", systemImage: "questionmark.circle")
+                                .font(.footnote.weight(.medium))
+                                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Explains where to find the server address and pairing code")
+                    }
+
+                    if let errorMessage {
+                        connectionError(message: errorMessage)
+                    }
+
+                    if isConnecting {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Connecting to your server...")
+                                .font(.footnote)
+                                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                        }
+                        .transition(.opacity)
                     }
                 }
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
+                .padding(.bottom, 24)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .tint(OnboardingStyle.coral)
+            .scrollIndicators(.hidden)
+            .scrollDismissesKeyboard(.interactively)
+            .background(QuickMailDesign.Palette.paper)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                PlatformPrimaryActionButton(action: connectManually) {
+                    HStack(spacing: 10) {
+                        if isConnecting {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(QuickMailDesign.Palette.paper)
+                        }
+                        Text(isConnecting ? "Connecting..." : "Connect")
+                            .font(.quickMailSemibold(17, relativeTo: .headline))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 50)
+                }
+                .tint(QuickMailDesign.Palette.interactiveTint)
+                .disabled(isConnecting || serverOrigin.isEmpty || pairingCode.isEmpty)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 14)
+                .background(QuickMailDesign.Palette.paper)
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(QuickMailDesign.Palette.separator)
+                        .frame(height: 1)
+                }
+            }
             .navigationTitle("Enter Pairing Code")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(QuickMailDesign.Palette.paper, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -294,33 +362,6 @@ struct OnboardingView: View {
                     }
                     .disabled(isConnecting)
                 }
-
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showsManualPairingHelp = true
-                    } label: {
-                        Image(systemName: "info.circle")
-                    }
-                    .accessibilityLabel("Where to find the pairing code")
-                }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                PlatformPrimaryActionButton(action: connectManually) {
-                    HStack(spacing: 10) {
-                        if isConnecting {
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(.white)
-                        }
-                        Text(isConnecting ? "Connecting..." : "Connect")
-                            .font(.quickMailSemibold(17, relativeTo: .headline))
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .tint(OnboardingStyle.coral)
-                .disabled(isConnecting || serverOrigin.isEmpty || pairingCode.isEmpty)
-                .padding(16)
-                .quickMailBarSurface()
             }
             .interactiveDismissDisabled(isConnecting)
             .alert("Where to Find the Pairing Code", isPresented: $showsManualPairingHelp) {
@@ -329,6 +370,99 @@ struct OnboardingView: View {
                 Text("In QuickMail on the web, open Settings, then Connect mobile app. Copy the server URL and 22-character pairing code shown there.")
             }
         }
+        .tint(QuickMailDesign.Palette.interactiveTint)
+        .preferredColorScheme(appTheme.preferredColorScheme ?? colorScheme)
+        // Sheets paint their own chrome; without this, dark mode falls back to a
+        // solid system black canvas behind the custom paper surfaces.
+        .presentationBackground(QuickMailDesign.Palette.paper)
+        .presentationDragIndicator(.visible)
+    }
+
+    private var manualPairingHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Pair with your server")
+                .font(.quickMailSemibold(26, relativeTo: .title))
+                .foregroundStyle(QuickMailDesign.Palette.primaryText)
+
+            Text("Copy both values from QuickMail on the web, then connect this iPhone.")
+                .font(.quickMailBody(15, relativeTo: .callout))
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var pairingStepsCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("HOW IT WORKS")
+                .font(.caption.weight(.semibold))
+                .kerning(0.6)
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+
+            pairingStepRow(number: 1, text: "Open QuickMail on the web and sign in.")
+            pairingStepRow(number: 2, text: "Go to Settings > Connect mobile app.")
+            pairingStepRow(number: 3, text: "Copy the server address and pairing code shown there.")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(QuickMailDesign.Palette.paperRaised)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(QuickMailDesign.Palette.separator, lineWidth: 1)
+                }
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private func pairingStepRow(number: Int, text: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text("\(number)")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(QuickMailDesign.Palette.primaryText)
+                .frame(width: 22, height: 22)
+                .background(
+                    Circle().fill(QuickMailDesign.Palette.sageWash)
+                )
+
+            Text(text)
+                .font(.quickMailBody(14, relativeTo: .footnote))
+                .foregroundStyle(QuickMailDesign.Palette.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func pairingFieldCard(
+        title: String,
+        @ViewBuilder field: () -> some View
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(QuickMailDesign.Palette.secondaryText)
+                .textCase(.uppercase)
+                .kerning(0.6)
+
+            field()
+                .font(.quickMailBody(16, relativeTo: .body))
+                .foregroundStyle(QuickMailDesign.Palette.primaryText)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(QuickMailDesign.Palette.paperRaised)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(QuickMailDesign.Palette.separator, lineWidth: 1)
+                }
+        )
+        .accessibilityElement(children: .contain)
     }
 
     private var scannedOriginConfirmationMessage: String {
@@ -346,7 +480,7 @@ struct OnboardingView: View {
     }
 
     private var horizontalPadding: CGFloat {
-        horizontalSizeClass == .regular ? 32 : 20
+        horizontalSizeClass == .regular ? 48 : 24
     }
 
     private func receiveScannedValue(_ value: String) {
@@ -355,7 +489,6 @@ struct OnboardingView: View {
             errorMessage = nil
             pendingScannedPayload = payload
             showsScannedOriginConfirmation = true
-            AppFeedback.selection()
         } catch {
             errorMessage = userFacingMessage(for: error)
             AppFeedback.error()
@@ -363,12 +496,15 @@ struct OnboardingView: View {
     }
 
     private func showManualPairingAfterScanner() {
+        opensManualPairingAfterScanner = true
         isScannerPresented = false
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(250))
-            errorMessage = nil
-            showsManualPairing = true
-        }
+    }
+
+    private func scannerDidDismiss() {
+        guard opensManualPairingAfterScanner else { return }
+        opensManualPairingAfterScanner = false
+        errorMessage = nil
+        showsManualPairing = true
     }
 
     private func connectManually() {
@@ -435,12 +571,26 @@ struct OnboardingView: View {
     }
 }
 
-private enum OnboardingStyle {
-    static let canvas = Color(red: 1.0, green: 0.976, blue: 0.941)
-    static let artMat = Color(red: 0.965, green: 0.850, blue: 0.790)
-    static let ink = Color(red: 0.122, green: 0.161, blue: 0.196)
-    static let mutedInk = Color(red: 0.310, green: 0.357, blue: 0.345)
-    static let coral = Color(red: 0.875, green: 0.365, blue: 0.302)
-    static let separator = Color(red: 0.122, green: 0.161, blue: 0.196).opacity(0.12)
-    static let error = Color(uiColor: .systemRed)
+private struct ScanButtonSurfaceModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .glassEffect(.regular.interactive(), in: .capsule)
+        } else {
+            content.background {
+                RoundedRectangle(cornerRadius: 29, style: .continuous)
+                    .fill(QuickMailDesign.Palette.paperRaised)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 29, style: .continuous)
+                            .strokeBorder(QuickMailDesign.Palette.separator, lineWidth: 1)
+                    }
+                    .shadow(
+                        color: .black.opacity(0.08),
+                        radius: 16,
+                        x: 0,
+                        y: 8
+                    )
+            }
+        }
+    }
 }

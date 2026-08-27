@@ -1,0 +1,11 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agents": {
+    "explore": {
+      "model": "deepseek/deepseek-v4-flash"
+    },
+    "general": {
+      "model": "deepseek/deepseek-v4-flash"
+    }
+  }
+}

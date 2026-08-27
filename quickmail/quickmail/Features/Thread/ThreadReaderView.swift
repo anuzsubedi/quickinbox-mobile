@@ -57,6 +57,10 @@ struct ThreadReaderView: View {
             }
         }
         .background(QuickMailDesign.Palette.paper)
+        .animation(
+            QuickMailDesign.Motion.resolved(.easeOut(duration: 0.18), reduceMotion: reduceMotion),
+            value: model.detail != nil
+        )
         .navigationTitle(model.chronologicalMessages.count == 1 ? "Message" : "Conversation")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(horizontalSizeClass == .regular)
@@ -275,8 +279,8 @@ struct ThreadReaderView: View {
                 .accessibilityElement(children: .combine)
             }
         }
-        .padding(.top, 24)
-        .padding(.bottom, messages.count == 1 ? 10 : 16)
+        .padding(.top, 18)
+        .padding(.bottom, 4)
     }
 
     private func collapsedMessageLabel(
