@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="fold" x1="390" y1="420" x2="790" y2="764" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5778E6"/>
+      <stop offset="1" stop-color="#183F9D"/>
+    </linearGradient>
+  </defs>
+  <path d="M392 420L645 599L794 764L392 420Z" fill="url(#fold)"/>
+</svg>
