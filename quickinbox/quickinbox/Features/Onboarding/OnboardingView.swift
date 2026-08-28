@@ -37,11 +37,11 @@ struct OnboardingView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                QuickInboxDesign.Palette.paper.ignoresSafeArea()
+                OnboardingPaperBackground()
 
                 GeometryReader { layout in
                     ScrollView {
-                        onboardingContent
+                        onboardingContent(in: layout.size)
                             .frame(maxWidth: .infinity)
                             .frame(minHeight: layout.size.height)
                     }
@@ -90,68 +90,45 @@ struct OnboardingView: View {
         }
     }
 
-    private var onboardingContent: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 32)
+    private func onboardingContent(in availableSize: CGSize) -> some View {
+        let shortLayout = availableSize.height < 700
+        let topSpacing = min(max(availableSize.height * 0.075, 44), 76)
+        let artworkZoneHeight = min(max(availableSize.height * 0.22, 150), 220)
 
-            HStack {
-                Text("QuickInbox")
-                    .font(.onboardingBrand(24, .bold, relativeTo: .title2))
-                    .kerning(0.2)
-                    .padding(.horizontal, 14)
-                    .frame(minHeight: 44)
-                    .background(QuickInboxDesign.Palette.paperRaised, in: Capsule())
-                    .overlay { Capsule().stroke(QuickInboxDesign.Palette.separator, lineWidth: 0.5) }
-                    .accessibilityAddTraits(.isHeader)
+        return VStack(spacing: 0) {
+            Spacer()
+                .frame(height: topSpacing)
 
-                Spacer()
+            Text("QuickInbox")
+                .font(.onboardingBrand(42, .regular, relativeTo: .largeTitle))
+                .kerning(-1.2)
+                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+                .accessibilityAddTraits(.isHeader)
 
-                Button("Privacy") { showsPrivacyPolicy = true }
-                    .font(.subheadline.weight(.semibold))
-                    .frame(minHeight: 44)
-            }
-            .foregroundStyle(QuickInboxDesign.Palette.primaryText)
-            .frame(maxWidth: 560)
-
-            Spacer(minLength: 24)
+            Spacer()
+                .frame(height: shortLayout ? 20 : 30)
 
             if showsHero {
                 heroArtwork
+                    .frame(height: artworkZoneHeight)
 
-                Spacer(minLength: 24)
+                Spacer()
+                    .frame(height: shortLayout ? 20 : 28)
             }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Connect to your")
-                    .font(.onboardingBrand(33, .regular, relativeTo: .largeTitle))
+            (Text("Connect to your\n") + Text("private server").fontWeight(.semibold))
+                .font(.onboardingBrand(34, .regular, relativeTo: .largeTitle))
+                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+                .multilineTextAlignment(.center)
+                .lineSpacing(-2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 560)
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isHeader)
 
-                Text("QuickInbox Server")
-                    .font(.onboardingBrand(33, .semibold, relativeTo: .largeTitle))
-            }
-            .foregroundStyle(QuickInboxDesign.Palette.primaryText)
-            .multilineTextAlignment(.leading)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: 560, alignment: .leading)
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: shortLayout ? 24 : 40)
 
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Open QuickInbox on the web, choose Settings > Connect mobile app, then scan the code shown there.")
-                    .font(.callout)
-                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Label("Connected over HTTPS. Pairing credentials stay protected in Keychain.", systemImage: "lock.shield")
-                    .font(.footnote)
-                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: 560, alignment: .leading)
-            .padding(.top, 18)
-
-            Spacer(minLength: 40)
-
-            VStack(spacing: 20) {
+            VStack(spacing: 12) {
                 if let errorMessage {
                     connectionError(message: errorMessage)
                 }
@@ -160,7 +137,7 @@ struct OnboardingView: View {
 
                 privacyFooter
             }
-            .padding(.bottom, 16)
+            .padding(.bottom, shortLayout ? 8 : 16)
         }
         .padding(.horizontal, horizontalPadding)
     }
@@ -170,7 +147,7 @@ struct OnboardingView: View {
             .resizable()
             .scaledToFit()
             .frame(maxWidth: 560)
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 4)
             .accessibilityHidden(true)
     }
 
@@ -592,5 +569,67 @@ private struct ScanButtonSurfaceModifier: ViewModifier {
                     )
             }
         }
+    }
+}
+
+private struct OnboardingPaperBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        GeometryReader { layout in
+            ZStack {
+                paperColor
+
+                Ellipse()
+                    .fill(glowColor)
+                    .frame(
+                        width: min(layout.size.width * 1.15, 760),
+                        height: min(layout.size.height * 0.34, 330)
+                    )
+                    .blur(radius: 54)
+                    .position(
+                        x: layout.size.width / 2,
+                        y: layout.size.height * 0.34
+                    )
+
+                Canvas { context, size in
+                    let fiberColor = colorScheme == .dark
+                        ? Color.white.opacity(0.025)
+                        : Color(red: 0.34, green: 0.25, blue: 0.16).opacity(0.035)
+
+                    for index in 0..<Int(size.height / 8) {
+                        let y = CGFloat(index * 8) + CGFloat((index * 3) % 5)
+                        let columns = Int(size.width / 140) + 2
+
+                        for column in 0..<columns {
+                            let x = CGFloat(column * 140 + (index * 47) % 46) - 28
+                            let length = CGFloat(38 + (index * 19 + column * 13) % 92)
+                            var fiber = Path()
+                            fiber.move(to: CGPoint(x: x, y: y))
+                            fiber.addQuadCurve(
+                                to: CGPoint(x: x + length, y: y + 0.6),
+                                control: CGPoint(x: x + length * 0.52, y: y - 0.7)
+                            )
+                            context.stroke(fiber, with: .color(fiberColor), lineWidth: 0.45)
+                        }
+                    }
+                }
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private var paperColor: Color {
+        colorScheme == .dark
+            ? Color(red: 0.075, green: 0.072, blue: 0.064)
+            : Color(red: 0.978, green: 0.965, blue: 0.935)
+    }
+
+    private var glowColor: Color {
+        colorScheme == .dark
+            ? Color(red: 0.38, green: 0.33, blue: 0.25).opacity(0.16)
+            : Color.white.opacity(0.52)
     }
 }

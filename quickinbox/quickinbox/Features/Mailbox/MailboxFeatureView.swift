@@ -5,7 +5,8 @@ struct MailboxFeatureView: View {
     @Environment(\.appTheme) private var appTheme
     @Environment(\.colorScheme) private var colorScheme
     @State private var model: MailboxViewModel
-    @State private var pendingPermanentDeletion: ThreadSummary?
+    @State private var selectedThreadIDs: Set<String> = []
+    @State private var pendingPermanentDeletion: [ThreadSummary] = []
     @State private var selectionFeedbackTrigger = 0
 
     private let refreshToken: UUID
@@ -44,7 +45,7 @@ struct MailboxFeatureView: View {
     var body: some View {
         mailboxContent
         .alert(
-            "Couldn’t Update Conversation",
+            "Couldn’t Update Mail",
             isPresented: Binding(
                 get: { model.actionError != nil },
                 set: { if !$0 { model.dismissActionError() } }
@@ -55,20 +56,20 @@ struct MailboxFeatureView: View {
             Text(model.actionError ?? "Please try again.")
         }
         .confirmationDialog(
-            "Delete this conversation permanently?",
+            permanentDeletionTitle,
             isPresented: Binding(
-                get: { pendingPermanentDeletion != nil },
-                set: { if !$0 { pendingPermanentDeletion = nil } }
+                get: { !pendingPermanentDeletion.isEmpty },
+                set: { if !$0 { pendingPermanentDeletion = [] } }
             ),
             titleVisibility: .visible
         ) {
             Button("Delete Permanently", role: .destructive) {
-                guard let thread = pendingPermanentDeletion else { return }
-                pendingPermanentDeletion = nil
-                Task { await model.perform(.delete, on: thread) }
+                let threads = pendingPermanentDeletion
+                pendingPermanentDeletion = []
+                Task { await model.perform(.delete, on: threads) }
             }
             Button("Cancel", role: .cancel) {
-                pendingPermanentDeletion = nil
+                pendingPermanentDeletion = []
             }
         } message: {
             Text("This action can't be undone.")
@@ -95,7 +96,9 @@ struct MailboxFeatureView: View {
             )
         }
             .safeAreaInset(edge: .bottom) {
-                composeDock
+                if selectedThreadIDs.isEmpty {
+                    composeDock
+                }
             }
             .background(QuickInboxDesign.Palette.paper)
             .toolbar(.hidden, for: .navigationBar)
@@ -121,9 +124,21 @@ struct MailboxFeatureView: View {
             .onChange(of: refreshToken) {
                 Task { await model.reload(showInitialLoading: false) }
             }
+            .onChange(of: model.threads.map(\.id)) { _, threadIDs in
+                selectedThreadIDs.formIntersection(threadIDs)
+            }
     }
 
+    @ViewBuilder
     private var mailboxMasthead: some View {
+        if selectedThreadIDs.isEmpty {
+            standardMailboxMasthead
+        } else {
+            selectionMasthead
+        }
+    }
+
+    private var standardMailboxMasthead: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 mailboxMenu
@@ -175,6 +190,102 @@ struct MailboxFeatureView: View {
         .padding(.top, 10)
         .padding(.bottom, 14)
         .background(QuickInboxDesign.Palette.paper)
+    }
+
+    private var selectionMasthead: some View {
+        HStack(spacing: 8) {
+            Button("Done") {
+                selectedThreadIDs.removeAll()
+                selectionFeedbackTrigger += 1
+            }
+            .font(.subheadline.weight(.semibold))
+            .frame(minHeight: 44)
+            .modifier(SelectionDoneButtonStyle())
+
+            Text("\(selectedThreadIDs.count) Selected")
+                .font(.headline)
+                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .contentTransition(.numericText())
+                .accessibilityAddTraits(.isHeader)
+
+            Spacer(minLength: 2)
+
+            HStack(spacing: 0) {
+                bulkActionControls
+            }
+            .buttonStyle(.plain)
+            .modifier(SelectionActionGroupStyle())
+        }
+        .disabled(isBulkWorking)
+        .padding(.horizontal, QuickInboxDesign.Layout.horizontalMargin)
+        .padding(.vertical, 8)
+        .background(QuickInboxDesign.Palette.paper)
+    }
+
+    @ViewBuilder
+    private var bulkActionControls: some View {
+        switch model.selectedMailbox {
+        case .inbox:
+            bulkActionButton("Archive", systemImage: "archivebox", action: .archive)
+            bulkActionButton("Move to Trash", systemImage: "trash", action: .trash, role: .destructive)
+            bulkMoreMenu
+        case .archive:
+            bulkActionButton("Move to Inbox", systemImage: "tray.and.arrow.down", action: .unarchive)
+            bulkActionButton("Move to Trash", systemImage: "trash", action: .trash, role: .destructive)
+            bulkMoreMenu
+        case .trash:
+            bulkActionButton("Restore", systemImage: "arrow.uturn.backward", action: .restore)
+            Button(role: .destructive) {
+                pendingPermanentDeletion = selectedThreads
+            } label: {
+                Label("Delete Permanently", systemImage: "trash.slash")
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(.red)
+                    .frame(width: 44, height: 44)
+            }
+        case .drafts:
+            bulkActionButton("Move to Trash", systemImage: "trash", action: .trash, role: .destructive)
+        case .starred, .sent:
+            bulkActionButton("Move to Trash", systemImage: "trash", action: .trash, role: .destructive)
+            bulkMoreMenu
+        }
+    }
+
+    private var bulkMoreMenu: some View {
+        Menu {
+            Button {
+                performBulk(.read)
+            } label: {
+                Label("Mark as Read", systemImage: "envelope.open")
+            }
+
+            Button {
+                performBulk(.unread)
+            } label: {
+                Label("Mark as Unread", systemImage: "envelope.badge")
+            }
+
+            Divider()
+
+            Button {
+                performBulk(.star)
+            } label: {
+                Label("Star", systemImage: "star")
+            }
+
+            Button {
+                performBulk(.unstar)
+            } label: {
+                Label("Remove Star", systemImage: "star.slash")
+            }
+        } label: {
+            Label("More Actions", systemImage: "ellipsis.circle")
+                .labelStyle(.iconOnly)
+                .frame(width: 44, height: 44)
+        }
+        .menuOrder(.fixed)
     }
 
     private var mailboxMenu: some View {
@@ -385,9 +496,12 @@ struct MailboxFeatureView: View {
 
     private func threadRow(_ thread: ThreadSummary) -> some View {
         let isWorking = model.mutatingThreadIDs.contains(thread.id)
+        let isSelected = selectedThreadIDs.contains(thread.id)
 
         return Button {
-            if thread.isDraft {
+            if !selectedThreadIDs.isEmpty {
+                toggleSelection(for: thread)
+            } else if thread.isDraft {
                 onCompose(thread.latestID)
             } else {
                 onSelectThread(thread)
@@ -396,21 +510,31 @@ struct MailboxFeatureView: View {
             ThreadSummaryRow(
                 thread: thread,
                 mailbox: model.selectedMailbox,
-                isWorking: isWorking
+                isWorking: isWorking,
+                isSelectionActive: !selectedThreadIDs.isEmpty,
+                isSelected: isSelected
             )
         }
         .buttonStyle(MailboxThreadButtonStyle())
         .disabled(isWorking)
         .tag(thread.id)
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            leadingSwipeActions(for: thread)
+            if selectedThreadIDs.isEmpty {
+                leadingSwipeActions(for: thread)
+            }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            trailingSwipeActions(for: thread)
+            if selectedThreadIDs.isEmpty {
+                trailingSwipeActions(for: thread)
+            }
         }
         .contextMenu {
-            contextMenuActions(for: thread)
+            if selectedThreadIDs.isEmpty {
+                contextMenuActions(for: thread)
+            }
         }
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityHint(selectedThreadIDs.isEmpty ? "Opens conversation" : "Toggles selection")
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden, edges: .top)
@@ -515,9 +639,8 @@ struct MailboxFeatureView: View {
         if !model.searchText.isEmpty {
             return model.total == 1 ? "1 result" : "\(model.total) results"
         }
-        if model.isShowingCachedData, let cachedAt = model.cachedAt {
-            let count = model.total == 1 ? "1 conversation" : "\(model.total) conversations"
-            return "\(count) · saved \(cachedAt.formatted(.relative(presentation: .named)))"
+        if model.isShowingCachedData {
+            return model.total == 1 ? "1 conversation" : "\(model.total) conversations"
         }
         if model.selectedMailbox == .inbox {
             let unread = model.threads.lazy.filter { !$0.isRead }.count
@@ -601,7 +724,7 @@ struct MailboxFeatureView: View {
             }
         case .trash:
             Button(role: .destructive) {
-                pendingPermanentDeletion = thread
+                pendingPermanentDeletion = [thread]
             } label: {
                 Label("Delete", systemImage: "trash.slash")
             }
@@ -615,6 +738,15 @@ struct MailboxFeatureView: View {
 
     @ViewBuilder
     private func contextMenuActions(for thread: ThreadSummary) -> some View {
+        Button {
+            selectedThreadIDs = [thread.id]
+            selectionFeedbackTrigger += 1
+        } label: {
+            Label("Select", systemImage: "checkmark.circle")
+        }
+
+        Divider()
+
         if model.selectedMailbox != .drafts && model.selectedMailbox != .trash {
             Button {
                 Task { await model.perform(thread.isRead ? .unread : .read, on: thread) }
@@ -642,7 +774,7 @@ struct MailboxFeatureView: View {
                 Label("Restore", systemImage: "arrow.uturn.backward")
             }
             Button("Delete Permanently", systemImage: "trash.slash", role: .destructive) {
-                pendingPermanentDeletion = thread
+                pendingPermanentDeletion = [thread]
             }
         } else {
             if model.selectedMailbox == .inbox {
@@ -670,6 +802,56 @@ struct MailboxFeatureView: View {
             Task { await model.perform(.trash, on: thread) }
         } label: {
             Label("Trash", systemImage: "trash")
+        }
+    }
+
+    private var selectedThreads: [ThreadSummary] {
+        model.threads.filter { selectedThreadIDs.contains($0.id) }
+    }
+
+    private var isBulkWorking: Bool {
+        !model.mutatingThreadIDs.isDisjoint(with: selectedThreadIDs)
+    }
+
+    private var permanentDeletionTitle: String {
+        if pendingPermanentDeletion.count <= 1 {
+            return "Delete this conversation permanently?"
+        }
+        return "Delete \(pendingPermanentDeletion.count) conversations permanently?"
+    }
+
+    private func toggleSelection(for thread: ThreadSummary) {
+        if selectedThreadIDs.contains(thread.id) {
+            selectedThreadIDs.remove(thread.id)
+        } else {
+            selectedThreadIDs.insert(thread.id)
+        }
+        selectionFeedbackTrigger += 1
+    }
+
+    private func performBulk(_ action: MailAction) {
+        let threads = selectedThreads
+        guard !threads.isEmpty else { return }
+        Task { await model.perform(action, on: threads) }
+    }
+
+    private func bulkActionButton(
+        _ title: String,
+        systemImage: String,
+        action: MailAction,
+        role: ButtonRole? = nil
+    ) -> some View {
+        Button(role: role) {
+            performBulk(action)
+        } label: {
+            Label(title, systemImage: systemImage)
+                .labelStyle(.iconOnly)
+                .foregroundStyle(
+                    role == .destructive
+                        ? AnyShapeStyle(Color.red)
+                        : AnyShapeStyle(QuickInboxDesign.Palette.primaryText)
+                )
+                .frame(width: 44, height: 44)
         }
     }
 
@@ -735,6 +917,38 @@ private struct MailboxSearchGlassStyle: ViewModifier {
                 QuickInboxDesign.Palette.fill,
                 in: RoundedRectangle(cornerRadius: QuickInboxDesign.Radius.control, style: .continuous)
             )
+        }
+    }
+}
+
+private struct SelectionDoneButtonStyle: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .buttonStyle(.glass)
+                .tint(QuickInboxDesign.Palette.interactiveTint)
+        } else {
+            content.buttonStyle(.bordered)
+        }
+    }
+}
+
+private struct SelectionActionGroupStyle: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .padding(.horizontal, 2)
+                .glassEffect(.regular.interactive(), in: .capsule)
+        } else {
+            content
+                .padding(.horizontal, 2)
+                .background(.thinMaterial, in: Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(QuickInboxDesign.Palette.separator.opacity(0.55), lineWidth: 0.5)
+                }
         }
     }
 }

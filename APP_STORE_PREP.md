@@ -1,6 +1,6 @@
 # QuickInbox iOS App Review preparation
 
-Last audited: August 25, 2026.
+Last audited: August 27, 2026.
 
 This checklist intentionally contains no production URLs, credentials, Apple
 IDs, signing team identifiers, or other operator-specific information.
@@ -8,11 +8,13 @@ IDs, signing team identifiers, or other operator-specific information.
 ## Executive status
 
 **Not ready to submit yet.** The native target and core privacy/security
-foundations are present, but the App ID registration, public policy/support
-pages, in-app Privacy Policy link, review environment, reviewer access, release
-archive, product-page assets, and App Store Connect record still need to be
-completed. The publisher will host the compatible updated QuickInbox server, so
-the pairing/archive extensions not being in upstream `main` is not a blocker.
+foundations are present, and the public Privacy Policy URL is reachable. App ID
+registration, a dedicated support destination, the review environment, reviewer
+access, release archive, product-page assets, and the App Store Connect record
+still need to be completed. The Icon Composer package is present and matches the
+Desktop source package. The publisher will host the compatible updated QuickInbox
+server, so the pairing/archive extensions not being in upstream `main` is not a
+blocker.
 
 Current local submission-tooling check:
 
@@ -55,8 +57,10 @@ Current local submission-tooling check:
   The working tree currently contains a local signing-team change in
   `quickinbox/quickinbox.xcodeproj/project.pbxproj`; do not publish that value to
   the public upstream repository.
-- [ ] Publish permanent Privacy Policy and Support pages. The support page must
-  contain real contact information.
+- [x] Publish a permanent Privacy Policy page and verify that it is reachable at
+  the production URL.
+- [ ] Publish a dedicated permanent Support page with real contact information,
+  then use it for the App Store Connect Support URL.
 - [x] Add an easily accessible Privacy Policy link inside Settings and
   onboarding. Verify the public policy URL before submission.
 - [ ] Finalize and deploy an isolated review server with synthetic mail only.
@@ -181,8 +185,8 @@ as well as providing manual values so review is not camera-dependent.
 - [ ] App record uses the final bundle ID, SKU, primary language, and category.
 - [ ] Version is `1.0`, build number is unique, release mode is intentional, and
   price/territories are selected.
-- [ ] Description, subtitle, keywords, copyright, Support URL, Privacy Policy
-  URL, and optional Marketing URL are complete and live.
+- [ ] Description, subtitle, keywords, copyright, dedicated Support URL, Privacy
+  Policy URL, and optional Marketing URL are complete and live.
 - [ ] App Privacy responses match the final production data flow and all server
   or third-party logging.
 - [ ] Age Rating answers acknowledge that QuickInbox displays user email and
@@ -208,10 +212,11 @@ as well as providing manual values so review is not camera-dependent.
 
 - [ ] Register the explicit App ID `dev.anuz.quickinbox` and use it in the App
   Store Connect record.
-- [x] Add Privacy Policy and Support destinations to Settings and the Privacy
-  Policy link to onboarding. Publish and verify the public URLs before review;
-  Apple's privacy guideline requires the link both in App Store Connect and in
-  an easily accessible location inside the app.
+- [x] Add Privacy Policy and support destinations to Settings and the Privacy
+  Policy link to onboarding.
+- [ ] Verify the final public Support URL before review; Apple's privacy
+  guideline requires the Privacy Policy link both in App Store Connect and in an
+  easily accessible location inside the app.
 - [ ] Freeze the compatible server API/migration version used by the release.
 - [ ] Decide whether QuickInbox is free or paid. Banking and tax setup is needed
   for paid distribution; do not add non-Apple purchase calls to action without
