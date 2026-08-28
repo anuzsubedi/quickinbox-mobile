@@ -8,3 +8,11 @@ DerivedData/
 *.p12
 *.cer
 Local.xcconfig
+
+# App Store screenshot generation artifacts and support files
+AppStoreScreenshots/
+AppStoreScreenshots.zip
+ScreenshotAssets/
+build/
+scripts/
+quickinbox/quickinbox/Shared/ScreenshotSupport.swift

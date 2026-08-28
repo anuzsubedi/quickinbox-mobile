@@ -4,7 +4,7 @@
 
 <!--
 THESIS: Postmark Desk makes a private mailbox feel like intentional correspondence, replacing generic navigation chrome with one compact mail-first hierarchy.
-OWN-WORLD: Crisp semantic paper, ink typography, sage postmark seals, a compact type-led masthead, flat editorial rows, and restrained native controls.
+OWN-WORLD: Crisp semantic paper, ink typography, sage postmark seals, a compact type-led masthead, flat mail rows, and restrained native controls.
 STORY: The user immediately sees where they are, what needs attention, and can read, triage, or write without navigating through app chrome.
 FIRST VIEWPORT: The active mailbox menu, status, search, Compose, and account identity form one compact masthead above a sender-led stream marked by quiet postmark seals.
 FORM: Postmark Desk, rebuilt from live iOS 27 simulator evidence rather than inherited large-title, toolbar-glass, or bottom-sheet conventions.
@@ -29,8 +29,8 @@ implied by the interface.
   navigation.
 - On iPhone, conversations push from a `NavigationStack`; the left-edge back
   gesture remains available.
-- On iPad, the mailbox index and selected conversation use a balanced native
-  split view.
+- Version 1.0 targets iPhone only; do not design or advertise an iPad layout for
+  this release.
 - The active mailbox name is an anchored native menu in the masthead. It changes
   mailboxes in place; mailbox navigation never opens a bottom sheet.
 - Compose and account/settings are explicit masthead actions. Reply remains the
@@ -40,8 +40,9 @@ implied by the interface.
 
 ## Color and material
 
-- **Ink:** the app accent's deep indigo family. It owns primary actions and
-  brand punctuation, never a large navigation background.
+- **Ink:** the Paper, White, and AMOLED canvases retain the app accent's deep
+  indigo family. It owns primary actions and brand punctuation, never a large
+  navigation background.
 - **Paper:** semantic `systemBackground` for mail and reading content.
 - **Canvas:** semantic grouped backgrounds for Settings and secondary flows.
 - **Sage:** a muted secondary identity accent for account monograms and rare
@@ -125,15 +126,24 @@ implied by the interface.
 
 ## Onboarding
 
-- Pairing is scanner-first. The first screen has one clear explanation, one
-  prominent **Scan Pairing Code** action, and a secondary **Enter Code
-  Manually** disclosure.
-- The relationship is described plainly: the code comes from QuickInbox on the
-  web, HTTPS is required, and the session is kept in Keychain.
-- Use one restrained brand moment derived from the iOS identity. Do not build a
-  marketing carousel, ornamental hero, or multi-card setup page.
+- Pairing is scanner-first. The light-only landing screen uses a rounded native
+  QuickInbox wordmark, a visible **Privacy** text action, a left-aligned headline,
+  and one prominent **Scan QR code** action pinned to the bottom safe-area
+  region.
+- The original transparent server-to-iPhone illustration sits on a warm blush
+  art mat. It is decorative only and contains no scannable QR pattern. The hero
+  yields to copy at accessibility text sizes and in compact-height layouts.
+- The relationship is described plainly: open QuickInbox on the web, choose
+  Settings > Connect mobile app, then scan. The landing also states that the
+  connection uses HTTPS and pairing credentials are stored in Keychain.
+- Manual entry is available only from inside the scanner, including permission
+  denied, unsupported-device, unavailable-camera, and scanner-failure states.
+- The scanner uses an edge-to-edge camera surface, custom corner brackets,
+  concise guidance, and a solid bottom region for **Enter code manually**.
 - Camera permission, scanned-host confirmation, errors, progress, and manual
-  entry use system sheets, alerts, fields, and controls.
+  entry use system sheets, alerts, fields, and controls. Support and Privacy
+  Policy remain available from Settings, with the Privacy Policy also exposed
+  before pairing.
 
 ## Settings
 
