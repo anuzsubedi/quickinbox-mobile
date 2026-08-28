@@ -3,11 +3,12 @@ import WebKit
 
 /// Displays email HTML in an ephemeral, navigation-disabled WebKit surface.
 ///
-/// JavaScript, cookies, forms, frames, and navigation are disabled. Remote images
-/// are loaded only after an explicit per-message choice or privacy preference.
+/// JavaScript, cookies, forms, frames, and in-view navigation are disabled. Remote
+/// images are loaded only after an explicit per-message choice or privacy preference.
 /// The HTML is still treated as untrusted even though the server also sanitizes mail.
 struct HardenedHTMLView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.openURL) private var openURL
     let html: String
     var loadsRemoteImages = false
     @State private var contentHeight: CGFloat = 120
@@ -19,6 +20,7 @@ struct HardenedHTMLView: View {
                 loadsRemoteImages: loadsRemoteImages
             ),
             colorScheme: colorScheme,
+            openURL: { url in openURL(url) },
             height: $contentHeight
         )
             .frame(height: max(44, contentHeight))
@@ -28,10 +30,11 @@ struct HardenedHTMLView: View {
 private struct HardenedWebView: UIViewRepresentable {
     let html: String
     let colorScheme: ColorScheme
+    let openURL: (URL) -> Void
     @Binding var height: CGFloat
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(height: $height)
+        Coordinator(height: $height, openURL: openURL)
     }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -66,6 +69,7 @@ private struct HardenedWebView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         webView.overrideUserInterfaceStyle = colorScheme == .dark ? .dark : .light
+        context.coordinator.openURL = openURL
         guard context.coordinator.loadedHTML != html else { return }
         context.coordinator.loadedHTML = html
         DispatchQueue.main.async { height = 44 }
@@ -86,11 +90,13 @@ private struct HardenedWebView: UIViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         @Binding var height: CGFloat
         var loadedHTML: String?
+        var openURL: (URL) -> Void
         private var contentSizeObservation: NSKeyValueObservation?
         private var restingZoomScale: CGFloat?
 
-        init(height: Binding<CGFloat>) {
+        init(height: Binding<CGFloat>, openURL: @escaping (URL) -> Void) {
             _height = height
+            self.openURL = openURL
         }
 
         func observeContentSize(of webView: WKWebView) {
@@ -140,6 +146,11 @@ private struct HardenedWebView: UIViewRepresentable {
             let url = navigationAction.request.url
             let isInitialDocument = navigationAction.navigationType == .other
                 && (url?.scheme == "about" || url?.scheme == "data")
+            if navigationAction.navigationType == .linkActivated,
+               let url,
+               Self.allowedExternalSchemes.contains(url.scheme?.lowercased() ?? "") {
+                openURL(url)
+            }
             decisionHandler(isInitialDocument ? .allow : .cancel)
         }
 
@@ -149,8 +160,20 @@ private struct HardenedWebView: UIViewRepresentable {
             for navigationAction: WKNavigationAction,
             windowFeatures: WKWindowFeatures
         ) -> WKWebView? {
-            nil
+            if navigationAction.targetFrame == nil,
+               let url = navigationAction.request.url,
+               Self.allowedExternalSchemes.contains(url.scheme?.lowercased() ?? "") {
+                openURL(url)
+            }
+            return nil
         }
+
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            guard let loadedHTML else { return }
+            webView.loadHTMLString(loadedHTML, baseURL: nil)
+        }
+
+        private static let allowedExternalSchemes = Set(["http", "https", "mailto", "tel"])
     }
 }
 
@@ -160,15 +183,18 @@ nonisolated enum HTMLMessageSanitizer {
         loadsRemoteImages: Bool = false
     ) -> String {
         var body = rawHTML
-        let isRichMessage = rawHTML.range(
+        let isDesignedMessage = rawHTML.range(
             of: #"<(?:table|style|center)\b|\bbgcolor\s*="#,
             options: [.regularExpression, .caseInsensitive]
         ) != nil
-        let supportsDarkMode = rawHTML.range(
-            of: #"prefers-color-scheme\s*:\s*dark|color-scheme\s*:\s*[^;}]*dark|(?:supported-)?color-schemes?[\"'][^>]*dark"#,
+        // A color-scheme declaration only opts into client-side adaptation; it
+        // does not mean the sender supplied dark colors. Skip our fallback only
+        // for actual dark-mode rules or adaptive color values.
+        let hasAuthoredDarkMode = rawHTML.range(
+            of: #"@media[^\{]{0,240}\(\s*prefers-color-scheme\s*:\s*dark\s*\)|light-dark\s*\("#,
             options: [.regularExpression, .caseInsensitive]
         ) != nil
-        let viewportWidth = isRichMessage ? designWidth(in: rawHTML) : nil
+        let viewportWidth = isDesignedMessage ? designWidth(in: rawHTML) : nil
         let viewport = viewportWidth.map {
             "width=\($0), user-scalable=yes, minimum-scale=0.5, maximum-scale=5"
         } ?? "width=device-width, initial-scale=1, user-scalable=yes, minimum-scale=0.5, maximum-scale=5"
@@ -200,14 +226,12 @@ nonisolated enum HTMLMessageSanitizer {
             with: ""
         )
         if !loadsRemoteImages {
-            body = replacing(#"\s+(?:src|srcset|poster)\s*=\s*(?:\"[^\"]*(?:http|https):[^\"]*\"|'[^']*(?:http|https):[^']*'|(?:http|https):[^\s>]+)"#, in: body, with: "")
-            body = replacing(#"url\s*\([^)]*\)"#, in: body, with: "none")
+            body = replacing(#"\s+(?:src|srcset|poster|background)\s*=\s*(?:\"[^\"]*(?:(?:https?:)?//)[^\"]*\"|'[^']*(?:(?:https?:)?//)[^']*'|(?:https?:)?//[^\s>]+)"#, in: body, with: "")
+            body = removingRemoteCSSURLs(from: body)
         }
         body = replacing(#"<style\b[^>]*>[\s\S]*?</style\s*>"#, in: body, with: "")
 
-        let bodyAttributes = supportsDarkMode
-            ? ""
-            : (firstCapture(of: #"<body\b([^>]*)>"#, in: body) ?? "")
+        let bodyAttributes = firstCapture(of: #"<body\b([^>]*)>"#, in: body) ?? ""
         if let bodyContents = firstCapture(of: #"<body\b[^>]*>([\s\S]*?)</body\s*>"#, in: body) {
             body = bodyContents
         } else {
@@ -217,17 +241,27 @@ nonisolated enum HTMLMessageSanitizer {
         return """
         <!doctype html>
         <html><head>
+        <meta charset="utf-8">
         <meta name="viewport" content="\(viewport)">
+        <meta name="color-scheme" content="light dark">
+        <meta name="supported-color-schemes" content="light dark">
         <meta name="referrer" content="no-referrer">
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: \(loadsRemoteImages ? "https: http:" : ""); style-src 'unsafe-inline'; font-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
         <style>
-        :root { color-scheme: \(isRichMessage && !supportsDarkMode ? "light" : "light dark"); }
+        :root {
+            color-scheme: light dark;
+            --qm-text: -apple-system-label;
+            --qm-secondary: -apple-system-secondary-label;
+            --qm-link: -apple-system-link;
+            --qm-rule: -apple-system-separator;
+            --qm-quote: -apple-system-tertiary-system-fill;
+        }
         html, body {
             margin: 0 !important;
             padding: 0 !important;
             max-width: 100% !important;
-            background: \(isRichMessage && !supportsDarkMode ? "#ffffff" : "transparent");
-            color: \(isRichMessage && !supportsDarkMode ? "#111111" : "-apple-system-label");
+            background: \(isDesignedMessage && !hasAuthoredDarkMode ? "#ffffff" : "transparent");
+            color: \(isDesignedMessage && !hasAuthoredDarkMode ? "#111111" : "var(--qm-text)");
             -webkit-text-size-adjust: 100%;
             height: auto !important;
             overflow-y: hidden !important;
@@ -236,15 +270,31 @@ nonisolated enum HTMLMessageSanitizer {
         body {
             font: -apple-system-body;
             overflow-wrap: anywhere;
+            word-break: normal;
         }
         body * {
             box-sizing: border-box !important;
             overflow-wrap: anywhere;
         }
-        img, video { max-width: 100% !important; height: auto !important; }
+        [style*="position: fixed" i], [style*="position:fixed" i],
+        [style*="position: sticky" i], [style*="position:sticky" i] {
+            position: static !important;
+        }
+        a { color: var(--qm-link); overflow-wrap: anywhere; }
+        img, video, svg { max-width: 100% !important; height: auto !important; }
         pre, code { white-space: pre-wrap; overflow-wrap: anywhere; }
+        pre { max-width: 100%; overflow-x: auto; }
+        blockquote {
+            margin-inline: 0.35em 0;
+            padding-inline-start: 0.8em;
+            border-inline-start: 3px solid var(--qm-rule);
+            color: var(--qm-secondary);
+        }
+        hr { border: 0; border-top: 1px solid var(--qm-rule); }
         table { max-width: 100% !important; }
         body > table, body > div > table { width: 100% !important; }
+        \(isDesignedMessage && !hasAuthoredDarkMode ? designedMessageDarkModeStyles : "")
+        \(isDesignedMessage ? "" : ordinaryMessageStyles)
         </style>
         <style>\(senderStyles)</style>
         </head><body \(bodyAttributes)>\(body)</body></html>
@@ -279,7 +329,7 @@ nonisolated enum HTMLMessageSanitizer {
 
     static func containsRemoteImages(_ html: String) -> Bool {
         html.range(
-            of: #"<(?:img|source)\b[^>]*\b(?:src|srcset)\s*=\s*[\"']?[^>]*https?://|url\s*\(\s*[\"']?https?://"#,
+            of: #"<(?:img|source|table|td|th|body)\b[^>]*\b(?:src|srcset|background)\s*=\s*[\"']?[^>]*(?:https?:)?//|url\s*\(\s*[\"']?(?:https?:)?//"#,
             options: [.regularExpression, .caseInsensitive]
         ) != nil
     }
@@ -289,10 +339,58 @@ nonisolated enum HTMLMessageSanitizer {
         if loadsRemoteImages {
             result = replacing(#"url\s*\(\s*[\"']?\s*(?:javascript|file):[^)]*\)"#, in: result, with: "none")
         } else {
-            result = replacing(#"url\s*\([^)]*\)"#, in: result, with: "none")
+            result = removingRemoteCSSURLs(from: result)
+            result = replacing(#"url\s*\(\s*[\"']?\s*(?:javascript|file|cid):[^)]*\)"#, in: result, with: "none")
         }
         result = replacing(#"expression\s*\([^)]*\)"#, in: result, with: "")
         return result
+    }
+
+    /// Ordinary correspondence often contains editor-generated black text or
+    /// white backgrounds without being a deliberately designed email. Adapt
+    /// those common defaults while leaving branded, table-based mail intact.
+    private static let ordinaryMessageStyles = """
+        body { line-height: 1.45; }
+        p { margin-block: 0 0.85em; }
+        p:last-child { margin-bottom: 0; }
+        @media (prefers-color-scheme: dark) {
+            [color="black" i], [color="#000" i], [color="#000000" i],
+            [style*="color:black" i], [style*="color: black" i],
+            [style*="color:#000" i], [style*="color: #000" i],
+            [style*="color:rgb(0,0,0)" i], [style*="color: rgb(0, 0, 0)" i] {
+                color: var(--qm-text) !important;
+            }
+            [bgcolor="white" i], [bgcolor="#fff" i], [bgcolor="#ffffff" i],
+            [style*="background-color:white" i], [style*="background-color: white" i],
+            [style*="background-color:#fff" i], [style*="background-color: #fff" i],
+            [style*="background:white" i], [style*="background: white" i] {
+                background-color: transparent !important;
+            }
+        }
+        """
+
+    /// Invert painted colors for designed messages that lack their own dark-mode
+    /// styles. Images, videos, and similar media are re-inverted so they render
+    /// with their original colors.
+    private static let designedMessageDarkModeStyles = """
+        @media (prefers-color-scheme: dark) {
+            html {
+                filter: invert(1) hue-rotate(180deg);
+                -webkit-filter: invert(1) hue-rotate(180deg);
+            }
+            img, video, picture, svg, [background], [style*="background-image"] {
+                filter: invert(1) hue-rotate(180deg);
+                -webkit-filter: invert(1) hue-rotate(180deg);
+            }
+        }
+        """
+
+    private static func removingRemoteCSSURLs(from value: String) -> String {
+        replacing(
+            #"url\s*\(\s*(?:\"[^\"]*(?:https?:)?//[^\"]*\"|'[^']*(?:https?:)?//[^']*'|(?:https?:)?//[^)]*)\)"#,
+            in: value,
+            with: "none"
+        )
     }
 
     /// Most marketing email is authored on a fixed 480–900 CSS-pixel canvas.

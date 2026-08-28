@@ -15,7 +15,11 @@ struct SettingsView: View {
     }
 
     private var selectedTheme: AppTheme {
-        AppThemeRegistry.theme(id: appThemeID)
+        AppThemeRegistry.theme(id: appThemeID).applying(selectedTint)
+    }
+
+    private var selectedTint: AppTint {
+        AppTintRegistry.tint(id: AppTintRegistry.defaultTintID)
     }
 
     private var settingsPalette: AppThemePalette {
@@ -107,8 +111,30 @@ struct SettingsView: View {
                         )
                     }
                 }
+
+                settingsGroup(title: "About") {
+                    NavigationLink {
+                        supportPage
+                    } label: {
+                        settingsDestinationLabel(
+                            "Support",
+                            systemImage: "questionmark.circle"
+                        )
+                    }
+
+                    settingsGroupDivider
+
+                    NavigationLink {
+                        privacyPolicyPage
+                    } label: {
+                        settingsDestinationLabel(
+                            "Privacy Policy",
+                            systemImage: "hand.raised"
+                        )
+                    }
+                }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, QuickInboxDesign.Spacing.page)
             .padding(.top, 18)
             .padding(.bottom, 40)
             .frame(maxWidth: QuickInboxDesign.contentMaxWidth)
@@ -147,6 +173,7 @@ struct SettingsView: View {
         // dismissing and reopening the sheet.
         .preferredColorScheme(settingsPreferredColorScheme)
         .environment(\.appTheme, selectedTheme)
+        .tint(settingsPalette.interactiveTint)
     }
 
     private var accountOverview: some View {
@@ -203,58 +230,79 @@ struct SettingsView: View {
     }
 
     private var appearanceOverview: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            settingsOverviewHeading(
-                "Theme",
-                detail: "Choose how QuickInbox’s surfaces and contrast should look."
-            )
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Choose your canvas")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(settingsPalette.primaryText)
+                Text("Each theme reshapes the surfaces and contrast throughout QuickInbox.")
+                    .font(.subheadline)
+                    .foregroundStyle(settingsPalette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-            VStack(spacing: 10) {
-                ForEach(AppThemeRegistry.all) { theme in
-                    themeChoice(theme)
-                }
+            ForEach(AppThemeRegistry.all) { theme in
+                themeChoice(theme)
             }
         }
-        .modifier(SettingsPanelModifier())
     }
 
     private func themeChoice(_ theme: AppTheme) -> some View {
         let isSelected = theme.id == selectedTheme.id
-        let previewPalette = theme.palette(for: colorScheme)
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        let previewPalette = theme.applying(selectedTint).palette(for: colorScheme)
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
 
         return Button {
             selectTheme(theme)
         } label: {
-            HStack(spacing: 13) {
+            VStack(spacing: 0) {
                 canvasPreview(palette: previewPalette)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(theme.title)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(settingsPalette.primaryText)
-                    Text(theme.detail)
-                        .font(.footnote)
-                        .foregroundStyle(settingsPalette.secondaryText)
-                        .multilineTextAlignment(.leading)
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 7) {
+                            Text(theme.title)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(settingsPalette.primaryText)
+
+                            Text(themeModeLabel(theme))
+                                .font(.caption2.weight(.semibold))
+                                .textCase(.uppercase)
+                                .foregroundStyle(settingsPalette.secondaryText)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(settingsPalette.fill, in: Capsule())
+                        }
+
+                        Text(theme.detail)
+                            .font(.footnote)
+                            .foregroundStyle(settingsPalette.secondaryText)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 4)
+
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundStyle(
+                            isSelected
+                                ? settingsPalette.interactiveTint
+                                : settingsPalette.secondaryText.opacity(0.45)
+                        )
+                        .accessibilityHidden(true)
                 }
-
-                Spacer(minLength: 8)
-
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(isSelected ? Color.accentColor : settingsPalette.secondaryText.opacity(0.5))
-                    .accessibilityHidden(true)
+                .padding(14)
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
-            .background(isSelected ? Color.accentColor.opacity(0.09) : settingsPalette.fill, in: shape)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(settingsPalette.paper, in: shape)
             .overlay {
                 shape.stroke(
-                    isSelected ? Color.accentColor.opacity(0.85) : settingsPalette.separator,
-                    lineWidth: isSelected ? 1.5 : 0.5
+                    isSelected ? settingsPalette.interactiveTint.opacity(0.9) : settingsPalette.separator,
+                    lineWidth: isSelected ? 2 : 0.75
                 )
             }
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.18 : 0.05), radius: 10, y: 4)
             .contentShape(shape)
         }
         .buttonStyle(.plain)
@@ -264,36 +312,74 @@ struct SettingsView: View {
     }
 
     private func canvasPreview(palette: AppThemePalette) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        let shape = UnevenRoundedRectangle(
+            topLeadingRadius: 17,
+            bottomLeadingRadius: 0,
+            bottomTrailingRadius: 0,
+            topTrailingRadius: 17,
+            style: .continuous
+        )
         return ZStack {
             shape.fill(palette.grouped)
 
-            VStack(alignment: .leading, spacing: 4) {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(palette.raised)
-                    .frame(height: 15)
-                RoundedRectangle(cornerRadius: 1, style: .continuous)
-                    .fill(palette.primaryText.opacity(0.72))
-                    .frame(width: 27, height: 3)
-                RoundedRectangle(cornerRadius: 1, style: .continuous)
-                    .fill(palette.secondaryText.opacity(0.55))
-                    .frame(width: 20, height: 2)
+            VStack(spacing: 0) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(palette.interactiveTint)
+                        .frame(width: 10, height: 10)
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(palette.primaryText.opacity(0.78))
+                        .frame(width: 48, height: 5)
+                    Spacer()
+                    Circle()
+                        .fill(palette.fill)
+                        .frame(width: 24, height: 24)
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 38)
+                .background(palette.paper)
+
+                VStack(spacing: 0) {
+                    previewMailRow(palette: palette, emphasized: true)
+                    Rectangle().fill(palette.separator).frame(height: 0.5)
+                    previewMailRow(palette: palette, emphasized: false)
+                }
+                .background(palette.raised)
             }
-            .padding(7)
         }
-        .frame(width: 52, height: 46)
-        .overlay { shape.stroke(palette.separator, lineWidth: 0.75) }
+        .frame(height: 112)
+        .clipShape(shape)
         .accessibilityHidden(true)
     }
 
-    private func settingsOverviewHeading(_ title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
-            Text(detail)
-                .font(.footnote)
-                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+    private func previewMailRow(palette: AppThemePalette, emphasized: Bool) -> some View {
+        HStack(spacing: 9) {
+            Circle()
+                .fill(emphasized ? palette.interactiveTint.opacity(0.9) : palette.fill)
+                .frame(width: 24, height: 24)
+
+            VStack(alignment: .leading, spacing: 5) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(palette.primaryText.opacity(emphasized ? 0.82 : 0.55))
+                    .frame(width: emphasized ? 88 : 68, height: 5)
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(palette.secondaryText.opacity(0.42))
+                    .frame(maxWidth: emphasized ? 170 : 138)
+                    .frame(height: 4)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 37)
+    }
+
+    private func themeModeLabel(_ theme: AppTheme) -> String {
+        switch theme.preferredColorScheme {
+        case .light: "Light"
+        case .dark: "Dark"
+        case nil: "Adaptive"
+        @unknown default: "Adaptive"
         }
     }
 
@@ -372,9 +458,10 @@ struct SettingsView: View {
 
     private var connectionPage: some View {
         settingsPage(spacing: 24) {
-            serverSection
-            disconnectSection
-            localDataSection
+            // Keep iOS from recursively expanding this page's large opaque tuple.
+            AnyView(serverSection)
+            AnyView(disconnectSection)
+            AnyView(localDataSection)
         }
         .navigationTitle("Server & Session")
         .navigationBarTitleDisplayMode(.inline)
@@ -396,6 +483,55 @@ struct SettingsView: View {
         }
     }
 
+    private var privacyPolicyPage: some View {
+        InAppWebView(url: AppLinks.privacyPolicy)
+            .navigationTitle("Privacy Policy")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var supportPage: some View {
+        settingsPage {
+            settingsPageSection(
+                "Get Help",
+                detail: "Questions, feedback, or a problem to report - we're here."
+            ) {
+                Link(destination: AppLinks.supportEmail) {
+                    HStack(spacing: 12) {
+                        Label("Email Support", systemImage: "envelope")
+                            .font(.body)
+                        Spacer(minLength: 8)
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption.weight(.semibold))
+                            .accessibilityHidden(true)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .accessibilityHint("Opens your mail app with QuickInbox support pre-addressed")
+
+                settingsGroupDivider
+
+                Link(destination: AppLinks.issueTracker) {
+                    HStack(spacing: 12) {
+                        Label("Report an Issue on GitHub", systemImage: "exclamationmark.bubble")
+                            .font(.body)
+                        Spacer(minLength: 8)
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption.weight(.semibold))
+                            .accessibilityHidden(true)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .accessibilityHint("Opens the QuickInbox issue tracker in the browser")
+            }
+        }
+        .navigationTitle("Support")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
     private func settingsPage<Content: View>(
         spacing: CGFloat = 24,
         @ViewBuilder content: () -> Content
@@ -404,7 +540,7 @@ struct SettingsView: View {
             LazyVStack(alignment: .leading, spacing: spacing) {
                 content()
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, QuickInboxDesign.Spacing.page)
             .padding(.top, 18)
             .padding(.bottom, 40)
             .frame(maxWidth: QuickInboxDesign.contentMaxWidth)
@@ -463,10 +599,10 @@ struct SettingsView: View {
         HStack(spacing: 12) {
             Image(systemName: systemImage)
                 .font(.body)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(settingsPalette.interactiveTint)
                 .frame(width: 32, height: 32)
                 .background(
-                    Color.accentColor.opacity(0.12),
+                    settingsPalette.interactiveTint.opacity(0.12),
                     in: RoundedRectangle(cornerRadius: 8, style: .continuous)
                 )
 
@@ -811,7 +947,7 @@ struct SettingsView: View {
             }
         }
         .disabled(model.isSavingSignature || !model.signatureHasChanges)
-        .tint(Color.accentColor)
+        .tint(settingsPalette.interactiveTint)
         .accessibilityHint(
             model.signatureHasChanges
                 ? "Saves the signature to your account"
@@ -1044,6 +1180,7 @@ struct SettingsView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .frame(minHeight: 58)
+            .onChange(of: showRemoteImagesByDefault) { AppFeedback.play(.toggleConfirmed) }
         }
     }
 
@@ -1100,7 +1237,7 @@ private struct SettingsPanelModifier: ViewModifier {
     var contentPadding: CGFloat = 16
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: QuickInboxDesign.Radius.card, style: .continuous)
         let palette = appTheme.palette(for: colorScheme)
 
         content

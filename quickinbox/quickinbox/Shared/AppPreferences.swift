@@ -6,4 +6,5 @@ nonisolated enum AppPreferences {
     static let showRemoteImagesByDefault = "quickinbox.privacy.showRemoteImagesByDefault"
     // Keep the original storage key so existing theme choices migrate automatically.
     static let appThemeID = "quickinbox.appearance.appCanvasStyle"
+    static let appTintID = "quickinbox.appearance.appTint"
 }

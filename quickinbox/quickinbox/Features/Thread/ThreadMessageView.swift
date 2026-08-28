@@ -144,7 +144,9 @@ struct ThreadMessageView: View {
     }
 
     private var senderTitle: String {
-        message.direction == .outbound ? "Me" : message.fromAddress
+        message.direction == .outbound
+            ? "Me"
+            : message.senderDisplayName
     }
 
     private var messageSenderFont: Font {
@@ -221,6 +223,7 @@ struct ThreadMessageView: View {
 
 private struct FormattedMessageBody: View {
     let html: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AppPreferences.showRemoteImagesByDefault) private var showRemoteImagesByDefault = false
     @State private var showsQuotedHistory = false
     @State private var showsRemoteImagesForMessage = false
@@ -250,7 +253,9 @@ private struct FormattedMessageBody: View {
 
             if let history = parts.quotedHistory {
                 Button {
-                    showsQuotedHistory.toggle()
+                    withAnimation(reduceMotion ? nil : QuickInboxDesign.Motion.stateChange) {
+                        showsQuotedHistory.toggle()
+                    }
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.right")
@@ -279,6 +284,7 @@ private struct FormattedMessageBody: View {
 
 private struct PlainMessageBody: View {
     let text: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showsQuotedHistory = false
 
     var body: some View {
@@ -291,7 +297,9 @@ private struct PlainMessageBody: View {
 
             if let history = parts.quotedHistory {
                 Button {
-                    showsQuotedHistory.toggle()
+                    withAnimation(reduceMotion ? nil : QuickInboxDesign.Motion.stateChange) {
+                        showsQuotedHistory.toggle()
+                    }
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.right")

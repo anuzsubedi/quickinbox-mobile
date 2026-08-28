@@ -26,10 +26,51 @@ nonisolated enum DeliveryStatus: String, Codable, Sendable {
     case failed
 }
 
+nonisolated enum EmailAddressPresentation {
+    static func displayLabel(for value: String) -> String {
+        explicitName(from: value) ?? addressOnly(from: value)
+    }
+
+    static func explicitName(from value: String) -> String? {
+        guard let bracket = value.firstIndex(of: "<") else { return nil }
+        let name = value[..<bracket]
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"")))
+        return name.isEmpty ? nil : name
+    }
+
+    static func addressOnly(from value: String) -> String {
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let openingBracket = trimmedValue.firstIndex(of: "<"),
+              let closingBracket = trimmedValue[openingBracket...].firstIndex(of: ">") else {
+            return trimmedValue
+        }
+        return String(trimmedValue[trimmedValue.index(after: openingBracket)..<closingBracket])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 nonisolated struct ThreadParticipant: Codable, Hashable, Sendable {
     let label: String
     let address: String
     let selfParticipant: Bool
+
+    var displayLabel: String {
+        let cleanLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        let addressOnly = EmailAddressPresentation.addressOnly(from: cleanAddress)
+        let localPart = addressOnly.split(separator: "@", maxSplits: 1).first.map(String.init) ?? ""
+
+        if !cleanLabel.isEmpty,
+           cleanLabel.caseInsensitiveCompare(addressOnly) != .orderedSame,
+           cleanLabel.caseInsensitiveCompare(localPart) != .orderedSame {
+            return cleanLabel
+        }
+
+        if let explicitName = EmailAddressPresentation.explicitName(from: cleanAddress) {
+            return explicitName
+        }
+        return addressOnly.isEmpty ? cleanLabel : addressOnly
+    }
 
     enum CodingKeys: String, CodingKey {
         case label, address
@@ -99,6 +140,7 @@ nonisolated struct ThreadMessage: Codable, Identifiable, Equatable, Sendable {
     let id: String
     let direction: MessageDirection
     let fromAddress: String
+    let fromName: String?
     let toAddress: String
     let ccAddress: String?
     let subject: String
@@ -118,6 +160,7 @@ nonisolated struct ThreadMessage: Codable, Identifiable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, direction, subject, status, attachments
         case fromAddress = "from_addr"
+        case fromName = "from_name"
         case toAddress = "to_addr"
         case ccAddress = "cc_addr"
         case bodyText = "body_text"
@@ -130,6 +173,16 @@ nonisolated struct ThreadMessage: Codable, Identifiable, Equatable, Sendable {
         case deletedAt = "deleted_at"
         case archivedAt = "archived_at"
         case createdAt = "created_at"
+    }
+
+    /// The name to show for the sender of an inbound message. The server
+    /// preserves a genuine RFC display name separately from the normalized
+    /// address, so prefer it and fall back to the address itself.
+    var senderDisplayName: String {
+        if let name = fromName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return name
+        }
+        return EmailAddressPresentation.displayLabel(for: fromAddress)
     }
 }
 

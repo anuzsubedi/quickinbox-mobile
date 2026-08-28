@@ -1,13 +1,15 @@
 import SwiftUI
 
 struct OnboardingView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.appTheme) private var appTheme
-    @Environment(\.colorScheme) private var colorScheme
-
     private let api: QuickInboxAPI
     private let credentialStore: CredentialStore
     private let onAuthenticated: @MainActor (Credential, User) -> Void
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.appTheme) private var appTheme
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var serverOrigin = ""
     @State private var pairingCode = ""
@@ -17,7 +19,9 @@ struct OnboardingView: View {
     @State private var pendingScannedPayload: ValidatedPairingPayload?
     @State private var showsScannedOriginConfirmation = false
     @State private var showsManualPairing = false
-    @State private var hasAppeared = false
+    @State private var opensManualPairingAfterScanner = false
+    @State private var showsManualPairingHelp = false
+    @State private var showsPrivacyPolicy = false
     @FocusState private var focusedField: Field?
 
     init(
@@ -33,29 +37,42 @@ struct OnboardingView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                onboardingBackground
+                QuickInboxDesign.Palette.paper.ignoresSafeArea()
 
-                GeometryReader { geometry in
+                GeometryReader { layout in
                     ScrollView {
-                        onboardingContent(minHeight: geometry.size.height)
+                        onboardingContent
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: layout.size.height)
                     }
+                    .scrollIndicators(.hidden)
                     .scrollBounceBehavior(.basedOnSize)
                 }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                primaryActions
             }
             .toolbar(.hidden, for: .navigationBar)
         }
         .interactiveDismissDisabled(isConnecting)
-        .task {
-            await revealContent()
-        }
-        .sheet(isPresented: $isScannerPresented) {
-            QRScannerView(onScan: receiveScannedValue)
+        .fullScreenCover(isPresented: $isScannerPresented, onDismiss: scannerDidDismiss) {
+            QRScannerView(
+                onScan: receiveScannedValue,
+                onEnterManually: showManualPairingAfterScanner
+            )
         }
         .sheet(isPresented: $showsManualPairing) {
             manualPairingSheet
+        }
+        .sheet(isPresented: $showsPrivacyPolicy) {
+            NavigationStack {
+                InAppWebView(url: AppLinks.privacyPolicy)
+                    .navigationTitle("Privacy Policy")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showsPrivacyPolicy = false }
+                        }
+                    }
+            }
+            .tint(QuickInboxDesign.Palette.interactiveTint)
         }
         .alert("Check QuickInbox Server", isPresented: $showsScannedOriginConfirmation) {
             Button("Cancel", role: .cancel) {
@@ -63,7 +80,6 @@ struct OnboardingView: View {
             }
             Button("Connect") {
                 guard let payload = pendingScannedPayload else { return }
-                AppFeedback.play(.moveConfirmed)
                 pendingScannedPayload = nil
                 serverOrigin = payload.origin.absoluteString
                 pairingCode = payload.code
@@ -74,236 +90,270 @@ struct OnboardingView: View {
         }
     }
 
-    private var onboardingBackground: some View {
-        let palette = appTheme.palette(for: colorScheme)
-        return ZStack {
-            QuickInboxDesign.Palette.paperGrouped
-
-            LinearGradient(
-                colors: [
-                    palette.signalInk.opacity(0.13),
-                    .clear
-                ],
-                startPoint: .topLeading,
-                endPoint: .center
-            )
-
-            RadialGradient(
-                colors: [
-                    Color.accentColor.opacity(0.08),
-                    .clear
-                ],
-                center: .bottomTrailing,
-                startRadius: 0,
-                endRadius: 360
-            )
-        }
-        .ignoresSafeArea()
-    }
-
-    private func onboardingContent(minHeight: CGFloat) -> some View {
+    private var onboardingContent: some View {
         VStack(spacing: 0) {
-            brand
+            Spacer(minLength: 32)
 
-            introduction
-                .padding(.top, 30)
+            HStack {
+                Text("QuickInbox")
+                    .font(.onboardingBrand(24, .bold, relativeTo: .title2))
+                    .kerning(0.2)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 44)
+                    .background(QuickInboxDesign.Palette.paperRaised, in: Capsule())
+                    .overlay { Capsule().stroke(QuickInboxDesign.Palette.separator, lineWidth: 0.5) }
+                    .accessibilityAddTraits(.isHeader)
 
-            pairingHero
-                .padding(.top, 22)
+                Spacer()
 
-            webLocation
-                .padding(.top, 18)
+                Button("Privacy") { showsPrivacyPolicy = true }
+                    .font(.subheadline.weight(.semibold))
+                    .frame(minHeight: 44)
+            }
+            .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+            .frame(maxWidth: 560)
 
-            securityNote
-                .padding(.top, 12)
+            Spacer(minLength: 24)
 
-            Spacer(minLength: 28)
+            if showsHero {
+                heroArtwork
 
-            connectionError
-                .padding(.top, errorMessage == nil ? 0 : 20)
+                Spacer(minLength: 24)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Connect to your")
+                    .font(.onboardingBrand(33, .regular, relativeTo: .largeTitle))
+
+                Text("QuickInbox Server")
+                    .font(.onboardingBrand(33, .semibold, relativeTo: .largeTitle))
+            }
+            .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: 560, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Open QuickInbox on the web, choose Settings > Connect mobile app, then scan the code shown there.")
+                    .font(.callout)
+                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Label("Connected over HTTPS. Pairing credentials stay protected in Keychain.", systemImage: "lock.shield")
+                    .font(.footnote)
+                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: 560, alignment: .leading)
+            .padding(.top, 18)
+
+            Spacer(minLength: 40)
+
+            VStack(spacing: 20) {
+                if let errorMessage {
+                    connectionError(message: errorMessage)
+                }
+
+                scanButton
+
+                privacyFooter
+            }
+            .padding(.bottom, 16)
         }
-        .frame(maxWidth: 480)
-        .padding(.horizontal, 24)
-        .padding(.top, 16)
-        .padding(.bottom, 28)
-        .frame(minHeight: minHeight)
-        .frame(maxWidth: .infinity)
-        .opacity(hasAppeared ? 1 : 0)
+        .padding(.horizontal, horizontalPadding)
     }
 
-    private var brand: some View {
-        HStack(spacing: 9) {
-            Image("LaunchIcon")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 52, height: 40)
-
-            Text("QuickInbox")
-                .font(.title3.weight(.semibold))
-        }
-        .frame(maxWidth: .infinity, alignment: .center)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var introduction: some View {
-        VStack(spacing: 10) {
-            Text("Pair your iPhone")
-                .font(.largeTitle.weight(.bold))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text("Scan the one-time code shown in QuickInbox on the web.")
-                .font(.body)
-                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var pairingHero: some View {
-        Image("OnboardingPairingHero")
+    private var heroArtwork: some View {
+        Image("OnboardingConnectionHero")
             .resizable()
             .scaledToFit()
-            .aspectRatio(3 / 2, contentMode: .fit)
-            .frame(maxWidth: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(QuickInboxDesign.Palette.separator, lineWidth: 0.5)
-            }
+            .frame(maxWidth: 560)
+            .padding(.horizontal, 8)
             .accessibilityHidden(true)
     }
 
-    private var webLocation: some View {
-        Label {
-            Text("Settings  ›  Connect mobile app")
-                .font(.subheadline.weight(.medium))
-        } icon: {
-            Image(systemName: "safari.fill")
-                .foregroundStyle(.tint)
-        }
-        .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("On the web, open Settings, then Connect mobile app")
-    }
-
-    @ViewBuilder
-    private var connectionError: some View {
-        if let errorMessage {
-            Label(errorMessage, systemImage: "exclamationmark.circle.fill")
-                .font(.callout)
-                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(14)
-                .background(Color(uiColor: .systemRed).opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16)
-                        .strokeBorder(Color(uiColor: .systemRed).opacity(0.28), lineWidth: 0.5)
-                }
-                .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
-                .accessibilityElement(children: .combine)
-        }
-    }
-
-    private var securityNote: some View {
-        Label("One-time code · Saved in Keychain", systemImage: "lock.shield.fill")
-            .font(.footnote)
-            .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-            .frame(maxWidth: .infinity)
-            .accessibilityElement(children: .combine)
-    }
-
-    private var primaryActions: some View {
-        VStack(spacing: 4) {
-            PlatformPrimaryActionButton {
-                AppFeedback.play(.moveConfirmed)
-                focusedField = nil
-                errorMessage = nil
-                isScannerPresented = true
-            } label: {
-                HStack(spacing: 10) {
-                    if isConnecting {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "qrcode.viewfinder")
-                            .font(.title3.weight(.semibold))
-                    }
-
-                    Text(isConnecting ? "Connecting…" : "Scan Pairing Code")
-                        .font(.headline)
-                }
-                .frame(maxWidth: .infinity, minHeight: 44)
-            }
-            .disabled(isConnecting)
-
-            manualPairingButton
-        }
-        .frame(maxWidth: 480)
-        .padding(.horizontal, 24)
-        .padding(.top, 12)
-        .padding(.bottom, 6)
-        .frame(maxWidth: .infinity)
-        .background(.bar)
-    }
-
-    private var manualPairingButton: some View {
+    private var scanButton: some View {
         Button {
-            AppFeedback.selection()
+            focusedField = nil
             errorMessage = nil
-            showsManualPairing = true
+            isScannerPresented = true
         } label: {
-            Label("Enter Code Manually", systemImage: "keyboard")
-                .font(.subheadline.weight(.semibold))
-                .frame(minHeight: 44)
+            HStack(spacing: 11) {
+                if isConnecting {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(QuickInboxDesign.Palette.primaryText)
+                } else {
+                    Image(systemName: "qrcode.viewfinder")
+                        .font(.system(size: 20, weight: .semibold))
+                        .accessibilityHidden(true)
+                }
+
+                Text(isConnecting ? "Connecting..." : "Scan QR Code")
+                    .font(.system(.headline, design: .default, weight: .semibold))
+            }
+            .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+            .frame(maxWidth: .infinity, minHeight: 58)
+            .modifier(ScanButtonSurfaceModifier())
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+        .buttonStyle(QuickInboxPressButtonStyle())
         .disabled(isConnecting)
+        .opacity(isConnecting ? 0.72 : 1)
+        .accessibilityHint("Opens the camera to scan the pairing QR code")
+    }
+
+    private var privacyFooter: some View {
+        Text(footerAttributedText)
+            .font(.callout)
+            .multilineTextAlignment(.center)
+            .environment(\.openURL, OpenURLAction { _ in
+                showsPrivacyPolicy = true
+                return .handled
+            })
+            .padding(.top, 6)
+    }
+
+    private var footerAttributedText: AttributedString {
+        let ink = appTheme.palette(for: colorScheme).primaryText
+        let muted = appTheme.palette(for: colorScheme).secondaryText
+
+        var text = AttributedString("By continuing, you agree to the ")
+        text.foregroundColor = muted
+
+        var link = AttributedString("Privacy Policy")
+        link.link = AppLinks.privacyPolicy
+        link.foregroundColor = ink
+
+        var trailing = AttributedString(".")
+        trailing.foregroundColor = muted
+
+        return text + link + trailing
+    }
+
+    private func connectionError(message: String) -> some View {
+        Label {
+            Text(message)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.callout.weight(.semibold))
+        }
+        .foregroundStyle(Color(uiColor: .systemRed))
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Color(uiColor: .systemRed).opacity(0.09),
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+        .accessibilityElement(children: .combine)
     }
 
     private var manualPairingSheet: some View {
         NavigationStack {
-            Form {
-                Section("Server") {
-                    TextField("https://mail.example.com", text: $serverOrigin)
-                        .textContentType(.URL)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .submitLabel(.next)
-                        .focused($focusedField, equals: .server)
-                        .onSubmit { focusedField = .code }
-                }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    manualPairingHeader
 
-                Section {
-                    TextField("22-character code", text: $pairingCode)
-                        .textContentType(.oneTimeCode)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .fontDesign(.monospaced)
-                        .submitLabel(.go)
-                        .focused($focusedField, equals: .code)
-                        .onSubmit(connectManually)
-                } header: {
-                    Text("Pairing Code")
-                } footer: {
-                    Text("Find both values in QuickInbox on the web.")
-                }
+                    pairingStepsCard
 
-                if let errorMessage {
-                    Section {
-                        Label(errorMessage, systemImage: "exclamationmark.circle.fill")
-                            .font(.callout)
-                            .foregroundStyle(Color(uiColor: .systemRed))
+                    VStack(alignment: .leading, spacing: 16) {
+                        pairingFieldCard(title: "Server Address") {
+                            TextField(
+                                "https://mail.example.com",
+                                text: $serverOrigin,
+                                prompt: Text("mail.example.com")
+                                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                            )
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.next)
+                            .focused($focusedField, equals: .server)
+                            .onSubmit { focusedField = .code }
+                        }
+
+                        pairingFieldCard(title: "Pairing Code") {
+                            TextField(
+                                "22-character code",
+                                text: $pairingCode,
+                                prompt: Text("22-character code")
+                                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                            )
+                            .textContentType(.oneTimeCode)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .font(.system(.body, design: .monospaced, weight: .medium))
+                            .submitLabel(.go)
+                            .focused($focusedField, equals: .code)
+                            .onSubmit(connectManually)
+                        }
+
+                        Button {
+                            showsManualPairingHelp = true
+                        } label: {
+                            Label("Where to find these values?", systemImage: "questionmark.circle")
+                                .font(.footnote.weight(.medium))
+                                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Explains where to find the server address and pairing code")
                     }
+
+                    if let errorMessage {
+                        connectionError(message: errorMessage)
+                    }
+
+                    if isConnecting {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Connecting to your server...")
+                                .font(.footnote)
+                                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                        }
+                        .transition(.opacity)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
+                .padding(.bottom, 24)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollIndicators(.hidden)
+            .scrollDismissesKeyboard(.interactively)
+            .background(QuickInboxDesign.Palette.paper)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                PlatformPrimaryActionButton(action: connectManually) {
+                    HStack(spacing: 10) {
+                        if isConnecting {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(QuickInboxDesign.Palette.paper)
+                        }
+                        Text(isConnecting ? "Connecting..." : "Connect")
+                            .font(.quickInboxSemibold(17, relativeTo: .headline))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 50)
+                }
+                .tint(QuickInboxDesign.Palette.interactiveTint)
+                .disabled(isConnecting || serverOrigin.isEmpty || pairingCode.isEmpty)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 14)
+                .background(QuickInboxDesign.Palette.paper)
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(QuickInboxDesign.Palette.separator)
+                        .frame(height: 1)
                 }
             }
             .navigationTitle("Enter Pairing Code")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(QuickInboxDesign.Palette.paper, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -313,42 +363,124 @@ struct OnboardingView: View {
                     .disabled(isConnecting)
                 }
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                PlatformPrimaryActionButton(action: connectManually) {
-                    HStack(spacing: 10) {
-                        if isConnecting {
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(.white)
-                        }
-                        Text(isConnecting ? "Connecting…" : "Connect")
-                            .font(.headline)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .disabled(isConnecting || serverOrigin.isEmpty || pairingCode.isEmpty)
-                .padding(16)
-                .background(.bar)
-            }
             .interactiveDismissDisabled(isConnecting)
+            .alert("Where to Find the Pairing Code", isPresented: $showsManualPairingHelp) {
+                Button("Got It", role: .cancel) { }
+            } message: {
+                Text("In QuickInbox on the web, open Settings, then Connect mobile app. Copy the server URL and 22-character pairing code shown there.")
+            }
         }
+        .tint(QuickInboxDesign.Palette.interactiveTint)
+        .preferredColorScheme(appTheme.preferredColorScheme ?? colorScheme)
+        // Sheets paint their own chrome; without this, dark mode falls back to a
+        // solid system black canvas behind the custom paper surfaces.
+        .presentationBackground(QuickInboxDesign.Palette.paper)
+        .presentationDragIndicator(.visible)
+    }
+
+    private var manualPairingHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Pair with your server")
+                .font(.quickInboxSemibold(26, relativeTo: .title))
+                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+
+            Text("Copy both values from QuickInbox on the web, then connect this iPhone.")
+                .font(.quickInboxBody(15, relativeTo: .callout))
+                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var pairingStepsCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("HOW IT WORKS")
+                .font(.caption.weight(.semibold))
+                .kerning(0.6)
+                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+
+            pairingStepRow(number: 1, text: "Open QuickInbox on the web and sign in.")
+            pairingStepRow(number: 2, text: "Go to Settings > Connect mobile app.")
+            pairingStepRow(number: 3, text: "Copy the server address and pairing code shown there.")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(QuickInboxDesign.Palette.paperRaised)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(QuickInboxDesign.Palette.separator, lineWidth: 1)
+                }
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private func pairingStepRow(number: Int, text: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text("\(number)")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+                .frame(width: 22, height: 22)
+                .background(
+                    Circle().fill(QuickInboxDesign.Palette.sageWash)
+                )
+
+            Text(text)
+                .font(.quickInboxBody(14, relativeTo: .footnote))
+                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func pairingFieldCard(
+        title: String,
+        @ViewBuilder field: () -> some View
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                .textCase(.uppercase)
+                .kerning(0.6)
+
+            field()
+                .font(.quickInboxBody(16, relativeTo: .body))
+                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(QuickInboxDesign.Palette.paperRaised)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(QuickInboxDesign.Palette.separator, lineWidth: 1)
+                }
+        )
+        .accessibilityElement(children: .contain)
     }
 
     private var scannedOriginConfirmationMessage: String {
-        guard let payload = pendingScannedPayload else { return "Confirm the server before connecting." }
-        let host = payload.origin.host(percentEncoded: false) ?? payload.origin.host ?? payload.origin.absoluteString
+        guard let payload = pendingScannedPayload else {
+            return "Confirm the server before connecting."
+        }
+        let host = payload.origin.host(percentEncoded: false)
+            ?? payload.origin.host
+            ?? payload.origin.absoluteString
         return "Only continue if \(host) is the QuickInbox server shown in your browser."
     }
 
-    private func revealContent() async {
-        guard !hasAppeared else { return }
-        if reduceMotion {
-            hasAppeared = true
-        } else {
-            withAnimation(.easeOut(duration: 0.6)) {
-                hasAppeared = true
-            }
-        }
+    private var showsHero: Bool {
+        !dynamicTypeSize.isAccessibilitySize && verticalSizeClass != .compact
+    }
+
+    private var horizontalPadding: CGFloat {
+        horizontalSizeClass == .regular ? 48 : 24
     }
 
     private func receiveScannedValue(_ value: String) {
@@ -357,11 +489,22 @@ struct OnboardingView: View {
             errorMessage = nil
             pendingScannedPayload = payload
             showsScannedOriginConfirmation = true
-            AppFeedback.selection()
         } catch {
             errorMessage = userFacingMessage(for: error)
             AppFeedback.error()
         }
+    }
+
+    private func showManualPairingAfterScanner() {
+        opensManualPairingAfterScanner = true
+        isScannerPresented = false
+    }
+
+    private func scannerDidDismiss() {
+        guard opensManualPairingAfterScanner else { return }
+        opensManualPairingAfterScanner = false
+        errorMessage = nil
+        showsManualPairing = true
     }
 
     private func connectManually() {
@@ -419,11 +562,35 @@ struct OnboardingView: View {
            !message.isEmpty {
             return message
         }
-        return "QuickInbox couldn’t complete pairing. Try again."
+        return "QuickInbox couldn't complete pairing. Try again."
     }
 
     private enum Field: Hashable {
         case server
         case code
+    }
+}
+
+private struct ScanButtonSurfaceModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .glassEffect(.regular.interactive(), in: .capsule)
+        } else {
+            content.background {
+                RoundedRectangle(cornerRadius: 29, style: .continuous)
+                    .fill(QuickInboxDesign.Palette.paperRaised)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 29, style: .continuous)
+                            .strokeBorder(QuickInboxDesign.Palette.separator, lineWidth: 1)
+                    }
+                    .shadow(
+                        color: .black.opacity(0.08),
+                        radius: 16,
+                        x: 0,
+                        y: 8
+                    )
+            }
+        }
     }
 }
