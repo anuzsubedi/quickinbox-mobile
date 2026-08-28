@@ -5,6 +5,8 @@ nonisolated enum AppFeedback {
     enum Event: Sendable {
         case selection
         case toggleConfirmed
+        case navigationEntered
+        case navigationExited
         case moveConfirmed
         case destructiveConfirmed
         case messageSent
@@ -21,9 +23,12 @@ nonisolated enum AppFeedback {
     @MainActor
     static func play(_ event: Event) {
         switch event {
-        case .selection, .toggleConfirmed:
+        case .selection, .toggleConfirmed, .navigationExited:
             selectionGenerator.prepare()
             selectionGenerator.selectionChanged()
+        case .navigationEntered:
+            lightImpactGenerator.prepare()
+            lightImpactGenerator.impactOccurred(intensity: 0.55)
         case .moveConfirmed:
             lightImpactGenerator.prepare()
             lightImpactGenerator.impactOccurred()

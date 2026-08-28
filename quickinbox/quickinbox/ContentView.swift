@@ -31,10 +31,12 @@ struct ContentView: View {
             }
             .preferredColorScheme(selectedTheme.preferredColorScheme)
             .environment(\.appTheme, selectedTheme)
+            .tint(QuickInboxDesign.Palette.interactiveTint)
     }
 
     private var selectedTheme: AppTheme {
         AppThemeRegistry.theme(id: appThemeID)
+            .applying(AppTintRegistry.tint(id: AppTintRegistry.defaultTintID))
     }
 
     @ViewBuilder
@@ -73,26 +75,43 @@ struct ContentView: View {
 }
 
 private struct LaunchView: View {
-    var body: some View {
-        VStack(spacing: 22) {
-            Image("LaunchIcon")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 132, height: 92)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showsProgress = false
 
-            VStack(spacing: QuickInboxDesign.Spacing.sm) {
-                Text("QuickInbox")
-                    .font(.title.bold())
-                    .foregroundStyle(.white)
-            }
+    var body: some View {
+        VStack(spacing: QuickInboxDesign.Spacing.xl) {
+            QuickInboxMark(size: .system(size: 34, weight: .semibold))
+                .foregroundStyle(QuickInboxDesign.Palette.interactiveTint)
+                .frame(width: 84, height: 84)
+                .background(QuickInboxDesign.Palette.fill, in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(QuickInboxDesign.Palette.separator.opacity(0.55), lineWidth: 0.5)
+                }
+
+            Text("QuickInbox")
+                .font(.title.bold())
+                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
 
             ProgressView()
-                .tint(.white)
                 .controlSize(.small)
-                .accessibilityLabel("Opening QuickInbox")
+                .tint(QuickInboxDesign.Palette.interactiveTint)
+                .opacity(showsProgress ? 1 : 0)
+                .accessibilityHidden(!showsProgress)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(QuickInboxDesign.Palette.signalInk)
+        .background(QuickInboxDesign.Palette.paper)
+        .accessibilityLabel("Opening QuickInbox")
+        .task {
+            do {
+                try await Task.sleep(for: .milliseconds(800))
+            } catch {
+                return
+            }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
+                showsProgress = true
+            }
+        }
     }
 }
 

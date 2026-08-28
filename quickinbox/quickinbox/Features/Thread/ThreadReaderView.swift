@@ -57,6 +57,10 @@ struct ThreadReaderView: View {
             }
         }
         .background(QuickInboxDesign.Palette.paper)
+        .animation(
+            QuickInboxDesign.Motion.resolved(.easeOut(duration: 0.18), reduceMotion: reduceMotion),
+            value: model.detail != nil
+        )
         .navigationTitle(model.chronologicalMessages.count == 1 ? "Message" : "Conversation")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(horizontalSizeClass == .regular)
@@ -275,8 +279,8 @@ struct ThreadReaderView: View {
                 .accessibilityElement(children: .combine)
             }
         }
-        .padding(.top, 24)
-        .padding(.bottom, messages.count == 1 ? 10 : 16)
+        .padding(.top, 18)
+        .padding(.bottom, 4)
     }
 
     private func collapsedMessageLabel(
@@ -285,14 +289,14 @@ struct ThreadReaderView: View {
     ) -> some View {
         HStack(alignment: .top, spacing: 12) {
             ParticipantMonogram(
-                name: message.direction == .outbound ? "Me" : message.fromAddress,
+                name: collapsedSenderTitle(message),
                 size: 32
             )
 
             VStack(alignment: .leading, spacing: 4) {
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(message.direction == .outbound ? "Me" : message.fromAddress)
+                        Text(collapsedSenderTitle(message))
                             .font(collapsedSenderFont)
                             .lineLimit(1)
                         Spacer(minLength: 4)
@@ -302,7 +306,7 @@ struct ThreadReaderView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(message.direction == .outbound ? "Me" : message.fromAddress)
+                        Text(collapsedSenderTitle(message))
                             .font(collapsedSenderFont)
                         Text(compactMessageDate(message.createdAt))
                             .font(collapsedMetadataFont)
@@ -333,6 +337,12 @@ struct ThreadReaderView: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityHint(isExpanded ? "Double-tap to collapse this message" : "Double-tap to expand this message")
+    }
+
+    private func collapsedSenderTitle(_ message: ThreadMessage) -> String {
+        message.direction == .outbound
+            ? "Me"
+            : message.senderDisplayName
     }
 
     private var collapsedSenderFont: Font {

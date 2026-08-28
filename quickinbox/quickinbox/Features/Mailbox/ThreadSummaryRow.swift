@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ThreadSummaryRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let thread: ThreadSummary
     let mailbox: MailboxKind
@@ -11,14 +12,16 @@ struct ThreadSummaryRow: View {
         let otherParticipants = thread.participants.filter { !$0.selfParticipant }
         let preferredParticipants = otherParticipants.isEmpty ? thread.participants : otherParticipants
         let labels = preferredParticipants.compactMap { participant -> String? in
-            let label = participant.label.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !label.isEmpty { return label }
-            let address = participant.address.trimmingCharacters(in: .whitespacesAndNewlines)
-            return address.isEmpty ? nil : address
+            let label = participant.displayLabel
+            return label.isEmpty ? nil : label
         }
 
         if !labels.isEmpty { return labels.joined(separator: ", ") }
         return mailbox == .drafts ? "No Recipient" : "Unknown Sender"
+    }
+
+    private var correspondent: String {
+        mailbox == .sent || mailbox == .drafts ? "To: \(people)" : people
     }
 
     var body: some View {
@@ -37,6 +40,10 @@ struct ThreadSummaryRow: View {
         .frame(maxWidth: .infinity, minHeight: 90, alignment: .leading)
         .foregroundStyle(QuickInboxDesign.Palette.primaryText)
         .contentShape(Rectangle())
+        .animation(
+            QuickInboxDesign.Motion.resolved(QuickInboxDesign.Motion.selection, reduceMotion: reduceMotion),
+            value: thread.isRead
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(accessibilityValue)
@@ -45,7 +52,7 @@ struct ThreadSummaryRow: View {
     private var compactContent: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(people)
+                Text(correspondent)
                     .font(thread.isRead
                         ? rowSenderFont(isUnread: false)
                         : rowSenderFont(isUnread: true))
@@ -66,7 +73,11 @@ struct ThreadSummaryRow: View {
 
                     Text(relativeDate)
                         .font(rowDateFont)
-                        .foregroundStyle(QuickInboxDesign.Palette.secondaryText.opacity(0.85))
+                        .foregroundStyle(
+                            thread.isRead
+                                ? AnyShapeStyle(QuickInboxDesign.Palette.secondaryText.opacity(0.85))
+                                : AnyShapeStyle(QuickInboxDesign.Palette.interactiveTint)
+                        )
                         .lineLimit(1)
                 }
             }
@@ -88,7 +99,7 @@ struct ThreadSummaryRow: View {
 
             if !thread.preview.isEmpty {
                 Text(thread.preview)
-                    .font(rowPreviewFont(isUnread: !thread.isRead))
+                    .font(rowPreviewFont)
                     .foregroundStyle(
                         thread.isRead
                             ? AnyShapeStyle(QuickInboxDesign.Palette.secondaryText.opacity(0.72))
@@ -113,7 +124,7 @@ struct ThreadSummaryRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 unreadStatusMark
-                Text(people)
+                Text(correspondent)
                     .font(thread.isRead
                         ? rowSenderFont(isUnread: false)
                         : rowSenderFont(isUnread: true))
@@ -142,7 +153,7 @@ struct ThreadSummaryRow: View {
 
             if !thread.preview.isEmpty {
                 Text(thread.preview)
-                    .font(rowPreviewFont(isUnread: !thread.isRead))
+                    .font(rowPreviewFont)
                     .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
                     .lineLimit(2)
             }
@@ -162,8 +173,8 @@ struct ThreadSummaryRow: View {
     private var unreadStatusMark: some View {
         if !thread.isRead {
             Circle()
-                .fill(QuickInboxDesign.Palette.sage)
-                .frame(width: 7, height: 7)
+                .fill(QuickInboxDesign.Palette.interactiveTint)
+                .frame(width: 8, height: 8)
                 .accessibilityHidden(true)
         }
     }
@@ -201,10 +212,8 @@ struct ThreadSummaryRow: View {
             : .subheadline
     }
 
-    private func rowPreviewFont(isUnread: Bool) -> Font {
-        return isUnread
-            ? .subheadline.weight(.semibold)
-            : .subheadline
+    private var rowPreviewFont: Font {
+        .subheadline
     }
 
     private var rowMetadataFont: Font {
@@ -220,7 +229,7 @@ struct ThreadSummaryRow: View {
     }
 
     private var accessibilityLabel: String {
-        var parts = [people, subject]
+        var parts = [correspondent, subject]
         if thread.messageCount > 1 {
             parts.append("\(thread.messageCount) messages")
         }
@@ -266,28 +275,22 @@ private struct MailboxAvatar: View {
         ZStack {
             ParticipantMonogram(name: name, isEmphasized: false, size: 38)
 
+            Circle()
+                .stroke(QuickInboxDesign.Palette.separator.opacity(0.7), lineWidth: 1)
+                .frame(width: 42, height: 42)
+
             if isUnread {
-                unreadBadge
-                    .frame(width: 16, height: 16)
-                    .offset(x: 14, y: 14)
+                Circle()
+                    .fill(QuickInboxDesign.Palette.interactiveTint)
+                    .frame(width: 10, height: 10)
+                    .overlay {
+                        Circle()
+                            .stroke(QuickInboxDesign.Palette.paper, lineWidth: 2)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             }
         }
         .frame(width: 44, height: 44)
         .accessibilityHidden(true)
-    }
-
-    @ViewBuilder
-    private var unreadBadge: some View {
-        ZStack {
-            Circle()
-                .fill(Color.accentColor)
-            Image(systemName: "envelope.fill")
-                .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(.white)
-        }
-            .overlay {
-                Circle()
-                    .stroke(QuickInboxDesign.Palette.paper, lineWidth: 2)
-            }
     }
 }

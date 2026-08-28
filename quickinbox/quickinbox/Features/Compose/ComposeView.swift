@@ -42,8 +42,8 @@ struct ComposeView: View {
                     guidanceArea
                 }
                 .padding(.horizontal, horizontalInset)
-                .padding(.top, 4)
-                .padding(.bottom, 32)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
                 .frame(maxWidth: QuickInboxDesign.contentMaxWidth)
                 .frame(maxWidth: .infinity)
                 .font(composeBodyFont)
@@ -62,13 +62,13 @@ struct ComposeView: View {
                         if model.isSending {
                             ProgressView()
                                 .controlSize(.small)
-                                .tint(Color.accentColor)
+                                .tint(QuickInboxDesign.Palette.interactiveTint)
                                 .accessibilityLabel("Sending")
                         } else {
                             Text("Send")
                         }
                     }
-                    .tint(Color.accentColor)
+                    .tint(QuickInboxDesign.Palette.interactiveTint)
                     .disabled(!model.canSend)
                 }
             }
@@ -331,6 +331,7 @@ struct ComposeView: View {
                 withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) {
                     model.removeAttachment(id: attachment.id)
                 }
+                AppFeedback.play(.destructiveConfirmed)
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.title3)

@@ -136,7 +136,9 @@ private struct PlatformFloatingButtonStyle: ViewModifier {
 
 private struct AdaptiveProminentButtonModifier: ViewModifier {
     func body(content: Content) -> some View {
-        content.buttonStyle(.borderedProminent)
+        content
+            .buttonStyle(.borderedProminent)
+            .foregroundStyle(QuickInboxDesign.Palette.onInteractive)
     }
 }
 
