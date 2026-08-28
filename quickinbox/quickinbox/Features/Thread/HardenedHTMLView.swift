@@ -11,13 +11,14 @@ struct HardenedHTMLView: View {
     @Environment(\.openURL) private var openURL
     let html: String
     var loadsRemoteImages = false
-    @State private var contentHeight: CGFloat = 120
+    @State private var contentHeight: CGFloat = 44
 
     var body: some View {
         HardenedWebView(
             html: HTMLMessageSanitizer.document(
                 from: html,
-                loadsRemoteImages: loadsRemoteImages
+                loadsRemoteImages: loadsRemoteImages,
+                isDarkMode: colorScheme == .dark
             ),
             colorScheme: colorScheme,
             openURL: { url in openURL(url) },
@@ -39,7 +40,10 @@ private struct HardenedWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let preferences = WKWebpagePreferences()
-        preferences.allowsContentJavaScript = false
+        // JavaScript is enabled only so the app can measure the sanitized
+        // document body. Sender scripts are stripped before loading and the
+        // generated CSP denies script sources.
+        preferences.allowsContentJavaScript = true
 
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences = preferences
@@ -53,7 +57,10 @@ private struct HardenedWebView: UIViewRepresentable {
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
-        webView.scrollView.isScrollEnabled = true
+        // The surrounding SwiftUI thread owns vertical scrolling. Keeping a
+        // second scroll container here makes WebKit report viewport height as
+        // document height for complex forwarded mail.
+        webView.scrollView.isScrollEnabled = false
         webView.scrollView.bounces = false
         webView.scrollView.bouncesZoom = true
         webView.scrollView.showsVerticalScrollIndicator = false
@@ -92,6 +99,7 @@ private struct HardenedWebView: UIViewRepresentable {
         var loadedHTML: String?
         var openURL: (URL) -> Void
         private var contentSizeObservation: NSKeyValueObservation?
+        private var measurementWorkItem: DispatchWorkItem?
         private var restingZoomScale: CGFloat?
 
         init(height: Binding<CGFloat>, openURL: @escaping (URL) -> Void) {
@@ -103,8 +111,8 @@ private struct HardenedWebView: UIViewRepresentable {
             contentSizeObservation = webView.scrollView.observe(
                 \.contentSize,
                 options: [.initial, .new]
-            ) { [weak self] scrollView, change in
-                guard let self,
+            ) { [weak self, weak webView] scrollView, _ in
+                guard let self, let webView,
                       !scrollView.isZooming,
                       !scrollView.isZoomBouncing else { return }
 
@@ -115,16 +123,13 @@ private struct HardenedWebView: UIViewRepresentable {
                     // the content to jump or flash.
                     return
                 }
-                guard let measured = change.newValue?.height,
-                      measured.isFinite,
-                      measured > 0 else { return }
-                DispatchQueue.main.async {
-                    self.height = ceil(measured)
-                }
+                self.scheduleDocumentHeightMeasurement(in: webView)
             }
         }
 
         func stopObservingContentSize() {
+            measurementWorkItem?.cancel()
+            measurementWorkItem = nil
             contentSizeObservation?.invalidate()
             contentSizeObservation = nil
             restingZoomScale = nil
@@ -132,10 +137,65 @@ private struct HardenedWebView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             restingZoomScale = webView.scrollView.zoomScale
-            let measured = webView.scrollView.contentSize.height
-            if measured.isFinite, measured > 0 {
-                height = ceil(measured)
+            scheduleDocumentHeightMeasurement(in: webView)
+        }
+
+        private func scheduleDocumentHeightMeasurement(in webView: WKWebView) {
+            measurementWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [weak self, weak webView] in
+                guard let self, let webView else { return }
+                let script = """
+                (() => {
+                    const body = document.body;
+                    if (!body) return 0;
+                    // scrollHeight/offsetHeight are never smaller than the
+                    // current WebView viewport. Using either one here feeds an
+                    // old oversized frame back into SwiftUI forever. Place a
+                    // zero-height marker after normal-flow content, then include
+                    // out-of-flow descendants such as positioned elements.
+                    const bodyRect = body.getBoundingClientRect();
+                    const bodyTop = bodyRect.top + window.scrollY;
+                    const marker = document.createElement('div');
+                    marker.style.cssText = 'display:block;width:0;height:0;padding:0;margin:0;clear:both;';
+                    body.appendChild(marker);
+                    let bottom = marker.getBoundingClientRect().bottom + window.scrollY;
+                    marker.remove();
+                    for (const element of body.querySelectorAll('*')) {
+                        const rect = element.getBoundingClientRect();
+                        if (rect.width > 0 && rect.height > 0) {
+                            bottom = Math.max(bottom, rect.bottom + window.scrollY);
+                        }
+                    }
+                    return {
+                        height: Math.max(44, bottom - bodyTop),
+                        viewportWidth: Math.max(window.innerWidth, 1)
+                    };
+                })()
+                """
+                let nativeViewportWidth = webView.bounds.width
+                webView.evaluateJavaScript(script) { [weak self, weak webView] result, _ in
+                    guard let self,
+                          let values = result as? [String: Any],
+                          let cssHeight = (values["height"] as? NSNumber)?.doubleValue,
+                          let cssViewportWidth = (values["viewportWidth"] as? NSNumber)?.doubleValue,
+                          cssHeight.isFinite,
+                          cssHeight > 0,
+                          cssViewportWidth.isFinite,
+                          cssViewportWidth > 0 else { return }
+                    // The DOM reports CSS pixels while SwiftUI frames UIKit in
+                    // points. Fixed-width email viewport metadata makes these
+                    // scales differ; convert before updating the frame.
+                    let scale = nativeViewportWidth > 0
+                        ? nativeViewportWidth / cssViewportWidth
+                        : (webView?.bounds.width ?? 0) / cssViewportWidth
+                    let measured = cssHeight * (scale > 0 && scale.isFinite ? scale : 1)
+                    DispatchQueue.main.async {
+                        self.height = ceil(measured)
+                    }
+                }
             }
+            measurementWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.04, execute: workItem)
         }
 
         func webView(
@@ -180,7 +240,8 @@ private struct HardenedWebView: UIViewRepresentable {
 nonisolated enum HTMLMessageSanitizer {
     static func document(
         from rawHTML: String,
-        loadsRemoteImages: Bool = false
+        loadsRemoteImages: Bool = false,
+        isDarkMode: Bool = false
     ) -> String {
         var body = rawHTML
         let isDesignedMessage = rawHTML.range(
@@ -200,7 +261,12 @@ nonisolated enum HTMLMessageSanitizer {
         } ?? "width=device-width, initial-scale=1, user-scalable=yes, minimum-scale=0.5, maximum-scale=5"
 
         let senderStyles = matches(of: #"<style\b[^>]*>([\s\S]*?)</style\s*>"#, in: body)
-            .map { sanitizeCSS($0, loadsRemoteImages: loadsRemoteImages) }
+            .map { style in
+                let sanitized = sanitizeCSS(style, loadsRemoteImages: loadsRemoteImages)
+                return isDarkMode && isDesignedMessage && !hasAuthoredDarkMode
+                    ? adaptDarkModeColors(in: sanitized)
+                    : sanitized
+            }
             .joined(separator: "\n")
 
         // Remove active and document-level elements before the content reaches WebKit.
@@ -226,8 +292,31 @@ nonisolated enum HTMLMessageSanitizer {
             with: ""
         )
         if !loadsRemoteImages {
+            // Remove remote media elements entirely so withheld images do not
+            // leave broken-image outlines or alt text in the message body.
+            body = replacing(
+                #"<picture\b[^>]*>[\s\S]*?(?:(?:https?:)?//)[\s\S]*?</picture\s*>"#,
+                in: body,
+                with: ""
+            )
+            body = replacing(
+                #"<(?:img|source)\b[^>]*\b(?:src|srcset)\s*=\s*(?:\"[^\"]*(?:(?:https?:)?//)[^\"]*\"|'[^']*(?:(?:https?:)?//)[^']*'|(?:https?:)?//[^\s>]+)[^>]*>"#,
+                in: body,
+                with: ""
+            )
+            // Newsletter images are often the only content in a table row.
+            // Remove the now-empty row as well so its original media slot does
+            // not remain as blank document height.
+            body = replacing(
+                #"<tr\b[^>]*>\s*<td\b[^>]*>\s*</td\s*>\s*</tr\s*>"#,
+                in: body,
+                with: ""
+            )
             body = replacing(#"\s+(?:src|srcset|poster|background)\s*=\s*(?:\"[^\"]*(?:(?:https?:)?//)[^\"]*\"|'[^']*(?:(?:https?:)?//)[^']*'|(?:https?:)?//[^\s>]+)"#, in: body, with: "")
             body = removingRemoteCSSURLs(from: body)
+        }
+        if isDarkMode && isDesignedMessage && !hasAuthoredDarkMode {
+            body = adaptDarkModeColors(in: body)
         }
         body = replacing(#"<style\b[^>]*>[\s\S]*?</style\s*>"#, in: body, with: "")
 
@@ -260,8 +349,8 @@ nonisolated enum HTMLMessageSanitizer {
             margin: 0 !important;
             padding: 0 !important;
             max-width: 100% !important;
-            background: \(isDesignedMessage && !hasAuthoredDarkMode ? "#ffffff" : "transparent");
-            color: \(isDesignedMessage && !hasAuthoredDarkMode ? "#111111" : "var(--qm-text)");
+            background: \(isDesignedMessage && !hasAuthoredDarkMode && !isDarkMode ? "#ffffff" : "transparent");
+            color: \(isDesignedMessage && !hasAuthoredDarkMode && !isDarkMode ? "#111111" : "var(--qm-text)");
             -webkit-text-size-adjust: 100%;
             height: auto !important;
             overflow-y: hidden !important;
@@ -293,8 +382,7 @@ nonisolated enum HTMLMessageSanitizer {
         hr { border: 0; border-top: 1px solid var(--qm-rule); }
         table { max-width: 100% !important; }
         body > table, body > div > table { width: 100% !important; }
-        \(isDesignedMessage && !hasAuthoredDarkMode ? designedMessageDarkModeStyles : "")
-        \(isDesignedMessage ? "" : ordinaryMessageStyles)
+        \(isDesignedMessage ? "" : ordinaryMessageStyles(isDarkMode: isDarkMode))
         </style>
         <style>\(senderStyles)</style>
         </head><body \(bodyAttributes)>\(body)</body></html>
@@ -349,41 +437,144 @@ nonisolated enum HTMLMessageSanitizer {
     /// Ordinary correspondence often contains editor-generated black text or
     /// white backgrounds without being a deliberately designed email. Adapt
     /// those common defaults while leaving branded, table-based mail intact.
-    private static let ordinaryMessageStyles = """
+    private static func ordinaryMessageStyles(isDarkMode: Bool) -> String {
+        let darkModeStyles = isDarkMode ? """
+            body {
+                color: #f2f2f7 !important;
+                background-color: transparent !important;
+            }
+            body *:not(a):not(img):not(video):not(picture):not(svg):not(source) {
+                color: inherit !important;
+                background-color: transparent !important;
+                background-image: none !important;
+            }
+            a, a:visited { color: #64a8ff !important; }
+            blockquote { color: #aeaeb2 !important; }
+            """ : ""
+        return """
         body { line-height: 1.45; }
         p { margin-block: 0 0.85em; }
         p:last-child { margin-bottom: 0; }
+        \(darkModeStyles)
         @media (prefers-color-scheme: dark) {
-            [color="black" i], [color="#000" i], [color="#000000" i],
-            [style*="color:black" i], [style*="color: black" i],
-            [style*="color:#000" i], [style*="color: #000" i],
-            [style*="color:rgb(0,0,0)" i], [style*="color: rgb(0, 0, 0)" i] {
-                color: var(--qm-text) !important;
-            }
-            [bgcolor="white" i], [bgcolor="#fff" i], [bgcolor="#ffffff" i],
-            [style*="background-color:white" i], [style*="background-color: white" i],
-            [style*="background-color:#fff" i], [style*="background-color: #fff" i],
-            [style*="background:white" i], [style*="background: white" i] {
-                background-color: transparent !important;
-            }
+            \(darkModeStyles)
         }
         """
+    }
 
-    /// Invert painted colors for designed messages that lack their own dark-mode
-    /// styles. Images, videos, and similar media are re-inverted so they render
-    /// with their original colors.
-    private static let designedMessageDarkModeStyles = """
-        @media (prefers-color-scheme: dark) {
-            html {
-                filter: invert(1) hue-rotate(180deg);
-                -webkit-filter: invert(1) hue-rotate(180deg);
-            }
-            img, video, picture, svg, [background], [style*="background-image"] {
-                filter: invert(1) hue-rotate(180deg);
-                -webkit-filter: invert(1) hue-rotate(180deg);
-            }
+    /// Darken light sender-authored canvas colors without inverting an entire
+    /// designed message. Gmail-style thresholding keeps existing dark sections
+    /// dark and leaves images untouched.
+    private static func adaptDarkModeColors(in value: String) -> String {
+        guard let declarationExpression = try? NSRegularExpression(
+            pattern: #"\b(background(?:-color)?|color|border(?:-[a-z-]+)?|outline(?:-[a-z-]+)?)\s*:[^;}]*"#,
+            options: [.caseInsensitive]
+        ) else { return value }
+
+        var result = value
+        let fullRange = NSRange(value.startIndex..., in: value)
+        let declarations = declarationExpression.matches(in: value, range: fullRange).reversed()
+        for match in declarations {
+            guard let range = Range(match.range, in: value),
+                  let propertyRange = Range(match.range(at: 1), in: value) else { continue }
+            let declaration = String(value[range])
+            let property = String(value[propertyRange])
+            let adapted = replaceColorLiterals(
+                in: declaration,
+                property: property
+            )
+            result.replaceSubrange(range, with: adapted)
         }
-        """
+
+        guard let attributeExpression = try? NSRegularExpression(
+            pattern: #"\b(bgcolor|color)\s*=\s*([\"']?)(#[0-9a-f]{3,8}|rgba?\([^)]*\))\2"#,
+            options: [.caseInsensitive]
+        ) else { return result }
+        let attributeRange = NSRange(result.startIndex..., in: result)
+        for match in attributeExpression.matches(in: result, range: attributeRange).reversed() {
+            guard let propertyRange = Range(match.range(at: 1), in: result),
+                  let colorRange = Range(match.range(at: 3), in: result) else { continue }
+            let property = String(result[propertyRange])
+            let literal = String(result[colorRange])
+            result.replaceSubrange(colorRange, with: darkModeColor(literal, property: property))
+        }
+        return result
+    }
+
+    private static func replaceColorLiterals(in declaration: String, property: String) -> String {
+        guard let expression = try? NSRegularExpression(
+            pattern: #"#[0-9a-f]{3,8}|rgba?\([^)]*\)"#,
+            options: [.caseInsensitive]
+        ) else { return declaration }
+        var result = declaration
+        let range = NSRange(declaration.startIndex..., in: declaration)
+        for match in expression.matches(in: declaration, range: range).reversed() {
+            guard let literalRange = Range(match.range, in: declaration) else { continue }
+            let literal = String(declaration[literalRange])
+            result.replaceSubrange(literalRange, with: darkModeColor(literal, property: property))
+        }
+        return result
+    }
+
+    private static func darkModeColor(_ literal: String, property: String) -> String {
+        guard let (red, green, blue, alpha) = rgbaComponents(from: literal), alpha >= 0.2 else {
+            return literal
+        }
+        let luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+        let normalizedProperty = property.lowercased()
+        let isBackground = normalizedProperty.contains("background") || normalizedProperty == "bgcolor"
+
+        if isBackground {
+            // Darken white and near-white email canvases to the neutral range
+            // used by system mail apps. Images retain their own pixels, so a
+            // logo plate does not need the sender's white table background.
+            if luminance > 0.78 { return "#242426" }
+            if luminance > 0.52 { return "#3a3a3c" }
+            return literal
+        }
+
+        // Sender-authored dark text is the common unreadable case in dark mode.
+        if luminance < 0.25 { return "#f2f2f7" }
+        if luminance < 0.50 { return "#d1d1d6" }
+        return literal
+    }
+
+    private static func rgbaComponents(from literal: String) -> (Double, Double, Double, Double)? {
+        let normalized = literal.lowercased()
+        if normalized.hasPrefix("#") {
+            let hex = String(normalized.dropFirst())
+            let expanded: String
+            switch hex.count {
+            case 3: expanded = hex.map { "\($0)\($0)" }.joined() + "ff"
+            case 4: expanded = hex.map { "\($0)\($0)" }.joined()
+            case 6: expanded = hex + "ff"
+            case 8: expanded = hex
+            default: return nil
+            }
+            guard let value = UInt64(expanded, radix: 16) else { return nil }
+            return (
+                Double((value >> 24) & 0xff) / 255,
+                Double((value >> 16) & 0xff) / 255,
+                Double((value >> 8) & 0xff) / 255,
+                Double(value & 0xff) / 255
+            )
+        }
+
+        let numbers = normalized
+            .replacingOccurrences(of: "rgba", with: "")
+            .replacingOccurrences(of: "rgb", with: "")
+            .replacingOccurrences(of: "(", with: "")
+            .replacingOccurrences(of: ")", with: "")
+            .split(separator: ",")
+            .compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+        guard numbers.count >= 3 else { return nil }
+        return (
+            min(max(numbers[0] / 255, 0), 1),
+            min(max(numbers[1] / 255, 0), 1),
+            min(max(numbers[2] / 255, 0), 1),
+            numbers.count > 3 ? min(max(numbers[3], 0), 1) : 1
+        )
+    }
 
     private static func removingRemoteCSSURLs(from value: String) -> String {
         replacing(
