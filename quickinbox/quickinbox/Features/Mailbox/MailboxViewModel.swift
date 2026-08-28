@@ -134,17 +134,40 @@ final class MailboxViewModel {
     }
 
     func perform(_ action: MailAction, on thread: ThreadSummary) async {
-        guard mutatingThreadIDs.insert(thread.id).inserted else { return }
-        defer { mutatingThreadIDs.remove(thread.id) }
+        _ = await perform(action, on: [thread])
+    }
+
+    @discardableResult
+    func perform(_ action: MailAction, on selectedThreads: [ThreadSummary]) async -> Bool {
+        let threadsByID = Dictionary(
+            selectedThreads.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let threads = Array(threadsByID.values)
+        let threadIDs = Set(threadsByID.keys)
+
+        guard !threads.isEmpty,
+              mutatingThreadIDs.isDisjoint(with: threadIDs) else {
+            return false
+        }
+
+        mutatingThreadIDs.formUnion(threadIDs)
+        defer { mutatingThreadIDs.subtract(threadIDs) }
 
         do {
-            _ = try await api.perform(action, ids: [thread.latestID])
-            apply(action, to: thread)
+            let response = try await api.perform(action, ids: threads.map(\.latestID))
+            guard response.ok else { throw APIError.invalidResponse }
+
+            for thread in threads {
+                apply(action, to: thread)
+            }
             await saveInboxCacheIfNeeded()
             AppFeedback.play(feedbackEvent(for: action))
+            return true
         } catch {
             actionError = error.localizedDescription
             AppFeedback.error()
+            return false
         }
     }
 

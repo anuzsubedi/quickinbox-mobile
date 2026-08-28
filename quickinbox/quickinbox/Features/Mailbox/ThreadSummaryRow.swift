@@ -7,6 +7,8 @@ struct ThreadSummaryRow: View {
     let thread: ThreadSummary
     let mailbox: MailboxKind
     var isWorking = false
+    var isSelectionActive = false
+    var isSelected = false
 
     private var people: String {
         let otherParticipants = thread.participants.filter { !$0.selfParticipant }
@@ -26,8 +28,13 @@ struct ThreadSummaryRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            if dynamicTypeSize < .xxxLarge {
-                MailboxAvatar(name: people, isUnread: !thread.isRead)
+            if dynamicTypeSize < .xxxLarge || isSelectionActive {
+                MailboxAvatar(
+                    name: people,
+                    isUnread: !thread.isRead,
+                    isSelectionActive: isSelectionActive,
+                    isSelected: isSelected
+                )
             }
 
             if dynamicTypeSize >= .xxxLarge {
@@ -268,29 +275,53 @@ struct ThreadSummaryRow: View {
 }
 
 private struct MailboxAvatar: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let name: String
     let isUnread: Bool
+    let isSelectionActive: Bool
+    let isSelected: Bool
 
     var body: some View {
         ZStack {
-            ParticipantMonogram(name: name, isEmphasized: false, size: 38)
-
-            Circle()
-                .stroke(QuickInboxDesign.Palette.separator.opacity(0.7), lineWidth: 1)
-                .frame(width: 42, height: 42)
-
-            if isUnread {
+            if isSelectionActive && isSelected {
                 Circle()
                     .fill(QuickInboxDesign.Palette.interactiveTint)
-                    .frame(width: 10, height: 10)
-                    .overlay {
-                        Circle()
-                            .stroke(QuickInboxDesign.Palette.paper, lineWidth: 2)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .frame(width: 42, height: 42)
+
+                Image(systemName: "checkmark")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(QuickInboxDesign.Palette.onInteractive)
+                    .transition(.opacity)
+            } else {
+                ParticipantMonogram(name: name, isEmphasized: false, size: 38)
+
+                Circle()
+                    .stroke(
+                        isSelectionActive
+                            ? QuickInboxDesign.Palette.interactiveTint.opacity(0.72)
+                            : QuickInboxDesign.Palette.separator.opacity(0.7),
+                        lineWidth: isSelectionActive ? 1.5 : 1
+                    )
+                    .frame(width: 42, height: 42)
+
+                if isUnread && !isSelectionActive {
+                    Circle()
+                        .fill(QuickInboxDesign.Palette.interactiveTint)
+                        .frame(width: 10, height: 10)
+                        .overlay {
+                            Circle()
+                                .stroke(QuickInboxDesign.Palette.paper, lineWidth: 2)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                }
             }
         }
         .frame(width: 44, height: 44)
+        .animation(
+            QuickInboxDesign.Motion.resolved(QuickInboxDesign.Motion.selection, reduceMotion: reduceMotion),
+            value: isSelected
+        )
         .accessibilityHidden(true)
     }
 }
