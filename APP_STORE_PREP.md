@@ -1,4 +1,4 @@
-# QuickMail iOS App Review preparation
+# QuickInbox iOS App Review preparation
 
 Last audited: August 24, 2026.
 
@@ -10,7 +10,7 @@ IDs, signing team identifiers, or other operator-specific information.
 ### Already in the app
 
 - Native SwiftUI app targeting iOS 17 and iPadOS 17.
-- App icon variants and the user-facing display name `QuickMail`.
+- App icon variants and the user-facing display name `QuickInbox`.
 - Camera and Face ID purpose strings. Camera pairing is optional because the
   server URL and code can also be entered manually.
 - HTTPS-only production server validation.
@@ -20,12 +20,12 @@ IDs, signing team identifiers, or other operator-specific information.
 - No advertising, analytics, tracking, or third-party iOS SDKs.
 - A privacy manifest declaring no tracking and the `UserDefaults` required
   reason `CA92.1`.
-- `ITSAppUsesNonExemptEncryption = NO`. QuickMail uses Apple-provided HTTPS and
+- `ITSAppUsesNonExemptEncryption = NO`. QuickInbox uses Apple-provided HTTPS and
   hashing rather than shipping its own non-exempt encryption implementation.
 
 ### Release blockers
 
-- [ ] Replace the placeholder bundle ID `com.example.quickmail` with the final
+- [ ] Replace the placeholder bundle ID `com.example.quickinbox` with the final
   App ID registered in the publisher's Apple Developer account.
 - [ ] Publish permanent Privacy Policy and Support pages. The support page must
   contain real contact information.
@@ -48,7 +48,7 @@ IDs, signing team identifiers, or other operator-specific information.
 
 ## Privacy decisions
 
-`quickmail/PrivacyInfo.xcprivacy` declares:
+`quickinbox/PrivacyInfo.xcprivacy` declares:
 
 - no tracking;
 - no tracking domains;
@@ -92,24 +92,24 @@ tracking or advertising is later introduced.
 
 These are drafts and must be checked against the final service and policy.
 
-- **Name:** QuickMail
+- **Name:** QuickInbox
 - **Subtitle:** Private mail, your server
 - **Primary category:** Productivity
 - **Keywords:** private email,self-hosted,inbox,mail,compose,secure,server
-- **Promotional text:** A focused native inbox for your self-hosted QuickMail
+- **Promotional text:** A focused native inbox for your self-hosted QuickInbox
   server.
 - **Description:**
 
-  QuickMail brings your self-hosted QuickMail inbox to iPhone and iPad. Pair
+  QuickInbox brings your self-hosted QuickInbox inbox to iPhone and iPad. Pair
   securely with your server, read and search conversations, send and reply from
   your configured addresses, work with attachments, and manage connected
   devices from a focused native interface.
 
-  Your server stays in control. QuickMail connects directly over HTTPS, stores
+  Your server stays in control. QuickInbox connects directly over HTTPS, stores
   its session credential in Keychain, blocks remote email images by default,
   and offers optional App Lock.
 
-  A configured QuickMail server and account are required.
+  A configured QuickInbox server and account are required.
 
 The product page must not imply that the publisher hosts every user's email,
 offers end-to-end encryption, or guarantees security properties that the app
@@ -120,7 +120,7 @@ and server do not implement.
 Replace every bracketed value in App Store Connect. Attach the review QR image
 as well as providing manual values so review is not camera-dependent.
 
-> QuickMail is a native companion for a self-hosted QuickMail email server. The
+> QuickInbox is a native companion for a self-hosted QuickInbox email server. The
 > iOS app does not create accounts; server administrators provision them on the
 > web. This review identity is non-admin and contains synthetic mail only.
 >
@@ -152,7 +152,7 @@ as well as providing manual values so review is not camera-dependent.
   URL, and optional Marketing URL are complete and live.
 - [ ] App Privacy responses match the final production data flow and all server
   or third-party logging.
-- [ ] Age Rating answers acknowledge that QuickMail displays user email and
+- [ ] Age Rating answers acknowledge that QuickInbox displays user email and
   provides person-to-person communication. Do not mark it as Made for Kids.
 - [ ] Content Rights confirms the publisher is authorized to provide an email
   client that displays content belonging to the signed-in user.

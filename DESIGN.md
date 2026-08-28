@@ -1,4 +1,4 @@
-# QuickMail Design System
+# QuickInbox Design System
 
 <!-- impeccable:product-schema 1 -->
 
@@ -12,7 +12,7 @@ FORM: Postmark Desk, rebuilt from live iOS 27 simulator evidence rather than inh
 
 ## Direction
 
-QuickMail is a **Postmark Desk**: a quiet, high-trust place for correspondence
+QuickInbox is a **Postmark Desk**: a quiet, high-trust place for correspondence
 on a server the user controls. A compact type-led masthead establishes location
 and identity; mail sits immediately beneath it on a crisp semantic reading
 surface. A restrained postmark seal makes sender identity and unread state
@@ -128,7 +128,7 @@ implied by the interface.
 - Pairing is scanner-first. The first screen has one clear explanation, one
   prominent **Scan Pairing Code** action, and a secondary **Enter Code
   Manually** disclosure.
-- The relationship is described plainly: the code comes from QuickMail on the
+- The relationship is described plainly: the code comes from QuickInbox on the
   web, HTTPS is required, and the session is kept in Keychain.
 - Use one restrained brand moment derived from the iOS identity. Do not build a
   marketing carousel, ornamental hero, or multi-card setup page.
