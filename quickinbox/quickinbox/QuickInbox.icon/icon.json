@@ -1,0 +1,115 @@
+{
+  "color-space-for-untagged-svg-colors" : "display-p3",
+  "fill" : {
+    "linear-gradient" : [
+      "display-p3:1.00000,0.99216,0.96863,1.00000",
+      "display-p3:0.89020,0.92157,1.00000,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.14,
+        "y" : 0.08
+      },
+      "stop" : {
+        "x" : 0.88,
+        "y" : 0.94
+      }
+    }
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "fill" : "none",
+          "glass" : true,
+          "image-name" : "05-paper-plane.svg",
+          "name" : "Paper plane"
+        }
+      ],
+      "lighting" : "individual",
+      "specular" : true,
+      "blur" : 0.03,
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.24
+      },
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0
+      }
+    },
+    {
+      "layers" : [
+        {
+          "fill" : "none",
+          "glass" : false,
+          "image-name" : "04-plane-depth.svg",
+          "name" : "Plane depth"
+        }
+      ],
+      "lighting" : "combined",
+      "specular" : false,
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.14
+      },
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0
+      }
+    },
+    {
+      "layers" : [
+        {
+          "fill" : "none",
+          "glass" : false,
+          "image-name" : "03-envelope-fold.svg",
+          "name" : "Envelope bridge"
+        },
+        {
+          "fill" : "none",
+          "glass" : true,
+          "image-name" : "02-envelope.svg",
+          "name" : "Envelope"
+        }
+      ],
+      "lighting" : "combined",
+      "specular" : true,
+      "blur" : 0.02,
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.2
+      },
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0
+      }
+    },
+    {
+      "layers" : [
+        {
+          "fill" : "none",
+          "glass" : false,
+          "image-name" : "01-speed-lines.svg",
+          "name" : "Speed envelope"
+        }
+      ],
+      "lighting" : "combined",
+      "specular" : false,
+      "shadow" : {
+        "kind" : "none",
+        "opacity" : 0
+      },
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

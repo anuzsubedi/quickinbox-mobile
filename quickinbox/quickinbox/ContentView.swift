@@ -75,43 +75,72 @@ struct ContentView: View {
 }
 
 private struct LaunchView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var showsProgress = false
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(spacing: QuickInboxDesign.Spacing.xl) {
-            QuickInboxMark(size: .system(size: 34, weight: .semibold))
-                .foregroundStyle(QuickInboxDesign.Palette.interactiveTint)
-                .frame(width: 84, height: 84)
-                .background(QuickInboxDesign.Palette.fill, in: Circle())
-                .overlay {
-                    Circle()
-                        .stroke(QuickInboxDesign.Palette.separator.opacity(0.55), lineWidth: 0.5)
+        ZStack {
+            QuickInboxDesign.Palette.paper
+                .ignoresSafeArea()
+
+            if colorScheme == .light {
+                Circle()
+                    .fill(QuickInboxDesign.Palette.interactiveTint.opacity(0.09))
+                    .frame(width: 320, height: 320)
+                    .blur(radius: 72)
+                    .offset(y: -115)
+                    .accessibilityHidden(true)
+            }
+
+            VStack(spacing: 0) {
+                Image("QuickInboxAppIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 132, height: 132)
+                    .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 30, style: .continuous)
+                            .strokeBorder(.white.opacity(colorScheme == .dark ? 0.12 : 0.2), lineWidth: 0.5)
+                    }
+                    .shadow(
+                        color: Color.black.opacity(colorScheme == .dark ? 0.38 : 0.18),
+                        radius: 24,
+                        y: 12
+                    )
+                    .accessibilityHidden(true)
+
+                Text("QuickInbox")
+                    .font(.largeTitle.bold())
+                    .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+                    .padding(.top, QuickInboxDesign.Spacing.xxxl)
+
+                Text("Your inbox, ready when you are.")
+                    .font(.subheadline)
+                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                    .padding(.top, QuickInboxDesign.Spacing.sm)
+
+                HStack(spacing: QuickInboxDesign.Spacing.sm) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(QuickInboxDesign.Palette.interactiveTint)
+
+                    Text("Opening your inbox")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
                 }
-
-            Text("QuickInbox")
-                .font(.title.bold())
-                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
-
-            ProgressView()
-                .controlSize(.small)
-                .tint(QuickInboxDesign.Palette.interactiveTint)
-                .opacity(showsProgress ? 1 : 0)
-                .accessibilityHidden(!showsProgress)
+                .padding(.horizontal, QuickInboxDesign.Spacing.md)
+                .padding(.vertical, 10)
+                .background(QuickInboxDesign.Palette.fill, in: Capsule())
+                .overlay {
+                    Capsule()
+                        .strokeBorder(QuickInboxDesign.Palette.separator.opacity(0.45), lineWidth: 0.5)
+                }
+                .padding(.top, QuickInboxDesign.Spacing.xxl)
+            }
+            .padding(QuickInboxDesign.Spacing.xxxl)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(QuickInboxDesign.Palette.paper)
-        .accessibilityLabel("Opening QuickInbox")
-        .task {
-            do {
-                try await Task.sleep(for: .milliseconds(800))
-            } catch {
-                return
-            }
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
-                showsProgress = true
-            }
-        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("QuickInbox. Opening your inbox.")
     }
 }
 

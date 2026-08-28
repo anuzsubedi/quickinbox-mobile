@@ -1,6 +1,6 @@
 # QuickInbox for iOS
 
-A native SwiftUI companion for a self-hosted [QuickInbox](https://github.com/DivinPrince/quickmail) server.
+A native SwiftUI companion for a self-hosted [QuickInbox](https://github.com/DivinPrince/quickinbox) server.
 
 QuickInbox for iOS pairs with a server by QR code or manual code, then provides
 native inbox, conversation, compose, search, attachment, privacy, and connected

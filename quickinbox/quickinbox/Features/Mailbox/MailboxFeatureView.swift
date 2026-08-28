@@ -515,9 +515,8 @@ struct MailboxFeatureView: View {
         if !model.searchText.isEmpty {
             return model.total == 1 ? "1 result" : "\(model.total) results"
         }
-        if model.isShowingCachedData, let cachedAt = model.cachedAt {
-            let count = model.total == 1 ? "1 conversation" : "\(model.total) conversations"
-            return "\(count) · saved \(cachedAt.formatted(.relative(presentation: .named)))"
+        if model.isShowingCachedData {
+            return model.total == 1 ? "1 conversation" : "\(model.total) conversations"
         }
         if model.selectedMailbox == .inbox {
             let unread = model.threads.lazy.filter { !$0.isRead }.count

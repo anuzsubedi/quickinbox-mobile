@@ -11,13 +11,14 @@ struct HardenedHTMLView: View {
     @Environment(\.openURL) private var openURL
     let html: String
     var loadsRemoteImages = false
-    @State private var contentHeight: CGFloat = 120
+    @State private var contentHeight: CGFloat = 44
 
     var body: some View {
         HardenedWebView(
             html: HTMLMessageSanitizer.document(
                 from: html,
-                loadsRemoteImages: loadsRemoteImages
+                loadsRemoteImages: loadsRemoteImages,
+                isDarkMode: colorScheme == .dark
             ),
             colorScheme: colorScheme,
             openURL: { url in openURL(url) },
@@ -39,7 +40,12 @@ private struct HardenedWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let preferences = WKWebpagePreferences()
-        preferences.allowsContentJavaScript = false
+        // The sanitizer removes scripts, event handlers, forms, frames, and
+        // javascript: URLs, while the generated CSP denies every script source.
+        // Keep WebKit evaluation available solely so the app can measure the
+        // sanitized document's height after layout.
+        preferences.allowsContentJavaScript = true
+        preferences.preferredContentMode = .mobile
 
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences = preferences
@@ -53,15 +59,16 @@ private struct HardenedWebView: UIViewRepresentable {
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
-        webView.scrollView.isScrollEnabled = true
+        webView.scrollView.isScrollEnabled = false
         webView.scrollView.bounces = false
         webView.scrollView.bouncesZoom = true
         webView.scrollView.showsVerticalScrollIndicator = false
         webView.scrollView.showsHorizontalScrollIndicator = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.allowsLinkPreview = false
-        // Selection and native <details> disclosure remain available. Link and
-        // window navigation is independently denied by the navigation delegates.
+        // Selection and native <details> disclosure remain available. Sender
+        // scripts are stripped and denied by CSP; link and window navigation is
+        // independently denied by the navigation delegates.
         webView.isUserInteractionEnabled = true
         context.coordinator.observeContentSize(of: webView)
         return webView
@@ -92,6 +99,7 @@ private struct HardenedWebView: UIViewRepresentable {
         var loadedHTML: String?
         var openURL: (URL) -> Void
         private var contentSizeObservation: NSKeyValueObservation?
+        private var measurementWorkItem: DispatchWorkItem?
         private var restingZoomScale: CGFloat?
 
         init(height: Binding<CGFloat>, openURL: @escaping (URL) -> Void) {
@@ -103,8 +111,8 @@ private struct HardenedWebView: UIViewRepresentable {
             contentSizeObservation = webView.scrollView.observe(
                 \.contentSize,
                 options: [.initial, .new]
-            ) { [weak self] scrollView, change in
-                guard let self,
+            ) { [weak self, weak webView] scrollView, _ in
+                guard let self, let webView,
                       !scrollView.isZooming,
                       !scrollView.isZoomBouncing else { return }
 
@@ -115,16 +123,19 @@ private struct HardenedWebView: UIViewRepresentable {
                     // the content to jump or flash.
                     return
                 }
-                guard let measured = change.newValue?.height,
-                      measured.isFinite,
-                      measured > 0 else { return }
-                DispatchQueue.main.async {
-                    self.height = ceil(measured)
+                let nativeHeight = scrollView.contentSize.height
+                if nativeHeight.isFinite, nativeHeight > 0 {
+                    DispatchQueue.main.async {
+                        self.height = ceil(nativeHeight)
+                    }
                 }
+                self.scheduleDocumentHeightMeasurement(in: webView)
             }
         }
 
         func stopObservingContentSize() {
+            measurementWorkItem?.cancel()
+            measurementWorkItem = nil
             contentSizeObservation?.invalidate()
             contentSizeObservation = nil
             restingZoomScale = nil
@@ -132,9 +143,50 @@ private struct HardenedWebView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             restingZoomScale = webView.scrollView.zoomScale
-            let measured = webView.scrollView.contentSize.height
-            if measured.isFinite, measured > 0 {
-                height = ceil(measured)
+            measureDocumentHeight(in: webView)
+        }
+
+        private func scheduleDocumentHeightMeasurement(in webView: WKWebView) {
+            measurementWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [weak self, weak webView] in
+                guard let self, let webView else { return }
+                self.measureDocumentHeight(in: webView)
+            }
+            measurementWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.04, execute: workItem)
+        }
+
+        /// `UIScrollView.contentSize` is floored at the WebView's current viewport
+        /// height. Feeding that value back into SwiftUI therefore creates a view
+        /// that can grow but cannot shrink. The body itself has the content height
+        /// we need. Sender JavaScript is removed and denied by the generated CSP;
+        /// the only evaluation performed is this app-owned measurement.
+        private func measureDocumentHeight(in webView: WKWebView) {
+            let nativeContentHeight = webView.scrollView.contentSize.height
+            let script = """
+            (() => {
+                const body = document.body;
+                if (!body) return 0;
+                const rect = body.getBoundingClientRect();
+                const style = getComputedStyle(body);
+                const marginTop = parseFloat(style.marginTop) || 0;
+                const marginBottom = parseFloat(style.marginBottom) || 0;
+                return Math.max(body.scrollHeight, body.offsetHeight, rect.height) + marginTop + marginBottom;
+            })()
+            """
+            webView.evaluateJavaScript(script) { [weak self, weak webView] result, _ in
+                guard let self else { return }
+                // Retain the native scroll-size measurement as a safe fallback if
+                // WebKit evaluation fails. Starting each load at 44pt lets it
+                // shrink as well as grow without feeding the old viewport height
+                // back into the next layout pass.
+                let measured = (result as? NSNumber)?.doubleValue
+                    ?? webView?.scrollView.contentSize.height
+                    ?? nativeContentHeight
+                guard measured.isFinite, measured > 0 else { return }
+                DispatchQueue.main.async {
+                    self.height = ceil(measured)
+                }
             }
         }
 
@@ -145,7 +197,7 @@ private struct HardenedWebView: UIViewRepresentable {
         ) {
             let url = navigationAction.request.url
             let isInitialDocument = navigationAction.navigationType == .other
-                && (url?.scheme == "about" || url?.scheme == "data")
+                && (url == nil || url?.scheme == "about" || url?.scheme == "data")
             if navigationAction.navigationType == .linkActivated,
                let url,
                Self.allowedExternalSchemes.contains(url.scheme?.lowercased() ?? "") {
@@ -180,11 +232,12 @@ private struct HardenedWebView: UIViewRepresentable {
 nonisolated enum HTMLMessageSanitizer {
     static func document(
         from rawHTML: String,
-        loadsRemoteImages: Bool = false
+        loadsRemoteImages: Bool = false,
+        isDarkMode: Bool = false
     ) -> String {
         var body = rawHTML
         let isDesignedMessage = rawHTML.range(
-            of: #"<(?:table|style|center)\b|\bbgcolor\s*="#,
+            of: #"<(?:table|style|center)\b|\bbgcolor\s*=|<body\b[^>]*\bstyle\s*=\s*[\"'][^\"']*background(?:-color)?\s*:"#,
             options: [.regularExpression, .caseInsensitive]
         ) != nil
         // A color-scheme declaration only opts into client-side adaptation; it
@@ -194,10 +247,7 @@ nonisolated enum HTMLMessageSanitizer {
             of: #"@media[^\{]{0,240}\(\s*prefers-color-scheme\s*:\s*dark\s*\)|light-dark\s*\("#,
             options: [.regularExpression, .caseInsensitive]
         ) != nil
-        let viewportWidth = isDesignedMessage ? designWidth(in: rawHTML) : nil
-        let viewport = viewportWidth.map {
-            "width=\($0), user-scalable=yes, minimum-scale=0.5, maximum-scale=5"
-        } ?? "width=device-width, initial-scale=1, user-scalable=yes, minimum-scale=0.5, maximum-scale=5"
+        let viewport = "width=device-width, initial-scale=1, user-scalable=yes, minimum-scale=0.5, maximum-scale=5"
 
         let senderStyles = matches(of: #"<style\b[^>]*>([\s\S]*?)</style\s*>"#, in: body)
             .map { sanitizeCSS($0, loadsRemoteImages: loadsRemoteImages) }
@@ -226,6 +276,19 @@ nonisolated enum HTMLMessageSanitizer {
             with: ""
         )
         if !loadsRemoteImages {
+            // Removing only `src` leaves a broken-image outline and its alt text
+            // behind. The native Show Images control already communicates that
+            // remote media is withheld, so remove the whole remote media element.
+            body = replacing(
+                #"<picture\b[^>]*>[\s\S]*?(?:(?:https?:)?//)[\s\S]*?</picture\s*>"#,
+                in: body,
+                with: ""
+            )
+            body = replacing(
+                #"<(?:img|source)\b[^>]*\b(?:src|srcset)\s*=\s*(?:\"[^\"]*(?:(?:https?:)?//)[^\"]*\"|'[^']*(?:(?:https?:)?//)[^']*'|(?:https?:)?//[^\s>]+)[^>]*>"#,
+                in: body,
+                with: ""
+            )
             body = replacing(#"\s+(?:src|srcset|poster|background)\s*=\s*(?:\"[^\"]*(?:(?:https?:)?//)[^\"]*\"|'[^']*(?:(?:https?:)?//)[^']*'|(?:https?:)?//[^\s>]+)"#, in: body, with: "")
             body = removingRemoteCSSURLs(from: body)
         }
@@ -243,13 +306,14 @@ nonisolated enum HTMLMessageSanitizer {
         <html><head>
         <meta charset="utf-8">
         <meta name="viewport" content="\(viewport)">
-        <meta name="color-scheme" content="light dark">
-        <meta name="supported-color-schemes" content="light dark">
+        <meta name="color-scheme" content="\(isDesignedMessage && !hasAuthoredDarkMode ? "light" : "light dark")">
+        <meta name="supported-color-schemes" content="\(isDesignedMessage && !hasAuthoredDarkMode ? "light" : "light dark")">
         <meta name="referrer" content="no-referrer">
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: \(loadsRemoteImages ? "https: http:" : ""); style-src 'unsafe-inline'; font-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
+        <style>\(senderStyles)</style>
         <style>
         :root {
-            color-scheme: light dark;
+            color-scheme: \(isDesignedMessage && !hasAuthoredDarkMode ? "light" : "light dark");
             --qm-text: -apple-system-label;
             --qm-secondary: -apple-system-secondary-label;
             --qm-link: -apple-system-link;
@@ -269,12 +333,18 @@ nonisolated enum HTMLMessageSanitizer {
         }
         body {
             font: -apple-system-body;
+            padding: \(isDesignedMessage ? "16px" : "0") !important;
             overflow-wrap: anywhere;
             word-break: normal;
         }
         body * {
             box-sizing: border-box !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
             overflow-wrap: anywhere;
+        }
+        [nowrap], [style*="white-space: nowrap" i], [style*="white-space:nowrap" i] {
+            white-space: normal !important;
         }
         [style*="position: fixed" i], [style*="position:fixed" i],
         [style*="position: sticky" i], [style*="position:sticky" i] {
@@ -282,6 +352,7 @@ nonisolated enum HTMLMessageSanitizer {
         }
         a { color: var(--qm-link); overflow-wrap: anywhere; }
         img, video, svg { max-width: 100% !important; height: auto !important; }
+        img:not([src]), source:not([src]):not([srcset]) { display: none !important; }
         pre, code { white-space: pre-wrap; overflow-wrap: anywhere; }
         pre { max-width: 100%; overflow-x: auto; }
         blockquote {
@@ -291,12 +362,9 @@ nonisolated enum HTMLMessageSanitizer {
             color: var(--qm-secondary);
         }
         hr { border: 0; border-top: 1px solid var(--qm-rule); }
-        table { max-width: 100% !important; }
-        body > table, body > div > table { width: 100% !important; }
-        \(isDesignedMessage && !hasAuthoredDarkMode ? designedMessageDarkModeStyles : "")
-        \(isDesignedMessage ? "" : ordinaryMessageStyles)
+        table { width: 100% !important; max-width: 100% !important; }
+        \(isDesignedMessage ? "" : ordinaryMessageStyles(isDarkMode: isDarkMode))
         </style>
-        <style>\(senderStyles)</style>
         </head><body \(bodyAttributes)>\(body)</body></html>
         """
     }
@@ -346,44 +414,43 @@ nonisolated enum HTMLMessageSanitizer {
         return result
     }
 
-    /// Ordinary correspondence often contains editor-generated black text or
-    /// white backgrounds without being a deliberately designed email. Adapt
-    /// those common defaults while leaving branded, table-based mail intact.
-    private static let ordinaryMessageStyles = """
+    /// Ordinary correspondence is part of the app surface, so its sender-authored
+    /// white-page colors must yield to accessible system colors in dark mode.
+    /// Designed mail is kept on its original canvas instead.
+    private static func ordinaryMessageStyles(isDarkMode: Bool) -> String {
+        let explicitDarkStyles = isDarkMode ? """
+            body {
+                color: #f2f2f7 !important;
+                background-color: transparent !important;
+            }
+            body *:not(a):not(img):not(video):not(picture):not(svg):not(source) {
+                color: inherit !important;
+                background-color: transparent !important;
+                background-image: none !important;
+            }
+            a, a:visited { color: #64a8ff !important; }
+            blockquote { color: #aeaeb2 !important; }
+            """ : ""
+        return """
         body { line-height: 1.45; }
         p { margin-block: 0 0.85em; }
         p:last-child { margin-bottom: 0; }
+        \(explicitDarkStyles)
         @media (prefers-color-scheme: dark) {
-            [color="black" i], [color="#000" i], [color="#000000" i],
-            [style*="color:black" i], [style*="color: black" i],
-            [style*="color:#000" i], [style*="color: #000" i],
-            [style*="color:rgb(0,0,0)" i], [style*="color: rgb(0, 0, 0)" i] {
-                color: var(--qm-text) !important;
-            }
-            [bgcolor="white" i], [bgcolor="#fff" i], [bgcolor="#ffffff" i],
-            [style*="background-color:white" i], [style*="background-color: white" i],
-            [style*="background-color:#fff" i], [style*="background-color: #fff" i],
-            [style*="background:white" i], [style*="background: white" i] {
+            body {
+                color: #f2f2f7 !important;
                 background-color: transparent !important;
             }
+            body *:not(a):not(img):not(video):not(picture):not(svg):not(source) {
+                color: inherit !important;
+                background-color: transparent !important;
+                background-image: none !important;
+            }
+            a, a:visited { color: #64a8ff !important; }
+            blockquote { color: #aeaeb2 !important; }
         }
         """
-
-    /// Invert painted colors for designed messages that lack their own dark-mode
-    /// styles. Images, videos, and similar media are re-inverted so they render
-    /// with their original colors.
-    private static let designedMessageDarkModeStyles = """
-        @media (prefers-color-scheme: dark) {
-            html {
-                filter: invert(1) hue-rotate(180deg);
-                -webkit-filter: invert(1) hue-rotate(180deg);
-            }
-            img, video, picture, svg, [background], [style*="background-image"] {
-                filter: invert(1) hue-rotate(180deg);
-                -webkit-filter: invert(1) hue-rotate(180deg);
-            }
-        }
-        """
+    }
 
     private static func removingRemoteCSSURLs(from value: String) -> String {
         replacing(
@@ -391,21 +458,6 @@ nonisolated enum HTMLMessageSanitizer {
             in: value,
             with: "none"
         )
-    }
-
-    /// Most marketing email is authored on a fixed 480–900 CSS-pixel canvas.
-    /// Giving WebKit that canvas width lets it scale the entire message down to
-    /// the actual reader width instead of clipping the right-hand side.
-    private static func designWidth(in html: String) -> Int {
-        let patterns = [
-            #"\bwidth\s*=\s*[\"']?\s*(\d{3,4})(?:px)?\b"#,
-            #"\bwidth\s*:\s*(\d{3,4})px\b"#
-        ]
-        let widths = patterns
-            .flatMap { matches(of: $0, in: html) }
-            .compactMap(Int.init)
-            .filter { (480...900).contains($0) }
-        return widths.min() ?? 600
     }
 
     private static func matches(of pattern: String, in value: String) -> [String] {
