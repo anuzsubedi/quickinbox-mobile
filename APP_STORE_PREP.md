@@ -1,4 +1,4 @@
-# QuickMail iOS App Review preparation
+# QuickInbox iOS App Review preparation
 
 Last audited: August 25, 2026.
 
@@ -11,7 +11,7 @@ IDs, signing team identifiers, or other operator-specific information.
 foundations are present, but the App ID registration, public policy/support
 pages, in-app Privacy Policy link, review environment, reviewer access, release
 archive, product-page assets, and App Store Connect record still need to be
-completed. The publisher will host the compatible updated QuickMail server, so
+completed. The publisher will host the compatible updated QuickInbox server, so
 the pairing/archive extensions not being in upstream `main` is not a blocker.
 
 Current local submission-tooling check:
@@ -21,7 +21,7 @@ Current local submission-tooling check:
   April 28, 2026.
 - This is an upload-toolchain requirement, not the minimum OS users need. An app
   built with the iOS 26 SDK can still have an iOS 17 deployment target.
-- Xcode currently discovers one `quickmail` scheme with Debug and Release
+- Xcode currently discovers one `quickinbox` scheme with Debug and Release
   configurations; no shared scheme file is tracked in the repository.
 - No App Store archive or upload was created during this documentation audit.
 
@@ -30,7 +30,7 @@ Current local submission-tooling check:
 ### Already in the app
 
 - Native SwiftUI app targeting iPhone on iOS 17 or later.
-- App icon variants and the user-facing display name `QuickMail`.
+- App icon variants and the user-facing display name `QuickInbox`.
 - Camera and Face ID purpose strings. Camera pairing is optional because the
   server URL and code can also be entered manually from inside the scanner.
 - HTTPS-only production server validation.
@@ -40,20 +40,20 @@ Current local submission-tooling check:
 - No advertising, analytics, tracking, or third-party iOS SDKs.
 - A privacy manifest declaring no tracking and the `UserDefaults` required
   reason `CA92.1`.
-- `ITSAppUsesNonExemptEncryption = NO`. QuickMail uses Apple-provided HTTPS and
+- `ITSAppUsesNonExemptEncryption = NO`. QuickInbox uses Apple-provided HTTPS and
   hashing rather than shipping its own non-exempt encryption implementation.
 - Settings includes Support and Privacy Policy links; onboarding also exposes
   the Privacy Policy link.
 
 ### Release blockers
 
-- [x] Set the Xcode bundle identifier to `dev.anuz.quickmail` for Debug and
+- [x] Set the Xcode bundle identifier to `dev.anuz.quickinbox` for Debug and
   Release.
-- [ ] Register the matching explicit App ID `dev.anuz.quickmail` in the
+- [ ] Register the matching explicit App ID `dev.anuz.quickinbox` in the
   publisher's Apple Developer account.
 - [ ] Confirm the final App ID and signing team are private-fork values only.
   The working tree currently contains a local signing-team change in
-  `quickmail/quickmail.xcodeproj/project.pbxproj`; do not publish that value to
+  `quickinbox/quickinbox.xcodeproj/project.pbxproj`; do not publish that value to
   the public upstream repository.
 - [ ] Publish permanent Privacy Policy and Support pages. The support page must
   contain real contact information.
@@ -78,7 +78,7 @@ Current local submission-tooling check:
 
 ## Privacy decisions
 
-`quickmail/PrivacyInfo.xcprivacy` declares:
+`quickinbox/PrivacyInfo.xcprivacy` declares:
 
 - no tracking;
 - no tracking domains;
@@ -122,24 +122,24 @@ tracking or advertising is later introduced.
 
 These are drafts and must be checked against the final service and policy.
 
-- **Name:** QuickMail
+- **Name:** QuickInbox
 - **Subtitle:** Private mail, your server
 - **Primary category:** Productivity
 - **Keywords:** private email,self-hosted,inbox,mail,compose,secure,server
-- **Promotional text:** A focused native inbox for your self-hosted QuickMail
+- **Promotional text:** A focused native inbox for your self-hosted QuickInbox
   server.
 - **Description:**
 
-  QuickMail brings your self-hosted QuickMail inbox to iPhone. Pair
+  QuickInbox brings your self-hosted QuickInbox inbox to iPhone. Pair
   securely with your server, read and search conversations, send and reply from
   your configured addresses, work with attachments, and manage connected
   devices from a focused native interface.
 
-  Your server stays in control. QuickMail connects directly over HTTPS, stores
+  Your server stays in control. QuickInbox connects directly over HTTPS, stores
   its session credential in Keychain, blocks remote email images by default,
   and offers optional App Lock.
 
-  A configured QuickMail server and account are required.
+  A configured QuickInbox server and account are required.
 
 The product page must not imply that the publisher hosts every user's email,
 offers end-to-end encryption, or guarantees security properties that the app
@@ -150,7 +150,7 @@ and server do not implement.
 Replace every bracketed value in App Store Connect. Attach the review QR image
 as well as providing manual values so review is not camera-dependent.
 
-> QuickMail is a native companion for a self-hosted QuickMail email server. The
+> QuickInbox is a native companion for a self-hosted QuickInbox email server. The
 > iOS app does not create accounts; server administrators provision them on the
 > web. This review identity is non-admin and contains synthetic mail only.
 >
@@ -185,7 +185,7 @@ as well as providing manual values so review is not camera-dependent.
   URL, and optional Marketing URL are complete and live.
 - [ ] App Privacy responses match the final production data flow and all server
   or third-party logging.
-- [ ] Age Rating answers acknowledge that QuickMail displays user email and
+- [ ] Age Rating answers acknowledge that QuickInbox displays user email and
   provides person-to-person communication. Do not mark it as Made for Kids.
 - [ ] Content Rights confirms the publisher is authorized to provide an email
   client that displays content belonging to the signed-in user.
@@ -206,14 +206,14 @@ as well as providing manual values so review is not camera-dependent.
 
 ### 1. Close product and legal blockers
 
-- [ ] Register the explicit App ID `dev.anuz.quickmail` and use it in the App
+- [ ] Register the explicit App ID `dev.anuz.quickinbox` and use it in the App
   Store Connect record.
 - [x] Add Privacy Policy and Support destinations to Settings and the Privacy
   Policy link to onboarding. Publish and verify the public URLs before review;
   Apple's privacy guideline requires the link both in App Store Connect and in
   an easily accessible location inside the app.
 - [ ] Freeze the compatible server API/migration version used by the release.
-- [ ] Decide whether QuickMail is free or paid. Banking and tax setup is needed
+- [ ] Decide whether QuickInbox is free or paid. Banking and tax setup is needed
   for paid distribution; do not add non-Apple purchase calls to action without
   a separate App Review/payment-policy assessment.
 
@@ -223,7 +223,7 @@ as well as providing manual values so review is not camera-dependent.
   `CURRENT_PROJECT_VERSION` for every upload.
 - [ ] Set the final bundle ID and Automatic Signing team for both Debug and
   Release without committing personal signing values to an upstream branch.
-- [ ] In **Manage Schemes**, mark `quickmail` as Shared if archives will be
+- [ ] In **Manage Schemes**, mark `quickinbox` as Shared if archives will be
   produced by CI or another checkout, and commit only the non-personal shared
   scheme file.
 - [ ] Confirm Release keeps only intended features and contains no debug menu,
@@ -232,11 +232,11 @@ as well as providing manual values so review is not camera-dependent.
 
   ```sh
   xcodebuild \
-    -project quickmail/quickmail.xcodeproj \
-    -scheme quickmail \
+    -project quickinbox/quickinbox.xcodeproj \
+    -scheme quickinbox \
     -configuration Release \
     -destination 'generic/platform=iOS' \
-    -archivePath /tmp/QuickMail.xcarchive \
+    -archivePath /tmp/QuickInbox.xcarchive \
     archive
   ```
 

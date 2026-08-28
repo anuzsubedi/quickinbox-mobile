@@ -8,7 +8,7 @@ ios
 
 ## Users
 
-QuickMail serves people who operate a self-hosted QuickMail account and want a
+QuickInbox serves people who operate a self-hosted QuickInbox account and want a
 focused, trustworthy way to read and send their mail from an iPhone. Version
 1.0 is intentionally iPhone-only.
 
@@ -21,7 +21,7 @@ those daily tasks while preserving the user's control over their server.
 
 ## Positioning
 
-QuickMail is a native companion to a server the user chooses. Pairing is
+QuickInbox is a native companion to a server the user chooses. Pairing is
 explicit, the bearer credential stays in Keychain, and the interface preserves
 the direct relationship between the device and that server.
 
@@ -29,7 +29,7 @@ the direct relationship between the device and that server.
 
 The primary context is frequent, short sessions on iPhone: checking new mail,
 triaging a conversation, replying, and returning to another task. Setup begins
-in the QuickMail web app, where the user creates a short-lived QR or manual
+in the QuickInbox web app, where the user creates a short-lived QR or manual
 pairing code.
 
 ## Capabilities and Constraints
@@ -46,7 +46,7 @@ pairing code.
 
 ## Brand Commitments
 
-The product name is QuickMail. Its voice is concise, calm, direct, and
+The product name is QuickInbox. Its voice is concise, calm, direct, and
 privacy-conscious. The interface should feel intentionally designed rather
 than like an untouched SwiftUI template, without sacrificing familiar mail
 behaviors.
