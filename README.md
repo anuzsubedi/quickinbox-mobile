@@ -4,12 +4,12 @@ A native SwiftUI companion for a self-hosted [QuickInbox](https://github.com/Div
 
 QuickInbox for iOS pairs with a server by QR code or manual code, then provides
 native inbox, conversation, compose, search, attachment, privacy, and connected
-device experiences on iPhone and iPad.
+device experiences on iPhone.
 
 ## Requirements
 
 - Xcode 26 or newer
-- iOS 17 or iPadOS 17 or newer
+- iPhone running iOS 17 or newer
 - A QuickInbox server with the mobile pairing API and migration
   `0012_mobile_pairing.sql`
 - Migration `0013_archive.sql` for Archive and Unarchive support
@@ -22,7 +22,8 @@ this app or perform archive actions.
 
 1. Open `quickinbox/quickinbox.xcodeproj`.
 2. Select the `quickinbox` scheme.
-3. Choose your own bundle identifier and signing team locally.
+3. Confirm the `com.example.quickinbox` bundle identifier and choose your signing
+   team locally.
 4. Build for an iOS simulator or device.
 
 Command-line compile check:
