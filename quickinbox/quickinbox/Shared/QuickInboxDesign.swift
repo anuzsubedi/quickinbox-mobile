@@ -15,17 +15,15 @@ extension Font {
         .system(style, design: .default, weight: .bold)
     }
 
-    /// Poppins display face used by onboarding surfaces. Scales with Dynamic Type.
+    /// Bricolage Grotesque display face used by onboarding surfaces. Scales with Dynamic Type.
     static func onboardingBrand(_ size: CGFloat, _ weight: Font.Weight = .regular, relativeTo style: TextStyle = .body) -> Font {
         .custom(onboardingBrandName(weight), size: size, relativeTo: style)
     }
 
     private static func onboardingBrandName(_ weight: Font.Weight) -> String {
         switch weight {
-        case .bold, .heavy, .black: "Poppins-Bold"
-        case .semibold: "Poppins-SemiBold"
-        case .medium: "Poppins-Medium"
-        default: "Poppins-Regular"
+        case .semibold, .bold, .heavy, .black: "BricolageGrotesque-SemiBold"
+        default: "BricolageGrotesque-Medium"
         }
     }
 }
