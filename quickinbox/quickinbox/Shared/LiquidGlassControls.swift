@@ -100,6 +100,42 @@ struct PlatformPrimaryActionButton<Label: View>: View {
     }
 }
 
+/// A full-width secondary action. Uses Liquid Glass on iOS 26+, and a native
+/// bordered button on earlier systems without imitating glass.
+struct PlatformSecondaryActionButton<Label: View>: View {
+    private let action: () -> Void
+    private let label: () -> Label
+
+    init(action: @escaping () -> Void, @ViewBuilder label: @escaping () -> Label) {
+        self.action = action
+        self.label = label
+    }
+
+    var body: some View {
+        Button(action: action, label: label)
+            .modifier(PlatformSecondaryActionStyle())
+    }
+}
+
+/// Groups adjacent actions so Liquid Glass can morph between them on supported OS versions.
+struct PlatformActionCluster<Content: View>: View {
+    private let content: () -> Content
+
+    init(@ViewBuilder content: @escaping () -> Content) {
+        self.content = content
+    }
+
+    var body: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: 12) {
+                content()
+            }
+        } else {
+            content()
+        }
+    }
+}
+
 private struct PlatformPrimaryActionStyle: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -107,6 +143,17 @@ private struct PlatformPrimaryActionStyle: ViewModifier {
             content.buttonStyle(.glassProminent)
         } else {
             content.buttonStyle(.borderedProminent)
+        }
+    }
+}
+
+private struct PlatformSecondaryActionStyle: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.buttonStyle(.glass)
+        } else {
+            content.buttonStyle(.bordered)
         }
     }
 }
