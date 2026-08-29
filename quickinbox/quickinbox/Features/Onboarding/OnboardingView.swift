@@ -36,19 +36,16 @@ struct OnboardingView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                OnboardingPaperBackground()
-
-                GeometryReader { layout in
-                    ScrollView {
-                        onboardingContent(in: layout.size)
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: layout.size.height)
-                    }
-                    .scrollIndicators(.hidden)
-                    .scrollBounceBehavior(.basedOnSize)
+            GeometryReader { layout in
+                ScrollView {
+                    onboardingContent(in: layout.size)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: layout.size.height)
                 }
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
             }
+            .background(QuickInboxDesign.Palette.paper)
             .toolbar(.hidden, for: .navigationBar)
         }
         .interactiveDismissDisabled(isConnecting)
@@ -92,122 +89,171 @@ struct OnboardingView: View {
 
     private func onboardingContent(in availableSize: CGSize) -> some View {
         let shortLayout = availableSize.height < 700
-        let topSpacing = min(max(availableSize.height * 0.075, 44), 76)
-        let artworkZoneHeight = min(max(availableSize.height * 0.22, 150), 220)
 
         return VStack(spacing: 0) {
-            Spacer()
-                .frame(height: topSpacing)
+            wordmark
+                .padding(.top, 8)
 
-            Text("QuickInbox")
-                .font(.onboardingBrand(42, .regular, relativeTo: .largeTitle))
-                .kerning(-1.2)
-                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
-                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: shortLayout ? 12 : 20)
 
-            Spacer()
-                .frame(height: shortLayout ? 20 : 30)
+            VStack(spacing: 0) {
+                if showsHero {
+                    heroArtwork
+                    Spacer().frame(height: shortLayout ? 18 : 22)
+                }
 
-            if showsHero {
-                heroArtwork
-                    .frame(height: artworkZoneHeight)
+                Text("Connect to your\nprivate server")
+                    .font(.onboardingBrand(34, .medium, relativeTo: .largeTitle))
+                    .kerning(-1.2)
+                    .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(-2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 560)
+                    .accessibilityAddTraits(.isHeader)
 
-                Spacer()
-                    .frame(height: shortLayout ? 20 : 28)
+                Spacer().frame(height: 10)
+
+                Text("Connect securely to continue")
+                    .font(.body)
+                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                    .multilineTextAlignment(.center)
             }
 
-            (Text("Connect to your\n") + Text("private server").fontWeight(.semibold))
-                .font(.onboardingBrand(34, .regular, relativeTo: .largeTitle))
-                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
-                .multilineTextAlignment(.center)
-                .lineSpacing(-2)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: 560)
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.isHeader)
-
-            Spacer(minLength: shortLayout ? 24 : 40)
+            Spacer(minLength: shortLayout ? 20 : 28)
 
             VStack(spacing: 12) {
                 if let errorMessage {
                     connectionError(message: errorMessage)
                 }
 
-                scanButton
+                PlatformActionCluster {
+                    VStack(spacing: 10) {
+                        scanButton
+                        enterCodeButton
+                    }
+                }
 
                 privacyFooter
             }
-            .padding(.bottom, shortLayout ? 8 : 16)
+            .padding(.bottom, shortLayout ? 8 : 12)
         }
         .padding(.horizontal, horizontalPadding)
+    }
+
+    private var wordmark: some View {
+        HStack(spacing: 6) {
+            Image("QuickInboxAppIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 32, height: 32)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .accessibilityHidden(true)
+
+            Text("QuickInbox")
+                .font(.onboardingBrand(16, .semibold, relativeTo: .headline))
+                .kerning(-0.48)
+                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+        }
+        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 
     private var heroArtwork: some View {
         Image("OnboardingConnectionHero")
             .resizable()
             .scaledToFit()
+            .aspectRatio(3 / 2, contentMode: .fit)
             .frame(maxWidth: 560)
-            .padding(.horizontal, 4)
             .accessibilityHidden(true)
     }
 
+    /// A quieter take on the app tint so the Scan action is not as punchy as
+    /// glass-prominent indigo, while staying the same hue.
+    private var scanButtonTint: Color {
+        let base = UIColor(appTheme.palette(for: colorScheme).interactiveTint)
+        var hue: CGFloat = 0
+        var saturation: CGFloat = 0
+        var brightness: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard base.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha) else {
+            return appTheme.palette(for: colorScheme).interactiveTint
+        }
+        return Color(
+            hue: hue,
+            saturation: saturation * 0.78,
+            brightness: min(brightness * 1.03, 1),
+            opacity: alpha
+        )
+    }
+
     private var scanButton: some View {
-        Button {
+        PlatformPrimaryActionButton {
             focusedField = nil
             errorMessage = nil
             isScannerPresented = true
         } label: {
-            HStack(spacing: 11) {
+            HStack(spacing: 10) {
                 if isConnecting {
                     ProgressView()
                         .controlSize(.small)
-                        .tint(QuickInboxDesign.Palette.primaryText)
                 } else {
                     Image(systemName: "qrcode.viewfinder")
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.headline.weight(.semibold))
                         .accessibilityHidden(true)
                 }
 
-                Text(isConnecting ? "Connecting..." : "Scan QR Code")
-                    .font(.system(.headline, design: .default, weight: .semibold))
+                Text(isConnecting ? "Connecting..." : "Scan QR code")
+                    .font(.headline.weight(.semibold))
             }
-            .foregroundStyle(QuickInboxDesign.Palette.primaryText)
-            .frame(maxWidth: .infinity, minHeight: 58)
-            .modifier(ScanButtonSurfaceModifier())
-            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity, minHeight: 24)
         }
-        .buttonStyle(QuickInboxPressButtonStyle())
+        .controlSize(.large)
+        .tint(scanButtonTint)
         .disabled(isConnecting)
         .opacity(isConnecting ? 0.72 : 1)
         .accessibilityHint("Opens the camera to scan the pairing QR code")
     }
 
+    private var enterCodeButton: some View {
+        PlatformSecondaryActionButton {
+            focusedField = nil
+            errorMessage = nil
+            showsManualPairing = true
+        } label: {
+            Label("Enter code", systemImage: "keyboard")
+                .font(.headline.weight(.medium))
+                .frame(maxWidth: .infinity, minHeight: 24)
+        }
+        .controlSize(.large)
+        .disabled(isConnecting)
+        .accessibilityHint("Enter the server address and pairing code manually")
+    }
+
     private var privacyFooter: some View {
         Text(footerAttributedText)
-            .font(.callout)
+            .font(.footnote)
             .multilineTextAlignment(.center)
             .environment(\.openURL, OpenURLAction { _ in
                 showsPrivacyPolicy = true
                 return .handled
             })
-            .padding(.top, 6)
+            .padding(.top, 4)
     }
 
     private var footerAttributedText: AttributedString {
-        let ink = appTheme.palette(for: colorScheme).primaryText
+        let ink = appTheme.palette(for: colorScheme).interactiveTint
         let muted = appTheme.palette(for: colorScheme).secondaryText
 
-        var text = AttributedString("By continuing, you agree to the ")
+        var text = AttributedString("By continuing you agree to the ")
         text.foregroundColor = muted
 
-        var link = AttributedString("Privacy Policy")
+        var link = AttributedString("privacy policy")
         link.link = AppLinks.privacyPolicy
         link.foregroundColor = ink
 
-        var trailing = AttributedString(".")
-        trailing.foregroundColor = muted
-
-        return text + link + trailing
+        return text + link
     }
 
     private func connectionError(message: String) -> some View {
@@ -545,91 +591,5 @@ struct OnboardingView: View {
     private enum Field: Hashable {
         case server
         case code
-    }
-}
-
-private struct ScanButtonSurfaceModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content
-                .glassEffect(.regular.interactive(), in: .capsule)
-        } else {
-            content.background {
-                RoundedRectangle(cornerRadius: 29, style: .continuous)
-                    .fill(QuickInboxDesign.Palette.paperRaised)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 29, style: .continuous)
-                            .strokeBorder(QuickInboxDesign.Palette.separator, lineWidth: 1)
-                    }
-                    .shadow(
-                        color: .black.opacity(0.08),
-                        radius: 16,
-                        x: 0,
-                        y: 8
-                    )
-            }
-        }
-    }
-}
-
-private struct OnboardingPaperBackground: View {
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        GeometryReader { layout in
-            ZStack {
-                paperColor
-
-                Ellipse()
-                    .fill(glowColor)
-                    .frame(
-                        width: min(layout.size.width * 1.15, 760),
-                        height: min(layout.size.height * 0.34, 330)
-                    )
-                    .blur(radius: 54)
-                    .position(
-                        x: layout.size.width / 2,
-                        y: layout.size.height * 0.34
-                    )
-
-                Canvas { context, size in
-                    let fiberColor = colorScheme == .dark
-                        ? Color.white.opacity(0.025)
-                        : Color(red: 0.34, green: 0.25, blue: 0.16).opacity(0.035)
-
-                    for index in 0..<Int(size.height / 8) {
-                        let y = CGFloat(index * 8) + CGFloat((index * 3) % 5)
-                        let columns = Int(size.width / 140) + 2
-
-                        for column in 0..<columns {
-                            let x = CGFloat(column * 140 + (index * 47) % 46) - 28
-                            let length = CGFloat(38 + (index * 19 + column * 13) % 92)
-                            var fiber = Path()
-                            fiber.move(to: CGPoint(x: x, y: y))
-                            fiber.addQuadCurve(
-                                to: CGPoint(x: x + length, y: y + 0.6),
-                                control: CGPoint(x: x + length * 0.52, y: y - 0.7)
-                            )
-                            context.stroke(fiber, with: .color(fiberColor), lineWidth: 0.45)
-                        }
-                    }
-                }
-            }
-        }
-        .ignoresSafeArea()
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-
-    private var paperColor: Color {
-        colorScheme == .dark
-            ? Color(red: 0.075, green: 0.072, blue: 0.064)
-            : Color(red: 0.978, green: 0.965, blue: 0.935)
-    }
-
-    private var glowColor: Color {
-        colorScheme == .dark
-            ? Color(red: 0.38, green: 0.33, blue: 0.25).opacity(0.16)
-            : Color.white.opacity(0.52)
     }
 }
