@@ -1,0 +1,12 @@
+.DS_Store
+.idea/
+.gradle/
+**/build/
+**/xcuserdata/
+*.xcuserstate
+*.xcresult
+*.p8
+*.p12
+*.mobileprovision
+*.cer
+Local.xcconfig

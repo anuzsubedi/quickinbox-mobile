@@ -22,7 +22,7 @@ this app or perform archive actions.
 
 1. Open `quickinbox/quickinbox.xcodeproj`.
 2. Select the `quickinbox` scheme.
-3. Confirm the `dev.anuz.quickinbox` bundle identifier and choose your signing
+3. Confirm the bundle identifier and choose your signing
    team locally.
 4. Build for an iOS simulator or device.
 
@@ -40,13 +40,8 @@ xcodebuild \
 ```
 
 The repository intentionally does not contain an Apple development team,
-provisioning profiles, App Store Connect credentials, production server URLs,
-or private deployment configuration.
-
-## App Store preparation
-
-See [`APP_STORE_PREP.md`](APP_STORE_PREP.md) for the current review checklist,
-privacy decisions, metadata draft, and reviewer-access requirements.
+provisioning profiles, production server URLs, or private deployment
+configuration.
 
 ## License
 
