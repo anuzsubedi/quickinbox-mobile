@@ -24,6 +24,8 @@ QuickInbox for iOS is a native SwiftUI client for a self-hosted QuickInbox serve
 
 The iOS app is a client, not a mail server. It requires a compatible QuickInbox server to pair and load mail.
 
+The required server code is maintained in the [QuickInbox server repository](https://github.com/DivinPrince/quickinbox). Follow that repository's setup and migration instructions before attempting to pair this client.
+
 ## Open and build
 
 1. Open quickinbox/quickinbox.xcodeproj in Xcode.

@@ -37,7 +37,7 @@ Exact behavior can differ where Android and iOS platform conventions require it.
 
 ## Server compatibility
 
-The apps are clients for a self-hosted QuickInbox server. They are not standalone mail servers and do not replace the server's SMTP, IMAP, storage, authentication, or administration responsibilities.
+The apps are clients for the [QuickInbox server project](https://github.com/DivinPrince/quickinbox), a self-hosted mail server. They are not standalone mail servers and do not replace the server's SMTP, IMAP, storage, authentication, or administration responsibilities.
 
 The server must expose the mobile pairing and mail APIs used by the clients. The current clients use endpoints for pairing, current-user lookup, mailbox/thread retrieval, drafts, sending, replies, forwarding, attachments, mailbox actions, addresses/signatures, and connected-device management. Keep the server and client versions compatible when changing API contracts.
 

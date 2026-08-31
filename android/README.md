@@ -26,6 +26,8 @@ QuickInbox for Android is a Kotlin and Jetpack Compose client for a self-hosted 
 
 The Android app is a client, not a mail server. It cannot operate without a compatible QuickInbox server after onboarding.
 
+The required server code is maintained in the [QuickInbox server repository](https://github.com/DivinPrince/quickinbox). Use the server's documented setup and migration instructions before attempting to pair this client.
+
 ## Open and run
 
 1. Open the `android/` directory in Android Studio.
