@@ -9,11 +9,9 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -110,46 +108,36 @@ fun CameraPreview(onScanned: (String) -> Unit, modifier: Modifier) {
         }
     }
 
-    Box(modifier) {
-        AndroidView(
-            factory = { previewView },
-            modifier = Modifier.fillMaxSize()
-        )
-
-        // Keep the camera active for scanning while presenting a clean black surface.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-        )
-
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            if (cameraError) {
-                CameraErrorPrompt(onRetry = {
-                    cameraError = false
-                    retryAttempt++
-                })
-            } else {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(24.dp)
+    AndroidView(
+        factory = { previewView },
+        modifier = modifier
+    )
+    Box(modifier, contentAlignment = Alignment.Center) {
+        if (cameraError) {
+            CameraErrorPrompt(onRetry = {
+                cameraError = false
+                retryAttempt++
+            })
+        } else {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                ScannerFrame(
+                    modifier = Modifier.size(260.dp),
+                    color = ScannerCobalt
+                )
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color.Black.copy(alpha = 0.5f)
                 ) {
-                    ScannerFrame(
-                        modifier = Modifier.size(260.dp),
-                        color = ScannerCobalt
+                    Text(
+                        "Align the server QR code inside the frame",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                     )
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = Color.Black.copy(alpha = 0.5f)
-                    ) {
-                        Text(
-                            "Align the server QR code inside the frame",
-                            color = Color.White,
-                            style = MaterialTheme.typography.bodyMedium,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-                        )
-                    }
                 }
             }
         }
