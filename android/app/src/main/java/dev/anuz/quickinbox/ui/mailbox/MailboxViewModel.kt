@@ -9,6 +9,7 @@ import dev.anuz.quickinbox.domain.MailAction
 import dev.anuz.quickinbox.domain.MailboxFilters
 import dev.anuz.quickinbox.domain.MailboxKind
 import dev.anuz.quickinbox.domain.ThreadSummary
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -115,13 +116,17 @@ class MailboxViewModel(
                 )
             }
             saveInboxCacheIfNeeded()
-        } catch (error: kotlinx.coroutines.CancellationException) {
+        } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
             if (current != generation) return
             _state.update {
                 if (it.threads.isEmpty()) it.copy(initialError = error.message, isInitialLoading = false)
                 else it.copy(refreshError = error.message, isInitialLoading = false)
+            }
+        } finally {
+            if (current == generation) {
+                _state.update { it.copy(isInitialLoading = false) }
             }
         }
     }
@@ -161,6 +166,8 @@ class MailboxViewModel(
                         pageCount = maxOf(page.pageCount, 1)
                     )
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 if (current != generation) return@launch
                 _state.update { it.copy(actionError = error.message) }
@@ -188,6 +195,8 @@ class MailboxViewModel(
                 if (!response.ok) throw IllegalStateException("The server could not update this conversation.")
                 unique.forEach { apply(action, it) }
                 saveInboxCacheIfNeeded()
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 _state.update { it.copy(actionError = error.message) }
             } finally {
@@ -226,8 +235,14 @@ class MailboxViewModel(
             snapshot.unreadOnly ||
             snapshot.currentPage < 1
         ) return
-        withContext(Dispatchers.IO) {
-            cache.save(snapshot.threads, snapshot.total, snapshot.pageCount, origin, userId)
+        try {
+            withContext(Dispatchers.IO) {
+                cache.save(snapshot.threads, snapshot.total, snapshot.pageCount, origin, userId)
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // The cache is an optional offline fallback; a storage failure must not fail a live request.
         }
     }
 

@@ -48,6 +48,7 @@ import dev.anuz.quickinbox.ui.theme.AppThemeOption
 import dev.anuz.quickinbox.ui.theme.LocalQuickInboxDarkTheme
 import dev.anuz.quickinbox.ui.theme.QuickInboxMotion
 import dev.anuz.quickinbox.ui.theme.materialScheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -101,13 +102,19 @@ fun SettingsScreen(
         loading = true
         try {
             addresses = withContext(Dispatchers.IO) { container.api.addresses() }
-            signature = withContext(Dispatchers.IO) { runCatching { container.api.signature() }.getOrDefault("") }
+            signature = withContext(Dispatchers.IO) {
+                callOrDefault("") { container.api.signature() }
+            }
             savedSignature = signature
-            devices = withContext(Dispatchers.IO) { runCatching { container.api.devices() }.getOrDefault(emptyList()) }
+            devices = withContext(Dispatchers.IO) {
+                callOrDefault(emptyList<DeviceSession>()) { container.api.devices() }
+            }
             if (container.preferences.selectedSendingAddressId == null) {
                 container.preferences.selectedSendingAddressId =
                     addresses.firstOrNull { it.isDefault }?.id ?: addresses.firstOrNull()?.id
             }
+        } catch (exception: CancellationException) {
+            throw exception
         } catch (exception: Exception) {
             error = exception.message
         } finally {
@@ -128,6 +135,8 @@ fun SettingsScreen(
                 signature = withContext(Dispatchers.IO) { container.api.updateSignature(signature) }
                 savedSignature = signature
                 snackbarHostState.showSnackbar("Signature saved")
+            } catch (exception: CancellationException) {
+                throw exception
             } catch (exception: Exception) {
                 error = exception.message
             } finally {
@@ -224,6 +233,8 @@ fun SettingsScreen(
                             withContext(Dispatchers.IO) { container.api.revokeDevice(device.id) }
                             devices = devices.filterNot { it.id == device.id }
                             snackbarHostState.showSnackbar("Device revoked")
+                        } catch (exception: CancellationException) {
+                            throw exception
                         } catch (exception: Exception) {
                             error = exception.message
                         }
@@ -1026,12 +1037,16 @@ private suspend fun disconnect(
                 if (current != null) container.api.revokeDevice(current.id)
                 else container.api.logout(container.credentialStore, revokeCurrentDevice = true)
             }
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             revocationError = error
         }
     }
     try {
         withContext(Dispatchers.IO) { container.api.logout(container.credentialStore, revokeCurrentDevice = false) }
+    } catch (error: CancellationException) {
+        throw error
     } catch (error: Exception) {
         revocationError = revocationError ?: error
     }
@@ -1041,3 +1056,12 @@ private suspend fun disconnect(
         "This phone was disconnected locally, but the server could not confirm revocation. Revoke it from QuickInbox on the web."
     } else null
 }
+
+private suspend fun <T> callOrDefault(default: T, block: suspend () -> T): T =
+    try {
+        block()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        default
+    }

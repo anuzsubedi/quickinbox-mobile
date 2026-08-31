@@ -10,6 +10,7 @@ import dev.anuz.quickinbox.domain.MailAction
 import dev.anuz.quickinbox.domain.ThreadDetail
 import dev.anuz.quickinbox.domain.ThreadMessage
 import dev.anuz.quickinbox.domain.ThreadSummary
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -70,10 +71,12 @@ class ThreadViewModel(
                         isTrashed = value.messages.isNotEmpty() && value.messages.all { message -> message.deletedAt != null }
                     )
                 }
-            } catch (error: kotlinx.coroutines.CancellationException) {
+            } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
                 _state.update { it.copy(isLoading = false, errorMessage = error.message) }
+            } finally {
+                _state.update { it.copy(isLoading = false) }
             }
         }
     }
@@ -93,6 +96,8 @@ class ThreadViewModel(
                 if (action == MailAction.Trash || action == MailAction.Delete || action == MailAction.Archive) {
                     onExit?.invoke()
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 _state.update { it.copy(errorMessage = error.message) }
             } finally {
@@ -110,6 +115,8 @@ class ThreadViewModel(
                     api.downloadAttachment(message.id, attachment, File(cacheDirectory, "attachments"))
                 }
                 _state.update { it.copy(openedAttachment = downloaded) }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 _state.update { it.copy(errorMessage = error.message) }
             } finally {

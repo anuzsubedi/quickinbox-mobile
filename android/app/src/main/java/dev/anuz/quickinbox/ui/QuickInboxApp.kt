@@ -8,6 +8,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.anuz.quickinbox.data.AppContainer
 import dev.anuz.quickinbox.data.SessionPhase
 import dev.anuz.quickinbox.domain.Pairing
 import dev.anuz.quickinbox.domain.pairingHost
@@ -19,7 +20,9 @@ import dev.anuz.quickinbox.ui.pairing.ManualPairingSheet
 import dev.anuz.quickinbox.ui.privacy.PrivacyScreen
 import dev.anuz.quickinbox.ui.scanner.ScannerScreen
 import dev.anuz.quickinbox.ui.session.RestoreFailedScreen
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -97,16 +100,17 @@ private fun OnboardingFlow(
                 scanned = null
                 showManual = false
                 onAuthenticated(restorable.first, restorable.second)
+            } catch (e: CancellationException) {
+                if (installed) cleanupInstalledPairing(container)
+                throw e
             } catch (e: Exception) {
                 if (installed) {
-                    withContext(Dispatchers.IO) {
-                        runCatching { container.api.logout(container.credentialStore) }
-                        container.api.clearCredential()
-                    }
+                    cleanupInstalledPairing(container)
                 }
-                connecting = false
                 error = e.message ?: "Couldn’t connect to this server."
                 scanned = null
+            } finally {
+                connecting = false
             }
         }
     }
@@ -158,5 +162,18 @@ private fun OnboardingFlow(
             onDismiss = { if (!connecting) scanned = null },
             onConnect = { connect(pairing) }
         )
+    }
+}
+
+private suspend fun cleanupInstalledPairing(container: AppContainer) {
+    withContext(NonCancellable + Dispatchers.IO) {
+        try {
+            container.api.logout(container.credentialStore)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+        } finally {
+            container.api.clearCredential()
+        }
     }
 }
