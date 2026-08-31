@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Themed-icon layer: the color mark's own geometry, not a redrawn substitute. A themed icon
+    renders as one flat color, so the mark's stacked planes are reduced to a single evenOdd
+    path — the envelope traced as one outline (no shared interior edges, which would render as
+    hairline seams) with the flap punched through it, leaving the open interior as negative
+    space. Scaled to sit inside the 72dp themed safe zone.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <group
+        android:pivotX="512"
+        android:pivotY="512"
+        android:scaleX="0.76"
+        android:scaleY="0.76"
+        android:translateX="-23"
+        android:translateY="-15">
+        <path
+            android:fillColor="#FF000000"
+            android:fillType="evenOdd"
+            android:pathData="M155,420H395L866,445L823,704C817,741 803,758 794,764H356C337,764 325,744 334,727L408,631H309C281,631 264,616 252,594L232,555H410L360,494H226C197,494 180,478 168,455Z M323,250C302,243 281,254 275,274C270,291 276,306 289,317L615,596C628,608 648,608 662,596L867,446L323,250Z" />
+    </group>
+</vector>

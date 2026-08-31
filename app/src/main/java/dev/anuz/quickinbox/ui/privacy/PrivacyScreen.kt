@@ -7,7 +7,6 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -31,8 +30,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.viewinterop.AndroidView
+import dev.anuz.quickinbox.ui.theme.LocalQuickInboxDarkTheme
 
 const val PRIVACY_URL = "https://quickinbox.quivren.com/privacy"
 
@@ -40,7 +43,7 @@ const val PRIVACY_URL = "https://quickinbox.quivren.com/privacy"
 @Composable
 fun PrivacyScreen(onBack: () -> Unit) {
     val colors = MaterialTheme.colorScheme
-    val dark = isSystemInDarkTheme()
+    val dark = LocalQuickInboxDarkTheme.current
     var loading by remember { mutableStateOf(true) }
     var webView by remember { mutableStateOf<WebView?>(null) }
 
@@ -53,7 +56,13 @@ fun PrivacyScreen(onBack: () -> Unit) {
         containerColor = colors.background,
         topBar = {
             TopAppBar(
-                title = { Text("Privacy policy", fontWeight = FontWeight.SemiBold) },
+                title = {
+                    Text(
+                        "Privacy policy",
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.semantics { heading() }
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
@@ -87,7 +96,8 @@ fun PrivacyScreen(onBack: () -> Unit) {
             }
             if (loading) {
                 LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
+                    modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)
+                        .semantics { contentDescription = "Loading privacy policy" },
                     color = colors.primary,
                     trackColor = colors.primaryContainer
                 )

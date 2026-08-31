@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material3.Button
@@ -28,21 +29,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import dev.anuz.quickinbox.R
-import dev.anuz.quickinbox.ui.theme.BricolageGrotesque
+import dev.anuz.quickinbox.ui.components.QuickInboxWordmark
 
 @Composable
 fun OnboardingScreen(
@@ -72,12 +71,10 @@ fun OnboardingScreen(
                 Spacer(Modifier.height(22.dp))
                 Text(
                     "Connect to your\nprivate server",
-                    fontFamily = BricolageGrotesque,
-                    fontWeight = FontWeight(560),
-                    fontSize = 34.sp,
-                    lineHeight = (34 * 1.04).sp,
-                    letterSpacing = (-0.035).em,
-                    textAlign = TextAlign.Center
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.semantics { heading() }
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
@@ -92,32 +89,44 @@ fun OnboardingScreen(
                     shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.errorContainer
                 ) {
-                    Text(
-                        it,
+                    Row(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.ErrorOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Text(
+                            it,
+                            modifier = Modifier.weight(1f),
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
                 }
                 Spacer(Modifier.height(12.dp))
             }
             Button(
                 onClick = onScan,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(18.dp)
             ) {
                 Icon(Icons.Rounded.QrCodeScanner, contentDescription = null)
                 Spacer(Modifier.width(10.dp))
-                Text("Scan QR code", fontWeight = FontWeight.SemiBold)
+                Text("Scan server QR", fontWeight = FontWeight.SemiBold)
             }
             Spacer(Modifier.height(10.dp))
             FilledTonalButton(
                 onClick = onManual,
                 modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(18.dp)
             ) {
                 Icon(Icons.Rounded.Keyboard, contentDescription = null)
                 Spacer(Modifier.width(10.dp))
-                Text("Enter code")
+                Text("Enter pairing details")
             }
             Spacer(Modifier.height(16.dp))
             PrivacyAgreement(onPrivacy)
@@ -138,21 +147,7 @@ private fun AppBrand() {
             modifier = Modifier.size(32.dp)
         )
         Spacer(Modifier.width(6.dp))
-        Text(
-            "QuickInbox",
-            style = TextStyle(
-                fontFamily = BricolageGrotesque,
-                fontWeight = FontWeight(620),
-                fontSize = 16.sp,
-                letterSpacing = (-0.03).em,
-                lineHeight = 16.sp,
-                platformStyle = PlatformTextStyle(includeFontPadding = false),
-                lineHeightStyle = LineHeightStyle(
-                    alignment = LineHeightStyle.Alignment.Center,
-                    trim = LineHeightStyle.Trim.Both
-                )
-            )
-        )
+        QuickInboxWordmark(fontSize = 18.sp)
     }
 }
 

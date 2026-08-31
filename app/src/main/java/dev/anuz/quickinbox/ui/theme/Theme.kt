@@ -8,23 +8,39 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 
+val LocalQuickInboxDarkTheme = staticCompositionLocalOf { false }
+
 @Composable
-fun QuickInboxTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+fun QuickInboxTheme(
+    themeId: String = DEFAULT_APP_THEME_ID,
+    content: @Composable () -> Unit
+) {
+    val option = AppThemeOption.fromId(themeId)
+    val dark = option.forcedDark ?: isSystemInDarkTheme()
     val context = LocalContext.current
-    val colorScheme = remember(dark, context) {
-        val scheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        } else if (dark) FallbackDark else FallbackLight
-        if (dark) scheme.withLiftedCanvas() else scheme
+    val colorScheme = remember(option, dark, context) {
+        if (option == AppThemeOption.Monet && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val dynamic = if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            if (dark) dynamic.withLiftedCanvas() else dynamic
+        } else {
+            option.materialScheme(dark)
+        }
     }
-    MaterialTheme(colorScheme = colorScheme, content = content)
+    CompositionLocalProvider(LocalQuickInboxDarkTheme provides dark) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = QuickInboxTypography,
+            content = content
+        )
+    }
 }
 
 /** Always-dark scheme used by full-screen camera surfaces. */

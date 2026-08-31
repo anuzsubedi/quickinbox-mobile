@@ -10,13 +10,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,6 +32,10 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -40,6 +48,7 @@ fun ManualPairingSheet(
     server: String,
     code: String,
     error: String?,
+    connecting: Boolean = false,
     onServerChange: (String) -> Unit,
     onCodeChange: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -60,7 +69,8 @@ fun ManualPairingSheet(
                     Text(
                         "Connect manually",
                         style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.semantics { heading() }
                     )
                     Text(
                         "Enter the details from your server",
@@ -97,18 +107,47 @@ fun ManualPairingSheet(
             error?.let {
                 Text(
                     it,
-                    modifier = Modifier.padding(top = 10.dp, start = 4.dp),
+                    modifier = Modifier.padding(top = 10.dp, start = 4.dp)
+                        .semantics { liveRegion = LiveRegionMode.Polite },
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Rounded.Lock,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Connect only to a server you trust. Details are sent over a secure connection.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Spacer(Modifier.height(24.dp))
             Button(
                 onClick = onConnect,
-                enabled = server.isNotBlank() && code.length == PAIRING_CODE_LENGTH,
+                enabled = !connecting && server.isNotBlank() && code.length == PAIRING_CODE_LENGTH,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(18.dp)
-            ) { Text("Connect", fontWeight = FontWeight.SemiBold) }
+            ) {
+                if (connecting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(Modifier.size(12.dp))
+                }
+                Text(if (connecting) "Connecting" else "Connect", fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }

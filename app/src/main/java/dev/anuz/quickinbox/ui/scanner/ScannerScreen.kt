@@ -39,6 +39,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,14 +49,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import dev.anuz.quickinbox.ui.theme.rememberScannerColorScheme
 
 @Composable
 fun ScannerScreen(onBack: () -> Unit, onManual: () -> Unit, onScanned: (String) -> Unit) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var permission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
@@ -64,6 +71,16 @@ fun ScannerScreen(onBack: () -> Unit, onManual: () -> Unit, onScanned: (String) 
     }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permission = it }
     LaunchedEffect(Unit) { if (!permission) launcher.launch(Manifest.permission.CAMERA) }
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                permission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                    PackageManager.PERMISSION_GRANTED
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     MaterialTheme(colorScheme = rememberScannerColorScheme()) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -91,7 +108,7 @@ fun ScannerScreen(onBack: () -> Unit, onManual: () -> Unit, onScanned: (String) 
             ) {
                 Icon(Icons.Rounded.Keyboard, contentDescription = null)
                 Spacer(Modifier.width(10.dp))
-                Text("Enter code")
+                Text("Enter pairing details")
             }
         }
     }
@@ -117,6 +134,7 @@ private fun ScannerTopBar(onBack: () -> Unit) {
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), CircleShape)
                 .padding(horizontal = 16.dp, vertical = 10.dp)
+                .semantics { heading() }
         )
         Spacer(Modifier.weight(1f))
         Spacer(Modifier.size(48.dp))
@@ -136,7 +154,12 @@ private fun CameraPermissionPrompt(onSettings: () -> Unit) {
             }
         }
         Spacer(Modifier.height(20.dp))
-        Text("Camera access needed", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text(
+            "Camera access needed",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.semantics { heading() }
+        )
         Spacer(Modifier.height(8.dp))
         Text("Enable camera access to scan", color = Color.White.copy(alpha = 0.7f))
         Spacer(Modifier.height(20.dp))
