@@ -1,6 +1,7 @@
 package dev.anuz.quickinbox.ui.scanner
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -41,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -57,12 +60,15 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.core.view.WindowCompat
 import dev.anuz.quickinbox.ui.theme.rememberScannerColorScheme
 
 @Composable
 fun ScannerScreen(onBack: () -> Unit, onManual: () -> Unit, onScanned: (String) -> Unit) {
     val context = LocalContext.current
+    val view = LocalView.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val window = (context as? Activity)?.window
     var permission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
@@ -83,6 +89,13 @@ fun ScannerScreen(onBack: () -> Unit, onManual: () -> Unit, onScanned: (String) 
     }
 
     MaterialTheme(colorScheme = rememberScannerColorScheme()) {
+        SideEffect {
+            window?.let {
+                val controller = WindowCompat.getInsetsController(it, view)
+                controller.isAppearanceLightStatusBars = false
+                controller.isAppearanceLightNavigationBars = false
+            }
+        }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             if (permission) CameraPreview(onScanned = onScanned, modifier = Modifier.fillMaxSize())
             else CameraPermissionPrompt {
