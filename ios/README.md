@@ -42,7 +42,3 @@ xcodebuild \
 The repository intentionally does not contain an Apple development team,
 provisioning profiles, production server URLs, or private deployment
 configuration.
-
-## License
-
-QuickInbox is available under the MIT License. See [`LICENSE.md`](LICENSE.md).

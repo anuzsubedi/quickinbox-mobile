@@ -15,7 +15,3 @@ requirements and commands are documented in each project directory.
 This repository contains application source, assets, and build configuration.
 It intentionally excludes signing credentials, platform account identifiers,
 generated build output, screenshots, and local development state.
-
-## License
-
-See [`ios/LICENSE.md`](ios/LICENSE.md).
