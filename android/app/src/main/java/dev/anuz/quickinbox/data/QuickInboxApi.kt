@@ -184,6 +184,10 @@ class QuickInboxApi(
         attachment: EmailAttachment,
         directory: File
     ): DownloadedAttachment {
+        if (!directory.exists() && !directory.mkdirs()) {
+            throw ApiError.Transport("Attachment storage is unavailable")
+        }
+        pruneAttachmentCache(directory)
         val request = makeRequest(
             origin = authenticatedOrigin(),
             path = listOf("api", "mail", emailId, "attachments", attachment.id),
@@ -192,6 +196,7 @@ class QuickInboxApi(
             body = null,
             authenticated = true
         )
+        var folder: File? = null
         try {
             client.newCall(request).execute().use { response ->
                 validate(response)
@@ -199,7 +204,8 @@ class QuickInboxApi(
                     contentDispositionFilename(response.header("Content-Disposition"))
                         ?: attachment.filename
                 )
-                val folder = File(directory, UUID.randomUUID().toString()).apply { mkdirs() }
+                folder = File(directory, UUID.randomUUID().toString())
+                if (folder?.mkdirs() != true) throw IOException("Attachment storage is unavailable")
                 val destination = File(folder, filename)
                 response.body?.byteStream()?.use { input ->
                     destination.outputStream().use { output -> input.copyTo(output) }
@@ -211,8 +217,10 @@ class QuickInboxApi(
                 )
             }
         } catch (error: ApiError) {
+            folder?.deleteRecursively()
             throw error
         } catch (error: IOException) {
+            folder?.deleteRecursively()
             throw ApiError.Transport(error.localizedMessage ?: "Network error")
         }
     }
@@ -337,5 +345,20 @@ class QuickInboxApi(
     private fun safeFilename(value: String): String {
         val filename = value.replace("\\", "/").substringAfterLast('/')
         return if (filename.isEmpty() || filename == "." || filename == "..") "attachment" else filename
+    }
+}
+
+internal const val ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
+internal const val ATTACHMENT_CACHE_MAX_FOLDERS = 24
+
+internal fun pruneAttachmentCache(directory: File, nowMillis: Long = System.currentTimeMillis()) {
+    val folders = directory.listFiles()?.filter { it.isDirectory }
+        ?.sortedByDescending { it.lastModified() }
+        .orEmpty()
+    folders.forEachIndexed { index, folder ->
+        val age = (nowMillis - folder.lastModified()).coerceAtLeast(0L)
+        if (age > ATTACHMENT_CACHE_MAX_AGE_MS || index >= ATTACHMENT_CACHE_MAX_FOLDERS) {
+            runCatching { folder.deleteRecursively() }
+        }
     }
 }
