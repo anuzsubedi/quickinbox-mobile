@@ -5,7 +5,10 @@ struct AuthenticatedRootView: View {
 
     let api: QuickInboxAPI
     let mailboxCache: MailboxCache
+    let threadCache: ThreadDetailCache
     let currentUser: User
+    let needsSignOut: Bool
+    let onSignOut: () -> Void
     let onDisconnected: (String?) -> Void
 
     @State private var selectedThread: ThreadSelection?
@@ -60,6 +63,13 @@ struct AuthenticatedRootView: View {
                 selectedThread = nil
             }
         }
+        .onChange(of: needsSignOut) { _, revoked in
+            guard revoked else { return }
+            selectedThread = nil
+            compactPath.removeAll()
+            composePresentation = nil
+            isSettingsPresented = false
+        }
     }
 
     private var compactLayout: some View {
@@ -68,6 +78,9 @@ struct AuthenticatedRootView: View {
                 .navigationDestination(for: ThreadSelection.self) { selection in
                     ThreadScene(
                         api: api,
+                        userID: currentUser.id,
+                        threadCache: threadCache,
+                        needsSignOut: needsSignOut,
                         selection: selection,
                         onMailboxMutation: refreshMailbox,
                         onExit: exitRegularThread
@@ -85,6 +98,9 @@ struct AuthenticatedRootView: View {
                 if let selectedThread {
                     ThreadScene(
                         api: api,
+                        userID: currentUser.id,
+                        threadCache: threadCache,
+                        needsSignOut: needsSignOut,
                         selection: selectedThread,
                         onMailboxMutation: refreshMailbox,
                         onExit: exitRegularThread
@@ -103,7 +119,10 @@ struct AuthenticatedRootView: View {
             api: api,
             userID: currentUser.id,
             cache: mailboxCache,
+            threadCache: threadCache,
             refreshToken: mailboxRefreshToken,
+            needsSignOut: needsSignOut,
+            onSignOut: onSignOut,
             onCompose: { draftID in
                 composePresentation = ComposePresentation(
                     mode: draftID.map(ComposeMode.draft(draftID:)) ?? .newMessage
@@ -119,21 +138,12 @@ struct AuthenticatedRootView: View {
     }
 
     private var conversationPlaceholder: some View {
-        VStack(spacing: 18) {
-            AnimatedMailGlyph()
-            Text("No Conversation Selected")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
-            Text("Select a conversation from the sidebar to read it here.")
-                .font(.subheadline)
-                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                .multilineTextAlignment(.center)
-        }
-        .padding(32)
-        .quickInboxCard()
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(QuickInboxDesign.Palette.paperGrouped)
+        EmptyStateView(
+            systemImage: "envelope.fill",
+            title: "No Conversation Selected",
+            message: "Pick a conversation from the sidebar to read it here.",
+            layout: .card
+        )
     }
 
     private func openThread(_ summary: ThreadSummary) {
@@ -192,6 +202,9 @@ private struct ComposePresentation: Identifiable {
 
 private struct ThreadScene: View {
     let api: QuickInboxAPI
+    let userID: String
+    let threadCache: ThreadDetailCache
+    let needsSignOut: Bool
     let selection: ThreadSelection
     let onMailboxMutation: () -> Void
     let onExit: () -> Void
@@ -202,9 +215,12 @@ private struct ThreadScene: View {
     var body: some View {
         ThreadReaderView(
             api: api,
+            userID: userID,
             threadID: selection.summary.id,
             summary: selection.summary,
+            cache: threadCache,
             refreshToken: refreshToken,
+            needsSignOut: needsSignOut,
             onReply: presentReply,
             onForward: presentForward,
             onMailboxMutation: onMailboxMutation,

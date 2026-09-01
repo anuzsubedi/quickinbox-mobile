@@ -9,29 +9,46 @@ struct ContentView: View {
 
     init() {
         let mailboxCache = MailboxCache()
-        _session = State(initialValue: AppSession(mailboxCache: mailboxCache))
+        let threadCache = ThreadDetailCache()
+        _session = State(
+            initialValue: AppSession(mailboxCache: mailboxCache, threadCache: threadCache)
+        )
     }
 
     var body: some View {
-        appContent
-            .quickInboxStyleRoot()
-            .accessibilityHidden(appLock.isLocked)
-            .allowsHitTesting(!appLock.isLocked)
-            .environment(appLock)
-            .overlay {
-                if appLock.isLocked {
-                    AppLockView(controller: appLock)
-                        .transition(reduceMotion ? .identity : .opacity)
-                }
+        // Always paint paper first so the system launch screen never falls through
+        // to an unstyled black window while session restore or Face ID starts.
+        ZStack {
+            QuickInboxDesign.Palette.paper.ignoresSafeArea()
+
+            if appLock.isLocked {
+                // Skip mounting the mailbox tree while locked — building it under the
+                // lock overlay delayed the first meaningful frame on relaunch.
+                AppLockView(controller: appLock)
+            } else {
+                appContent
             }
-            .task { await session.bootstrapIfNeeded() }
-            .task { await appLock.unlockIfNeeded() }
-            .onChange(of: scenePhase) { _, phase in
-                appLock.handleScenePhase(phase)
+        }
+        .quickInboxStyleRoot()
+        .environment(appLock)
+        .task {
+            if !appLock.isLocked {
+                await session.bootstrapIfNeeded()
             }
-            .preferredColorScheme(selectedTheme.preferredColorScheme)
-            .environment(\.appTheme, selectedTheme)
-            .tint(QuickInboxDesign.Palette.interactiveTint)
+        }
+        .task { await appLock.unlockIfNeeded() }
+        .onChange(of: appLock.isLocked) { _, locked in
+            if !locked {
+                Task { await session.bootstrapIfNeeded() }
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            appLock.handleScenePhase(phase)
+        }
+        .preferredColorScheme(selectedTheme.preferredColorScheme)
+        .environment(\.appTheme, selectedTheme)
+        .tint(QuickInboxDesign.Palette.interactiveTint)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: appLock.isLocked)
     }
 
     private var selectedTheme: AppTheme {
@@ -58,7 +75,10 @@ struct ContentView: View {
                 AuthenticatedRootView(
                     api: session.api,
                     mailboxCache: session.mailboxCache,
+                    threadCache: session.threadCache,
                     currentUser: user,
+                    needsSignOut: session.needsSignOut,
+                    onSignOut: session.signOut,
                     onDisconnected: session.didDisconnect
                 )
                 .id(user.id)
@@ -178,18 +198,19 @@ private struct SessionRestoreErrorView: View {
     @State private var isRemovalConfirmationPresented = false
 
     var body: some View {
-        ContentUnavailableView {
-            Label("Session Couldn’t Be Verified", systemImage: "wifi.exclamationmark")
-        } description: {
-            Text(message)
-        } actions: {
-            Button("Try Again", action: retry)
-                .quickInboxProminentButtonStyle()
-            Button("Remove Local Data…", role: .destructive) {
-                isRemovalConfirmationPresented = true
-            }
-                .quickInboxDestructiveButtonStyle()
-        }
+        EmptyStateView(
+            systemImage: "wifi.exclamationmark",
+            title: "Session Couldn’t Be Verified",
+            message: message,
+            tone: .warning,
+            layout: .page,
+            actions: [
+                EmptyStateAction("Try Again", isProminent: true, handler: retry),
+                EmptyStateAction("Remove Local Data…", role: .destructive) {
+                    isRemovalConfirmationPresented = true
+                }
+            ]
+        )
         .quickInboxPageSurface()
         .confirmationDialog(
             "Remove QuickInbox data from this iPhone?",

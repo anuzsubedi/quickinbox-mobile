@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct MailboxFeatureView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -8,8 +9,13 @@ struct MailboxFeatureView: View {
     @State private var selectedThreadIDs: Set<String> = []
     @State private var pendingPermanentDeletion: [ThreadSummary] = []
     @State private var selectionFeedbackTrigger = 0
+    @State private var isContentUnderMasthead = false
+    @State private var mastheadHeight: CGFloat = 0
+    @State private var scrollIndicatorMetrics = MailboxScrollIndicatorMetrics()
 
     private let refreshToken: UUID
+    private let needsSignOut: Bool
+    private let onSignOut: () -> Void
     private let onOpenSettings: () -> Void
     private let onCompose: (_ draftID: String?) -> Void
     private let onMailboxChanged: () -> Void
@@ -26,16 +32,26 @@ struct MailboxFeatureView: View {
         api: QuickInboxAPI,
         userID: String,
         cache: MailboxCache,
+        threadCache: ThreadDetailCache,
         refreshToken: UUID = UUID(),
+        needsSignOut: Bool = false,
+        onSignOut: @escaping () -> Void = {},
         onCompose: @escaping (_ draftID: String?) -> Void,
         onOpenSettings: @escaping () -> Void,
         onMailboxChanged: @escaping () -> Void,
         onSelectThread: @escaping (ThreadSummary) -> Void
     ) {
         _model = State(
-            initialValue: MailboxViewModel(api: api, userID: userID, cache: cache)
+            initialValue: MailboxViewModel(
+                api: api,
+                userID: userID,
+                cache: cache,
+                threadCache: threadCache
+            )
         )
         self.refreshToken = refreshToken
+        self.needsSignOut = needsSignOut
+        self.onSignOut = onSignOut
         self.onOpenSettings = onOpenSettings
         self.onCompose = onCompose
         self.onMailboxChanged = onMailboxChanged
@@ -77,27 +93,63 @@ struct MailboxFeatureView: View {
     }
 
     private var mailboxContent: some View {
-        VStack(spacing: 0) {
-            mailboxMasthead
-
-            if model.refreshError != nil {
-                cacheStatusBanner
-                    .transition(QuickInboxDesign.Motion.revealTransition(reduceMotion: reduceMotion))
-            }
-
-            ZStack {
-                contentState
-                    .id(contentPhase)
-                    .transition(.opacity)
-            }
-            .animation(
-                QuickInboxDesign.Motion.resolved(.easeOut(duration: 0.2), reduceMotion: reduceMotion),
-                value: contentPhase
+        GeometryReader { geometry in
+            let topInset = geometry.safeAreaInsets.top
+            let reservedMastheadHeight = max(
+                mastheadHeight + topInset,
+                topInset + (selectedThreadIDs.isEmpty ? 96 : 60)
             )
+            let topScrollMargin = model.refreshError == nil && !needsSignOut
+                ? reservedMastheadHeight + 12
+                : 12
+            // Keep the thumb aligned with the first thread row, below the date header.
+            let indicatorTopInset = topScrollMargin
+                + 4
+                + UIFont.preferredFont(forTextStyle: .caption1).lineHeight
+                + 4
+
+            ZStack(alignment: .top) {
+                VStack(spacing: 0) {
+                    if needsSignOut {
+                        sessionRevokedBanner
+                            .padding(.top, reservedMastheadHeight)
+                            .transition(QuickInboxDesign.Motion.revealTransition(reduceMotion: reduceMotion))
+                    } else if model.refreshError != nil {
+                        cacheStatusBanner
+                            .padding(.top, reservedMastheadHeight)
+                            .transition(QuickInboxDesign.Motion.revealTransition(reduceMotion: reduceMotion))
+                    }
+
+                    ZStack {
+                        contentState
+                            .id(contentPhase)
+                            .transition(.opacity)
+                            .contentMargins(.top, topScrollMargin, for: .scrollContent)
+                            .modifier(
+                                MailboxScrollIndicatorChrome(
+                                    topInset: indicatorTopInset,
+                                    metrics: scrollIndicatorMetrics
+                                )
+                            )
+                    }
+                    .animation(
+                        QuickInboxDesign.Motion.resolved(.easeOut(duration: 0.2), reduceMotion: reduceMotion),
+                        value: contentPhase
+                    )
+                }
+                .ignoresSafeArea(.container, edges: .top)
+
+                mailboxChrome
+                    .zIndex(1)
+            }
+            .onPreferenceChange(MailboxMastheadHeightKey.self) { height in
+                guard height > 0, abs(mastheadHeight - height) > 0.5 else { return }
+                mastheadHeight = height
+            }
         }
             .safeAreaInset(edge: .bottom) {
                 if selectedThreadIDs.isEmpty {
-                    composeDock
+                    mailboxDock
                 }
             }
             .background(QuickInboxDesign.Palette.paper)
@@ -105,7 +157,7 @@ struct MailboxFeatureView: View {
             .sensoryFeedback(.selection, trigger: selectionFeedbackTrigger)
             .animation(
                 QuickInboxDesign.Motion.resolved(QuickInboxDesign.Motion.stateChange, reduceMotion: reduceMotion),
-                value: model.refreshError != nil
+                value: model.refreshError != nil || needsSignOut
             )
             .task {
                 if model.currentPage == 0 {
@@ -124,18 +176,63 @@ struct MailboxFeatureView: View {
             .onChange(of: refreshToken) {
                 Task { await model.reload(showInitialLoading: false) }
             }
+            .onChange(of: needsSignOut) { _, revoked in
+                guard revoked else { return }
+                selectedThreadIDs.removeAll()
+                pendingPermanentDeletion = []
+                model.clearSensitiveState()
+            }
             .onChange(of: model.threads.map(\.id)) { _, threadIDs in
                 selectedThreadIDs.formIntersection(threadIDs)
+            }
+            .onChange(of: contentPhase) { _, phase in
+                if phase != .list {
+                    isContentUnderMasthead = false
+                }
             }
     }
 
     @ViewBuilder
     private var mailboxMasthead: some View {
         if selectedThreadIDs.isEmpty {
-            standardMailboxMasthead
+            if isContentUnderMasthead {
+                compactMailboxChrome
+            } else {
+                standardMailboxMasthead
+            }
+        } else if isContentUnderMasthead {
+            compactSelectionChrome
         } else {
             selectionMasthead
         }
+    }
+
+    private var mailboxChrome: some View {
+        mailboxMasthead
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .modifier(
+                MailboxMastheadBackgroundStyle(fillsSafeArea: !isContentUnderMasthead)
+            )
+            .background {
+                // Keep the expanded height while compact chrome is showing so
+                // scroll content insets don't jump as the chrome morphs.
+                if !isContentUnderMasthead {
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: MailboxMastheadHeightKey.self,
+                            value: proxy.size.height
+                        )
+                    }
+                }
+            }
+            .animation(
+                QuickInboxDesign.Motion.resolved(QuickInboxDesign.Motion.stateChange, reduceMotion: reduceMotion),
+                value: isContentUnderMasthead
+            )
+            .animation(
+                QuickInboxDesign.Motion.resolved(QuickInboxDesign.Motion.stateChange, reduceMotion: reduceMotion),
+                value: selectedThreadIDs.isEmpty
+            )
     }
 
     private var standardMailboxMasthead: some View {
@@ -152,76 +249,109 @@ struct MailboxFeatureView: View {
                     .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
                     .contentTransition(.numericText())
 
-                Spacer(minLength: 8)
-
-                if model.selectedMailbox == .inbox {
-                    Button {
-                        model.unreadOnly.toggle()
-                        selectionFeedbackTrigger += 1
-                        Task { await model.reload(showInitialLoading: false) }
-                    } label: {
-                        Label(
-                            "Unread",
-                            systemImage: model.unreadOnly ? "envelope.badge.fill" : "envelope.badge"
-                        )
-                        .contentTransition(.symbolEffect(.replace))
-                    }
-                    .modifier(MailboxFilterButtonStyle(isActive: model.unreadOnly))
-                    .controlSize(.small)
-                    .frame(minHeight: 44)
-                    .accessibilityValue(model.unreadOnly ? "On" : "Off")
-                    .accessibilityHint(
-                        model.unreadOnly
-                            ? "Shows all inbox conversations"
-                            : "Shows unread inbox conversations only"
-                    )
-                    .accessibilityAddTraits(model.unreadOnly ? .isSelected : [])
-                    .animation(
-                        QuickInboxDesign.Motion.resolved(QuickInboxDesign.Motion.selection, reduceMotion: reduceMotion),
-                        value: model.unreadOnly
-                    )
+                if model.isShowingCachedData {
+                    Label("Saved", systemImage: "internaldrive")
+                        .labelStyle(.titleAndIcon)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                        .accessibilityLabel("Showing saved mailbox data")
                 }
+
+                Spacer(minLength: 8)
             }
             .accessibilityElement(children: .contain)
-
-            mailboxSearchField
         }
         .padding(.horizontal, QuickInboxDesign.Layout.horizontalMargin)
         .padding(.top, 10)
         .padding(.bottom, 14)
-        .background(QuickInboxDesign.Palette.paper)
+        .transition(.opacity)
+    }
+
+    private var compactMailboxChrome: some View {
+        HStack(spacing: 10) {
+            compactMailboxMenu
+            Spacer(minLength: 4)
+            accountButton
+        }
+        .padding(.horizontal, QuickInboxDesign.Layout.horizontalMargin)
+        .padding(.top, 6)
+        .padding(.bottom, 8)
+        .transition(
+            .asymmetric(
+                insertion: .scale(scale: 0.96, anchor: .topLeading).combined(with: .opacity),
+                removal: .opacity
+            )
+        )
     }
 
     private var selectionMasthead: some View {
-        HStack(spacing: 8) {
-            Button("Done") {
-                selectedThreadIDs.removeAll()
-                selectionFeedbackTrigger += 1
-            }
-            .font(.subheadline.weight(.semibold))
-            .frame(minHeight: 44)
-            .modifier(SelectionDoneButtonStyle())
+        selectionToolbar(isCompact: false)
+            .padding(.horizontal, QuickInboxDesign.Layout.horizontalMargin)
+            .padding(.vertical, 6)
+            .transition(.opacity)
+    }
 
-            Text("\(selectedThreadIDs.count) Selected")
-                .font(.headline)
-                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .contentTransition(.numericText())
-                .accessibilityAddTraits(.isHeader)
+    private var compactSelectionChrome: some View {
+        selectionToolbar(isCompact: true)
+            .padding(.horizontal, QuickInboxDesign.Layout.horizontalMargin)
+            .padding(.top, 4)
+            .padding(.bottom, 6)
+            .transition(
+                .asymmetric(
+                    insertion: .scale(scale: 0.96, anchor: .top).combined(with: .opacity),
+                    removal: .opacity
+                )
+            )
+    }
 
-            Spacer(minLength: 2)
+    private func selectionToolbar(isCompact: Bool) -> some View {
+        HStack(spacing: isCompact ? 8 : 10) {
+            selectionDoneButton
 
-            HStack(spacing: 0) {
+            Spacer(minLength: 4)
+
+            HStack(spacing: 6) {
                 bulkActionControls
             }
-            .buttonStyle(.plain)
             .modifier(SelectionActionGroupStyle())
         }
         .disabled(isBulkWorking)
-        .padding(.horizontal, QuickInboxDesign.Layout.horizontalMargin)
-        .padding(.vertical, 8)
-        .background(QuickInboxDesign.Palette.paper)
+        .controlSize(.regular)
+    }
+
+    private var selectionDoneButton: some View {
+        Button {
+            selectedThreadIDs.removeAll()
+            selectionFeedbackTrigger += 1
+        } label: {
+            Image(systemName: "checkmark")
+                .font(.footnote.weight(.bold))
+                .frame(width: 34, height: 34)
+                .overlay(alignment: .topTrailing) {
+                    Text("\(selectedThreadIDs.count)")
+                        .font(.system(size: 10, weight: .bold))
+                        .monospacedDigit()
+                        .foregroundStyle(QuickInboxDesign.Palette.interactiveTint)
+                        .padding(.horizontal, selectedThreadIDs.count > 9 ? 4 : 0)
+                        .frame(minWidth: 16, minHeight: 16)
+                        .background(QuickInboxDesign.Palette.paper, in: Capsule())
+                        .overlay {
+                            Capsule()
+                                .strokeBorder(QuickInboxDesign.Palette.interactiveTint.opacity(0.35), lineWidth: 1)
+                        }
+                        .offset(x: 6, y: -6)
+                        .contentTransition(.numericText())
+                        .accessibilityHidden(true)
+                }
+        }
+        .modifier(SelectionDoneButtonStyle())
+        .accessibilityLabel("Done")
+        .accessibilityValue(selectionCountTitle)
+    }
+
+    private var selectionCountTitle: String {
+        let count = selectedThreadIDs.count
+        return count == 1 ? "1 Selected" : "\(count) Selected"
     }
 
     @ViewBuilder
@@ -242,9 +372,10 @@ struct MailboxFeatureView: View {
             } label: {
                 Label("Delete Permanently", systemImage: "trash.slash")
                     .labelStyle(.iconOnly)
-                    .foregroundStyle(.red)
-                    .frame(width: 44, height: 44)
+                    .font(.footnote.weight(.semibold))
+                    .frame(width: 34, height: 34)
             }
+            .accessibilityLabel("Delete Permanently")
         case .drafts:
             bulkActionButton("Move to Trash", systemImage: "trash", action: .trash, role: .destructive)
         case .starred, .sent:
@@ -281,31 +412,19 @@ struct MailboxFeatureView: View {
                 Label("Remove Star", systemImage: "star.slash")
             }
         } label: {
-            Label("More Actions", systemImage: "ellipsis.circle")
+            Label("More Actions", systemImage: "ellipsis")
                 .labelStyle(.iconOnly)
-                .frame(width: 44, height: 44)
+                .font(.footnote.weight(.semibold))
+                .frame(width: 34, height: 34)
+                .contentShape(Circle())
         }
         .menuOrder(.fixed)
+        .accessibilityLabel("More Actions")
     }
 
     private var mailboxMenu: some View {
         Menu {
-            ForEach(MailboxKind.allCases) { mailbox in
-                Button {
-                    selectMailbox(mailbox)
-                } label: {
-                    Label {
-                        HStack {
-                            Text(mailbox.title)
-                            if mailbox == model.selectedMailbox {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    } icon: {
-                        Image(systemName: mailbox.systemImage)
-                    }
-                }
-            }
+            mailboxPickerOptions
         } label: {
             HStack(alignment: .center, spacing: 8) {
                 Text(model.selectedMailbox.title)
@@ -332,6 +451,57 @@ struct MailboxFeatureView: View {
         .accessibilityHint("Shows all mailboxes")
     }
 
+    private var compactMailboxMenu: some View {
+        Menu {
+            mailboxPickerOptions
+        } label: {
+            HStack(spacing: 8) {
+                Text(model.selectedMailbox.title)
+                    .font(.title3.bold())
+                    .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+                    .lineLimit(1)
+                    .contentTransition(.opacity)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(minHeight: 44)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .modifier(MailboxCompactMenuGlassStyle())
+        .animation(
+            QuickInboxDesign.Motion.resolved(QuickInboxDesign.Motion.selection, reduceMotion: reduceMotion),
+            value: model.selectedMailbox
+        )
+        .menuOrder(.fixed)
+        .accessibilityLabel("Mailbox")
+        .accessibilityValue(model.selectedMailbox.title)
+        .accessibilityHint("Shows all mailboxes")
+    }
+
+    @ViewBuilder
+    private var mailboxPickerOptions: some View {
+        ForEach(MailboxKind.allCases) { mailbox in
+            Button {
+                selectMailbox(mailbox)
+            } label: {
+                Label {
+                    HStack {
+                        Text(mailbox.title)
+                        if mailbox == model.selectedMailbox {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                } icon: {
+                    Image(systemName: mailbox.systemImage)
+                }
+            }
+        }
+    }
+
     private var accountButton: some View {
         Button(action: onOpenSettings) {
             Image(systemName: "gearshape")
@@ -343,33 +513,75 @@ struct MailboxFeatureView: View {
         .accessibilityLabel("Account and settings")
     }
 
-    private var composeDock: some View {
-        HStack {
-            Spacer()
-
-            FloatingControlGroup {
-                FloatingActionButton(
-                    "Compose",
-                    systemImage: "square.and.pencil"
-                ) {
-                    onCompose(nil)
+    private var mailboxDock: some View {
+        HStack(spacing: 10) {
+            if model.selectedMailbox == .inbox {
+                Button {
+                    model.unreadOnly.toggle()
+                    selectionFeedbackTrigger += 1
+                    Task { await model.reload(showInitialLoading: false) }
+                } label: {
+                    Label(
+                        "Unread",
+                        systemImage: model.unreadOnly ? "envelope.badge.fill" : "envelope.badge"
+                    )
+                    .labelStyle(.iconOnly)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(
+                        model.unreadOnly
+                            ? QuickInboxDesign.Palette.interactiveTint
+                            : QuickInboxDesign.Palette.secondaryText
+                    )
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 50, height: 50)
+                    .contentShape(Circle())
                 }
-                .controlSize(.large)
-                .accessibilityHint("Creates a new message")
+                .buttonStyle(.plain)
+                .modifier(MailboxDockButtonStyle())
+                .accessibilityValue(model.unreadOnly ? "On" : "Off")
+                .accessibilityHint(
+                    model.unreadOnly
+                        ? "Shows all inbox conversations"
+                        : "Shows unread inbox conversations only"
+                )
+                .accessibilityAddTraits(model.unreadOnly ? .isSelected : [])
+                .animation(
+                    QuickInboxDesign.Motion.resolved(QuickInboxDesign.Motion.selection, reduceMotion: reduceMotion),
+                    value: model.unreadOnly
+                )
             }
+
+            mailboxSearchField
+                .frame(maxWidth: .infinity)
+
+            Button {
+                onCompose(nil)
+            } label: {
+                Label("Compose", systemImage: "square.and.pencil")
+                    .labelStyle(.iconOnly)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+                    .frame(width: 50, height: 50)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .modifier(MailboxDockButtonStyle())
+            .accessibilityHint("Creates a new message")
         }
-        .padding(.horizontal, QuickInboxDesign.Spacing.xl)
-        .padding(.top, QuickInboxDesign.Spacing.sm)
+        .padding(.horizontal, QuickInboxDesign.Layout.horizontalMargin)
+        .padding(.top, 8)
         .padding(.bottom, 6)
     }
 
     private var mailboxSearchField: some View {
         HStack(spacing: 9) {
             Image(systemName: "magnifyingglass")
+                .font(.body.weight(.medium))
                 .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
                 .accessibilityHidden(true)
 
-            TextField("Search \(model.selectedMailbox.title)", text: $model.searchText)
+            TextField("Search", text: $model.searchText)
+                .font(.body)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .submitLabel(.search)
@@ -388,15 +600,16 @@ struct MailboxFeatureView: View {
                 .accessibilityLabel("Clear search")
             }
         }
-        .padding(.leading, 13)
-        .padding(.trailing, model.searchText.isEmpty ? 13 : 4)
-        .frame(minHeight: 44)
+        .padding(.leading, 15)
+        .padding(.trailing, model.searchText.isEmpty ? 15 : 5)
+        .frame(height: 50)
         .modifier(MailboxSearchGlassStyle())
     }
 
     private func selectMailbox(_ mailbox: MailboxKind) {
         guard mailbox != model.selectedMailbox else { return }
         model.prepareForMailboxChange()
+        isContentUnderMasthead = false
         model.selectedMailbox = mailbox
         onMailboxChanged()
         selectionFeedbackTrigger += 1
@@ -408,16 +621,7 @@ struct MailboxFeatureView: View {
         if model.isInitialLoading && model.threads.isEmpty {
             mailboxLoadingState
         } else if let message = model.initialError, model.threads.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn’t Load \(model.selectedMailbox.title)", systemImage: "wifi.exclamationmark")
-            } description: {
-                Text(message)
-            } actions: {
-                Button("Try Again") {
-                    Task { await model.reload() }
-                }
-                .buttonStyle(.borderedProminent)
-            }
+            mailboxErrorState(message)
         } else if model.threads.isEmpty {
             emptyState
         } else {
@@ -434,11 +638,11 @@ struct MailboxFeatureView: View {
 
     private var mailboxLoadingState: some View {
         List {
-            ForEach(0..<6, id: \.self) { _ in
+            ForEach(0..<6, id: \.self) { index in
                 MailboxLoadingRow()
                     .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                     .listRowBackground(Color.clear)
-                    .listRowSeparator(.visible, edges: .bottom)
+                    .listRowSeparator(index == 5 ? .hidden : .visible, edges: .bottom)
                     .alignmentGuide(.listRowSeparatorLeading) { _ in 56 }
             }
         }
@@ -452,17 +656,21 @@ struct MailboxFeatureView: View {
     private var threadList: some View {
         List {
             ForEach(threadSections) { section in
-                Section {
-                    ForEach(section.threads) { thread in
-                        threadRow(thread)
-                    }
-                } header: {
-                    Text(section.title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                        .textCase(nil)
+                Text(section.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                    .padding(.top, section.id == threadSections.first?.id ? 0 : 12)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .accessibilityAddTraits(.isHeader)
+
+                ForEach(section.threads) { thread in
+                    threadRow(
+                        thread,
+                        showsBottomSeparator: thread.id != section.threads.last?.id
+                    )
                 }
-                .listSectionSeparator(.hidden, edges: [.top, .bottom])
             }
 
             if model.hasNextPage {
@@ -484,17 +692,22 @@ struct MailboxFeatureView: View {
             }
         }
         .listStyle(.plain)
-        .listSectionSpacing(20)
         .listRowSpacing(0)
-        .contentMargins(.top, 12, for: .scrollContent)
         .scrollContentBackground(.hidden)
+        .scrollBounceBehavior(.basedOnSize)
         .background(QuickInboxDesign.Palette.paper)
         .refreshable {
             await model.refresh()
         }
+        .modifier(
+            MailboxScrollTrackingModifier(
+                isScrolled: $isContentUnderMasthead,
+                indicatorMetrics: $scrollIndicatorMetrics
+            )
+        )
     }
 
-    private func threadRow(_ thread: ThreadSummary) -> some View {
+    private func threadRow(_ thread: ThreadSummary, showsBottomSeparator: Bool) -> some View {
         let isWorking = model.mutatingThreadIDs.contains(thread.id)
         let isSelected = selectedThreadIDs.contains(thread.id)
 
@@ -538,48 +751,51 @@ struct MailboxFeatureView: View {
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden, edges: .top)
-        .listRowSeparator(.visible, edges: .bottom)
+        .listRowSeparator(showsBottomSeparator ? .visible : .hidden, edges: .bottom)
         .listRowSeparatorTint(appTheme.palette(for: colorScheme).separator.opacity(0.58))
         .alignmentGuide(.listRowSeparatorLeading) { _ in 56 }
     }
 
-    private var emptyState: some View {
-        List {
-            ContentUnavailableView {
-                Label(
-                    emptyStateTitle,
-                    systemImage: emptyStateSystemImage
+    private func mailboxErrorState(_ message: String) -> some View {
+        GeometryReader { proxy in
+            ScrollView {
+                EmptyStateView(
+                    systemImage: "wifi.exclamationmark",
+                    title: "Couldn’t Load \(model.selectedMailbox.title)",
+                    message: message,
+                    tone: .warning,
+                    layout: .embedded,
+                    actions: [
+                        EmptyStateAction("Try Again", isProminent: true) {
+                            Task { await model.reload() }
+                        }
+                    ]
                 )
-            } description: {
-                if model.unreadOnly && model.searchText.isEmpty {
-                    Text("All messages in your inbox have been read.")
-                } else if model.searchText.isEmpty {
-                    Text(model.selectedMailbox.emptyDescription)
-                } else {
-                    Text("Try another sender, subject, or phrase.")
-                }
-            } actions: {
-                if !model.searchText.isEmpty {
-                    Button("Clear Search") { model.searchText = "" }
-                        .buttonStyle(.bordered)
-                } else if model.unreadOnly {
-                    Button("Show All Mail") {
-                        model.unreadOnly = false
-                        Task { await model.reload(showInitialLoading: false) }
-                    }
-                    .buttonStyle(.bordered)
-                } else {
-                    Button("Check Again") {
-                        Task { await model.reload() }
-                    }
-                    .buttonStyle(.bordered)
-                }
+                .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .center)
             }
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
+        .background(QuickInboxDesign.Palette.paper)
+        .refreshable {
+            await model.refresh()
+        }
+    }
+
+    private var emptyState: some View {
+        GeometryReader { proxy in
+            ScrollView {
+                EmptyStateView(
+                    systemImage: emptyStateSystemImage,
+                    title: emptyStateTitle,
+                    message: emptyStateMessage,
+                    tone: emptyStateTone,
+                    layout: .embedded,
+                    actions: emptyStateActions
+                )
+                .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .center)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
         .background(QuickInboxDesign.Palette.paper)
         .refreshable {
             await model.refresh()
@@ -587,13 +803,80 @@ struct MailboxFeatureView: View {
     }
 
     private var emptyStateTitle: String {
-        if model.unreadOnly && model.searchText.isEmpty { return "No Unread Mail" }
-        return model.searchText.isEmpty ? model.selectedMailbox.emptyTitle : "No Matches"
+        if !model.searchText.isEmpty { return "No Matches" }
+        if model.unreadOnly { return "No Unread Mail" }
+        return model.selectedMailbox.emptyTitle
+    }
+
+    private var emptyStateMessage: String {
+        if !model.searchText.isEmpty {
+            return "Nothing matched that search. Try another sender, subject, or phrase."
+        }
+        if model.unreadOnly {
+            return "You’re all caught up — every message here has been read."
+        }
+        return model.selectedMailbox.emptyDescription
     }
 
     private var emptyStateSystemImage: String {
-        if model.unreadOnly && model.searchText.isEmpty { return "envelope.open" }
-        return model.searchText.isEmpty ? model.selectedMailbox.systemImage : "magnifyingglass"
+        if !model.searchText.isEmpty { return "magnifyingglass" }
+        if model.unreadOnly { return "envelope.open.fill" }
+        return model.selectedMailbox.emptySystemImage
+    }
+
+    private var emptyStateTone: EmptyStateTone {
+        model.searchText.isEmpty ? .accent : .muted
+    }
+
+    private var emptyStateActions: [EmptyStateAction] {
+        if !model.searchText.isEmpty {
+            return [
+                EmptyStateAction("Clear Search") { model.searchText = "" }
+            ]
+        }
+        if model.unreadOnly {
+            return [
+                EmptyStateAction("Show All Mail") {
+                    model.unreadOnly = false
+                    Task { await model.reload(showInitialLoading: false) }
+                }
+            ]
+        }
+        return [
+            EmptyStateAction("Check Again") {
+                Task { await model.reload() }
+            }
+        ]
+    }
+
+    private var sessionRevokedBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "person.crop.circle.badge.exclamationmark")
+                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Session no longer valid")
+                    .font(.subheadline.weight(.semibold))
+                Text("This device was signed out on your server.")
+                    .font(.caption)
+                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                    .lineLimit(2)
+            }
+
+            Spacer()
+
+            Button("Sign Out", action: onSignOut)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .accessibilityHint("Removes this session from the device")
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 10)
+        .background(QuickInboxDesign.Palette.paperRaised)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
     }
 
     private var cacheStatusBanner: some View {
@@ -846,13 +1129,11 @@ struct MailboxFeatureView: View {
         } label: {
             Label(title, systemImage: systemImage)
                 .labelStyle(.iconOnly)
-                .foregroundStyle(
-                    role == .destructive
-                        ? AnyShapeStyle(Color.red)
-                        : AnyShapeStyle(QuickInboxDesign.Palette.primaryText)
-                )
-                .frame(width: 44, height: 44)
+                .font(.footnote.weight(.semibold))
+                .frame(width: 34, height: 34)
+                .contentShape(Circle())
         }
+        .accessibilityLabel(title)
     }
 
     private func actionButton(
@@ -904,21 +1185,228 @@ private struct MailboxThreadSection: Identifiable {
     var id: String { title }
 }
 
+private struct MailboxMastheadHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 private struct MailboxSearchGlassStyle: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content.glassEffect(
                 .regular.interactive(),
-                in: .rect(cornerRadius: QuickInboxDesign.Radius.control)
+                in: .capsule
             )
         } else {
-            content.background(
-                QuickInboxDesign.Palette.fill,
-                in: RoundedRectangle(cornerRadius: QuickInboxDesign.Radius.control, style: .continuous)
-            )
+            content
+                .background(.thinMaterial, in: Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(QuickInboxDesign.Palette.separator.opacity(0.55), lineWidth: 0.5)
+                }
         }
     }
+}
+
+private struct MailboxCompactMenuGlassStyle: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular.interactive(), in: .capsule)
+        } else {
+            content
+                .background(.thinMaterial, in: Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(QuickInboxDesign.Palette.separator.opacity(0.55), lineWidth: 0.5)
+                }
+        }
+    }
+}
+
+private struct MailboxMastheadBackgroundStyle: ViewModifier {
+    let fillsSafeArea: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if fillsSafeArea {
+            content.background {
+                QuickInboxDesign.Palette.paper
+                    .ignoresSafeArea(.container, edges: .top)
+            }
+        } else {
+            content
+        }
+    }
+}
+
+private struct MailboxScrollIndicatorMetrics: Equatable {
+    var progress: CGFloat = 0
+    var thumbRatio: CGFloat = 1
+    var isScrollable = false
+    var revision: UInt = 0
+}
+
+private struct MailboxScrollIndicatorChrome: ViewModifier {
+    let topInset: CGFloat
+    let metrics: MailboxScrollIndicatorMetrics
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content
+                .scrollIndicators(.hidden)
+                .overlay(alignment: .topTrailing) {
+                    MailboxSlimScrollIndicator(topInset: topInset, metrics: metrics)
+                }
+        } else {
+            content.contentMargins(.top, topInset, for: .scrollIndicators)
+        }
+    }
+}
+
+private struct MailboxSlimScrollIndicator: View {
+    let topInset: CGFloat
+    let metrics: MailboxScrollIndicatorMetrics
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isVisible = false
+    @State private var hideTask: Task<Void, Never>?
+
+    private let thumbWidth: CGFloat = 2
+    private let minThumbHeight: CGFloat = 16
+    private let thumbScale: CGFloat = 0.55
+
+    var body: some View {
+        GeometryReader { geometry in
+            let trackHeight = max(0, geometry.size.height - topInset)
+            let thumbHeight = max(minThumbHeight, trackHeight * metrics.thumbRatio * thumbScale)
+            let travel = max(0, trackHeight - thumbHeight)
+            let offsetY = topInset + metrics.progress * travel
+
+            Capsule()
+                .fill(QuickInboxDesign.Palette.secondaryText.opacity(0.38))
+                .frame(width: thumbWidth, height: thumbHeight)
+                .offset(x: -3, y: offsetY)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .opacity(isVisible && metrics.isScrollable ? 1 : 0)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .onChange(of: metrics.revision) {
+            revealTemporarily()
+        }
+        .onChange(of: metrics.isScrollable) { _, isScrollable in
+            if !isScrollable {
+                hideTask?.cancel()
+                isVisible = false
+            }
+        }
+        .onDisappear {
+            hideTask?.cancel()
+        }
+    }
+
+    private func revealTemporarily() {
+        guard metrics.isScrollable else {
+            isVisible = false
+            return
+        }
+
+        let showAnimation = QuickInboxDesign.Motion.resolved(
+            .easeIn(duration: 0.08),
+            reduceMotion: reduceMotion
+        )
+        let hideAnimation = QuickInboxDesign.Motion.resolved(
+            .easeOut(duration: 0.28),
+            reduceMotion: reduceMotion
+        )
+
+        withAnimation(showAnimation) {
+            isVisible = true
+        }
+
+        hideTask?.cancel()
+        hideTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(750))
+            guard !Task.isCancelled else { return }
+            withAnimation(hideAnimation) {
+                isVisible = false
+            }
+        }
+    }
+}
+
+private struct MailboxScrollTrackingModifier: ViewModifier {
+    @Binding var isScrolled: Bool
+    @Binding var indicatorMetrics: MailboxScrollIndicatorMetrics
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollGeometryChange(for: MailboxScrollSnapshot.self) { geometry in
+                let insetHeight = geometry.contentInsets.top + geometry.contentInsets.bottom
+                let totalContentHeight = geometry.contentSize.height + insetHeight
+                let scrollableOverflow = totalContentHeight - geometry.containerSize.height
+                let scrolledDistance = geometry.contentOffset.y + geometry.contentInsets.top
+                let isScrollable = scrollableOverflow > 48
+
+                // Don't collapse when the list can't meaningfully scroll.
+                let underMasthead: Bool
+                if isScrollable {
+                    underMasthead = isScrolled ? scrolledDistance > 16 : scrolledDistance > 40
+                } else {
+                    underMasthead = false
+                }
+
+                let thumbRatio = totalContentHeight > 0
+                    ? min(1, geometry.containerSize.height / totalContentHeight)
+                    : 1
+                let progress = scrollableOverflow > 0
+                    ? min(1, max(0, scrolledDistance / scrollableOverflow))
+                    : 0
+
+                return MailboxScrollSnapshot(
+                    isUnderMasthead: underMasthead,
+                    metrics: MailboxScrollIndicatorMetrics(
+                        progress: progress,
+                        thumbRatio: thumbRatio,
+                        isScrollable: isScrollable,
+                        revision: 0
+                    )
+                )
+            } action: { oldValue, newValue in
+                if isScrolled != newValue.isUnderMasthead {
+                    isScrolled = newValue.isUnderMasthead
+                }
+
+                var metrics = newValue.metrics
+                let scrolled =
+                    abs(oldValue.metrics.progress - newValue.metrics.progress) > 0.0001
+                    || oldValue.metrics.isScrollable != newValue.metrics.isScrollable
+                    || abs(oldValue.metrics.thumbRatio - newValue.metrics.thumbRatio) > 0.0001
+                if scrolled {
+                    metrics.revision = indicatorMetrics.revision &+ 1
+                } else {
+                    metrics.revision = indicatorMetrics.revision
+                }
+                if indicatorMetrics != metrics {
+                    indicatorMetrics = metrics
+                }
+            }
+        } else {
+            content
+        }
+    }
+}
+
+private struct MailboxScrollSnapshot: Equatable {
+    var isUnderMasthead: Bool
+    var metrics: MailboxScrollIndicatorMetrics
 }
 
 private struct SelectionDoneButtonStyle: ViewModifier {
@@ -926,10 +1414,14 @@ private struct SelectionDoneButtonStyle: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content
-                .buttonStyle(.glass)
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.circle)
                 .tint(QuickInboxDesign.Palette.interactiveTint)
         } else {
-            content.buttonStyle(.bordered)
+            content
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.circle)
+                .tint(QuickInboxDesign.Palette.interactiveTint)
         }
     }
 }
@@ -939,16 +1431,12 @@ private struct SelectionActionGroupStyle: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content
-                .padding(.horizontal, 2)
-                .glassEffect(.regular.interactive(), in: .capsule)
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
         } else {
             content
-                .padding(.horizontal, 2)
-                .background(.thinMaterial, in: Capsule())
-                .overlay {
-                    Capsule()
-                        .stroke(QuickInboxDesign.Palette.separator.opacity(0.55), lineWidth: 0.5)
-                }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
         }
     }
 }
@@ -977,30 +1465,19 @@ private struct SettingsShortcutStyle: ViewModifier {
     }
 }
 
-private struct MailboxFilterButtonStyle: ViewModifier {
-    @Environment(\.appTheme) private var appTheme
-    @Environment(\.colorScheme) private var colorScheme
-
-    let isActive: Bool
-
+private struct MailboxDockButtonStyle: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content
-                .buttonStyle(.glass)
-                .tint(
-                    isActive
-                        ? appTheme.palette(for: colorScheme).interactiveTint
-                        : appTheme.palette(for: colorScheme).secondaryText
-                )
+                .glassEffect(.regular.interactive(), in: .circle)
         } else {
             content
-                .buttonStyle(.bordered)
-                .tint(
-                    isActive
-                        ? appTheme.palette(for: colorScheme).interactiveTint
-                        : appTheme.palette(for: colorScheme).secondaryText
-                )
+                .background(.thinMaterial, in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(QuickInboxDesign.Palette.separator.opacity(0.55), lineWidth: 0.5)
+                }
         }
     }
 }

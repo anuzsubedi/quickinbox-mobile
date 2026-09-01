@@ -2,7 +2,7 @@ import Foundation
 
 enum AppLinks {
     static let privacyPolicy = httpsURL("https://quickinbox.quivren.com/privacy")
-    static let issueTracker = httpsURL("https://github.com/anuzsubedi/quickinbox-ios/issues")
+    static let issueTracker = httpsURL("https://github.com/anuzsubedi/quickinbox-mobile/issues")
     static let supportEmail = mailtoURL("mailto:quickinbox-support@quivren.com")
 
     private static func httpsURL(_ value: String) -> URL {

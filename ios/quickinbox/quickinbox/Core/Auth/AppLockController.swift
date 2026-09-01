@@ -85,6 +85,9 @@ final class AppLockController {
     func handleScenePhase(_ phase: ScenePhase) {
         switch phase {
         case .inactive:
+            // Hide mail when leaving the app (Control Center, app switcher), but
+            // never interrupt an in-flight unlock — that left a blank lock frame
+            // under Xcode / Face ID.
             if isEnabled, !isAuthenticating { isLocked = true }
         case .background:
             if isEnabled { isLocked = true }
@@ -99,6 +102,8 @@ final class AppLockController {
 
     private func authenticate(reason: String) async -> Bool {
         guard !isAuthenticating else { return false }
+        // Set before evaluatePolicy suspends so an .inactive transition from the
+        // system auth sheet cannot re-lock mid-prompt.
         isAuthenticating = true
         errorMessage = nil
         defer { isAuthenticating = false }

@@ -171,15 +171,7 @@ struct QuickInboxPressButtonStyle: ButtonStyle {
 
 struct AnimatedMailGlyph: View {
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(QuickInboxDesign.Palette.fill)
-                .frame(width: 92, height: 92)
-            Image(systemName: "envelope.fill")
-                .font(.system(size: 34, weight: .medium))
-                .foregroundStyle(QuickInboxDesign.Palette.interactiveTint)
-        }
-        .accessibilityHidden(true)
+        EmptyStateGlyph(systemImage: "envelope.fill")
     }
 }
 

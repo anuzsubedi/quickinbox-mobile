@@ -6,6 +6,7 @@ import Observation
 final class MailboxViewModel {
     private let api: QuickInboxAPI
     private let cache: MailboxCache
+    private let threadCache: ThreadDetailCache
     private let userID: String
     private var requestGeneration = 0
 
@@ -17,7 +18,9 @@ final class MailboxViewModel {
     private(set) var total = 0
     private(set) var currentPage = 0
     private(set) var pageCount = 1
-    private(set) var isInitialLoading = false
+    // Start loading so the first frame after a fast session restore shows
+    // skeletons instead of a false "empty inbox" before .task runs bootstrap.
+    private(set) var isInitialLoading = true
     private(set) var isRefreshing = false
     private(set) var isAppending = false
     private(set) var mutatingThreadIDs: Set<String> = []
@@ -31,16 +34,26 @@ final class MailboxViewModel {
         currentPage > 0 && currentPage < pageCount
     }
 
-    init(api: QuickInboxAPI, userID: String, cache: MailboxCache) {
+    init(
+        api: QuickInboxAPI,
+        userID: String,
+        cache: MailboxCache,
+        threadCache: ThreadDetailCache
+    ) {
         self.api = api
         self.userID = userID
         self.cache = cache
+        self.threadCache = threadCache
     }
 
     func bootstrap() async {
         guard currentPage == 0 else { return }
+        isInitialLoading = true
         await restoreCachedInbox()
         if !threads.isEmpty {
+            // Cached rows are on screen; keep loading false so pagination isn't blocked
+            // while the network refresh completes in the background.
+            isInitialLoading = false
             await Task.yield()
         }
         await reload(showInitialLoading: threads.isEmpty)
@@ -89,10 +102,12 @@ final class MailboxViewModel {
             return
         } catch {
             guard generation == requestGeneration else { return }
-            if threads.isEmpty {
-                initialError = error.localizedDescription
-            } else {
-                refreshError = error.localizedDescription
+            if !Self.isUnauthorized(error) {
+                if threads.isEmpty {
+                    initialError = error.localizedDescription
+                } else {
+                    refreshError = error.localizedDescription
+                }
             }
         }
 
@@ -125,10 +140,12 @@ final class MailboxViewModel {
             total = page.total
             currentPage = page.page
             pageCount = max(page.pageCount, 1)
+            await saveInboxCacheIfNeeded()
         } catch is CancellationError {
             return
         } catch {
             guard generation == requestGeneration else { return }
+            guard !Self.isUnauthorized(error) else { return }
             actionError = error.localizedDescription
         }
     }
@@ -161,10 +178,14 @@ final class MailboxViewModel {
             for thread in threads {
                 apply(action, to: thread)
             }
+            if action == .delete {
+                await invalidateThreadDetails(threadIDs)
+            }
             await saveInboxCacheIfNeeded()
             AppFeedback.play(feedbackEvent(for: action))
             return true
         } catch {
+            guard !Self.isUnauthorized(error) else { return false }
             actionError = error.localizedDescription
             AppFeedback.error()
             return false
@@ -179,6 +200,28 @@ final class MailboxViewModel {
         refreshError = nil
     }
 
+    func clearSensitiveState() {
+        requestGeneration += 1
+        threads = []
+        total = 0
+        currentPage = 0
+        pageCount = 1
+        isInitialLoading = false
+        isRefreshing = false
+        isAppending = false
+        mutatingThreadIDs = []
+        initialError = nil
+        cachedAt = nil
+        isShowingCachedData = false
+        refreshError = nil
+        actionError = nil
+    }
+
+    private static func isUnauthorized(_ error: Error) -> Bool {
+        if let apiError = error as? APIError, apiError == .unauthorized { return true }
+        return false
+    }
+
     private func restoreCachedInbox() async {
         guard selectedMailbox == .inbox,
               searchText.isEmpty,
@@ -191,7 +234,7 @@ final class MailboxViewModel {
 
         threads = deduplicated(snapshot.threads)
         total = snapshot.total
-        currentPage = 1
+        currentPage = snapshot.currentPage
         pageCount = snapshot.pageCount
         cachedAt = snapshot.updatedAt
         isShowingCachedData = true
@@ -209,9 +252,17 @@ final class MailboxViewModel {
             threads: threads,
             total: total,
             pageCount: pageCount,
+            currentPage: currentPage,
             origin: origin,
             userID: userID
         )
+    }
+
+    private func invalidateThreadDetails(_ threadIDs: Set<String>) async {
+        guard let origin = await api.currentCredential?.origin else { return }
+        for threadID in threadIDs {
+            threadCache.remove(origin: origin, userID: userID, threadID: threadID)
+        }
     }
 
     private func apply(_ action: MailAction, to thread: ThreadSummary) {

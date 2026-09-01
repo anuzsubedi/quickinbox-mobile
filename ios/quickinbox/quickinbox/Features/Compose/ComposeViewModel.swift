@@ -172,6 +172,7 @@ final class ComposeViewModel: ObservableObject {
                 $0.address.caseInsensitiveCompare(draft.fromAddress) == .orderedSame
             })?.id ?? Self.preferredAddress(in: addresses)?.id
         } catch {
+            guard !Self.isUnauthorized(error) else { return }
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "QuickInbox couldn’t load this draft. Try again."
         }
@@ -277,6 +278,7 @@ final class ComposeViewModel: ObservableObject {
                 AppFeedback.play(.messageSent)
                 return response
             } catch {
+                guard !Self.isUnauthorized(error) else { return nil }
                 // Keep all entered fields and attachments intact so Retry is safe.
                 errorMessage = (error as? LocalizedError)?.errorDescription
                     ?? "QuickInbox could not send this message. Try again."
@@ -305,9 +307,15 @@ final class ComposeViewModel: ObservableObject {
                 ? "No sending address is configured. Add one in QuickInbox settings first."
                 : nil
         } catch {
+            guard !Self.isUnauthorized(error) else { return }
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "Sending addresses could not be loaded."
         }
+    }
+
+    private static func isUnauthorized(_ error: Error) -> Bool {
+        if let apiError = error as? APIError, apiError == .unauthorized { return true }
+        return false
     }
 
     private static func preferredAddress(in addresses: [MailAddress]) -> MailAddress? {

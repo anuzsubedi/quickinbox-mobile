@@ -14,7 +14,11 @@ final class AppSession {
     let api: QuickInboxAPI
     let credentialStore: CredentialStore
     let mailboxCache: MailboxCache
+    let threadCache: ThreadDetailCache
     private(set) var phase: Phase = .booting
+    /// Set when the server revokes this device mid-session. Stay in the mailbox UI
+    /// and show Sign Out on the session banner instead of error dialogs.
+    private(set) var needsSignOut = false
 
     private var hasBootstrapped = false
     private var restoreGeneration = 0
@@ -22,16 +26,31 @@ final class AppSession {
     init(
         api: QuickInboxAPI = QuickInboxAPI(),
         credentialStore: CredentialStore = CredentialStore(),
-        mailboxCache: MailboxCache
+        mailboxCache: MailboxCache,
+        threadCache: ThreadDetailCache
     ) {
         self.api = api
         self.credentialStore = credentialStore
         self.mailboxCache = mailboxCache
+        self.threadCache = threadCache
+        Task { await self.installUnauthorizedHandler() }
+    }
+
+    private func installUnauthorizedHandler() async {
+        await api.setOnUnauthorized { [weak self] in
+            Task { @MainActor in
+                self?.handleUnauthorized()
+            }
+        }
     }
 
     func bootstrapIfNeeded() async {
         guard !hasBootstrapped else { return }
         hasBootstrapped = true
+        // Yield so LaunchView can paint before Keychain work. Doing SecItem on the
+        // main thread during ContentView.init leaves a blank system window (often
+        // black), especially when relaunching under the Xcode debugger.
+        await Task.yield()
         await restoreSession()
     }
 
@@ -41,6 +60,7 @@ final class AppSession {
 
     func didAuthenticate(credential: Credential, user: User) {
         restoreGeneration += 1
+        needsSignOut = false
         cache(user)
         phase = .authenticated(user)
 
@@ -51,19 +71,35 @@ final class AppSession {
 
     func didDisconnect(message: String?) {
         restoreGeneration += 1
+        needsSignOut = false
         clearCachedUser()
         phase = .onboarding(message: message)
-        mailboxCache.clearAll()
+        clearMailCaches()
         Task { await api.clearCredential() }
     }
 
     func removeLocalData() async {
         restoreGeneration += 1
+        needsSignOut = false
         clearCachedUser()
-        try? await credentialStore.delete()
+        try? credentialStore.delete()
         await api.clearCredential()
-        mailboxCache.clearAll()
+        clearMailCaches()
         phase = .onboarding(message: nil)
+    }
+
+    /// Clears local session after a mid-session revoke. Does not bounce to onboarding
+    /// until the user taps Sign Out.
+    func handleUnauthorized() {
+        guard case .authenticated = phase, !needsSignOut else { return }
+        needsSignOut = true
+        try? credentialStore.delete()
+        clearMailCaches()
+        Task { await api.clearCredential() }
+    }
+
+    func signOut() {
+        didDisconnect(message: nil)
     }
 
     private func restoreSession() async {
@@ -72,17 +108,19 @@ final class AppSession {
         phase = .booting
 
         do {
-            guard let credential = try await credentialStore.load() else {
+            guard let credential = try credentialStore.load() else {
                 guard generation == restoreGeneration else { return }
                 await api.clearCredential()
+                clearMailCaches()
                 phase = .onboarding(message: nil)
                 return
             }
 
             guard !credential.isExpired else {
                 clearCachedUser()
-                try? await credentialStore.delete()
+                try? credentialStore.delete()
                 await api.clearCredential()
+                clearMailCaches()
                 guard generation == restoreGeneration else { return }
                 phase = .onboarding(message: "Your saved session expired. Connect this device again.")
                 return
@@ -102,24 +140,26 @@ final class AppSession {
             let user = try await api.currentUser()
             cache(user)
             if credential.cachedUser != user {
-                try? await credentialStore.save(credential.caching(user: user))
+                try? credentialStore.save(credential.caching(user: user))
             }
             guard generation == restoreGeneration else { return }
             phase = .authenticated(user)
         } catch APIError.unauthorized {
             clearCachedUser()
-            try? await credentialStore.delete()
+            try? credentialStore.delete()
             await api.clearCredential()
+            clearMailCaches()
             guard generation == restoreGeneration else { return }
             phase = .onboarding(message: "Your saved session is no longer valid. Connect this device again.")
         } catch CredentialStoreError.corruptCredential {
             clearCachedUser()
             await api.clearCredential()
+            clearMailCaches()
             guard generation == restoreGeneration else { return }
             phase = .onboarding(message: "The saved session was invalid and has been removed.")
         } catch APIError.transport(_) {
             guard generation == restoreGeneration else { return }
-            let savedCredential = try? await credentialStore.load()
+            let savedCredential = try? credentialStore.load()
             if let cachedUser = savedCredential?.cachedUser ?? locallyCachedUser() {
                 // The cached account may already be visible. Keep it available
                 // offline rather than returning to the launch screen.
@@ -162,5 +202,10 @@ final class AppSession {
 
     private func clearCachedUser() {
         UserDefaults.standard.removeObject(forKey: AppPreferences.cachedUser)
+    }
+
+    private func clearMailCaches() {
+        mailboxCache.clearAll()
+        threadCache.clearAll()
     }
 }
