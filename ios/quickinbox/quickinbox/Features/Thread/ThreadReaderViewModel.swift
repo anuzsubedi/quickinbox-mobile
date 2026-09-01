@@ -5,6 +5,10 @@ import Combine
 final class ThreadReaderViewModel: ObservableObject {
     @Published private(set) var detail: ThreadDetail?
     @Published private(set) var isLoading = false
+    @Published private(set) var isRefreshing = false
+    @Published private(set) var isShowingCachedData = false
+    @Published private(set) var cachedAt: Date?
+    @Published private(set) var refreshError: String?
     @Published private(set) var actionInProgress: MailAction?
     @Published var errorMessage: String?
 
@@ -15,10 +19,21 @@ final class ThreadReaderViewModel: ObservableObject {
 
     let threadID: String
     private let api: QuickInboxAPI
+    private let userID: String
+    private let cache: ThreadDetailCache
+    private var didRestoreCache = false
 
-    init(api: QuickInboxAPI, threadID: String, summary: ThreadSummary? = nil) {
+    init(
+        api: QuickInboxAPI,
+        userID: String,
+        threadID: String,
+        summary: ThreadSummary? = nil,
+        cache: ThreadDetailCache
+    ) {
         self.api = api
+        self.userID = userID
         self.threadID = threadID
+        self.cache = cache
         isRead = summary?.isRead ?? true
         isStarred = summary?.isStarred ?? false
         isArchived = summary?.isArchived ?? false
@@ -37,23 +52,45 @@ final class ThreadReaderViewModel: ObservableObject {
     }
 
     func load() async {
-        guard !isLoading else { return }
-        isLoading = true
+        guard !isLoading, !isRefreshing else { return }
+        if !didRestoreCache {
+            didRestoreCache = true
+            await restoreCachedDetail()
+        }
+
+        isLoading = detail == nil
+        isRefreshing = detail != nil
         errorMessage = nil
-        defer { isLoading = false }
+        refreshError = nil
+        defer {
+            isLoading = false
+            isRefreshing = false
+        }
 
         do {
             let value = try await api.thread(id: threadID)
-            detail = value
-            isRead = value.messages.allSatisfy(\.isRead)
-            isStarred = value.messages.contains(where: \.isStarred)
-            isArchived = !value.messages.isEmpty && value.messages.allSatisfy { $0.archivedAt != nil }
-            isTrashed = !value.messages.isEmpty && value.messages.allSatisfy { $0.deletedAt != nil }
+            apply(value)
+            isShowingCachedData = false
+            cachedAt = nil
+            if let origin = await api.currentCredential?.origin {
+                cache.save(value, origin: origin, userID: userID)
+            }
         } catch is CancellationError {
             return
         } catch {
-            errorMessage = Self.message(for: error)
+            guard !Self.isUnauthorized(error) else { return }
+            if detail == nil {
+                errorMessage = Self.message(for: error)
+            } else {
+                refreshError = Self.message(for: error)
+                isShowingCachedData = true
+            }
         }
+    }
+
+    func invalidateAndLoad() async {
+        await invalidateCache()
+        await load()
     }
 
     @discardableResult
@@ -70,11 +107,15 @@ final class ThreadReaderViewModel: ObservableObject {
                 _ = try await api.perform(action, ids: [actionTargetID])
             }
             apply(action)
+            if action == .delete {
+                await invalidateCache()
+            }
             AppFeedback.play(feedbackEvent(for: action))
             return true
         } catch is CancellationError {
             return false
         } catch {
+            guard !Self.isUnauthorized(error) else { return false }
             errorMessage = Self.message(for: error)
             AppFeedback.error()
             return false
@@ -99,6 +140,42 @@ final class ThreadReaderViewModel: ObservableObject {
         }
     }
 
+    func clearSensitiveState() {
+        detail = nil
+        isLoading = false
+        isRefreshing = false
+        isShowingCachedData = false
+        cachedAt = nil
+        refreshError = nil
+        errorMessage = nil
+        actionInProgress = nil
+    }
+
+    private func restoreCachedDetail() async {
+        guard let origin = await api.currentCredential?.origin,
+              let snapshot = cache.load(origin: origin, userID: userID, threadID: threadID) else {
+            return
+        }
+        apply(snapshot.detail, updateFlags: false)
+        cachedAt = snapshot.updatedAt
+        isShowingCachedData = true
+        await Task.yield()
+    }
+
+    private func apply(_ value: ThreadDetail, updateFlags: Bool = true) {
+        detail = value
+        guard updateFlags else { return }
+        isRead = value.messages.allSatisfy(\.isRead)
+        isStarred = value.messages.contains(where: \.isStarred)
+        isArchived = !value.messages.isEmpty && value.messages.allSatisfy { $0.archivedAt != nil }
+        isTrashed = !value.messages.isEmpty && value.messages.allSatisfy { $0.deletedAt != nil }
+    }
+
+    private func invalidateCache() async {
+        guard let origin = await api.currentCredential?.origin else { return }
+        cache.remove(origin: origin, userID: userID, threadID: threadID)
+    }
+
     private func feedbackEvent(for action: MailAction) -> AppFeedback.Event {
         switch action {
         case .read, .unread, .star, .unstar, .readAll:
@@ -115,5 +192,10 @@ final class ThreadReaderViewModel: ObservableObject {
             return description
         }
         return error.localizedDescription
+    }
+
+    private static func isUnauthorized(_ error: Error) -> Bool {
+        if let apiError = error as? APIError, apiError == .unauthorized { return true }
+        return false
     }
 }

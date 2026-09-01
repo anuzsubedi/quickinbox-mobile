@@ -23,25 +23,37 @@ extension MailboxKind {
         }
     }
 
+    /// Filled symbol used by empty-state glyphs for a bit more presence.
+    var emptySystemImage: String {
+        switch self {
+        case .inbox: "tray.fill"
+        case .archive: "archivebox.fill"
+        case .starred: "star.fill"
+        case .drafts: "doc.fill"
+        case .sent: "paperplane.fill"
+        case .trash: "trash.fill"
+        }
+    }
+
     var emptyTitle: String {
         switch self {
-        case .inbox: "Your Inbox Is Clear"
-        case .archive: "Nothing Archived"
-        case .starred: "No Starred Conversations"
+        case .inbox: "You're All Caught Up"
+        case .archive: "Nothing Archived Yet"
+        case .starred: "No Starred Mail"
         case .drafts: "No Drafts"
-        case .sent: "No Sent Mail"
+        case .sent: "Nothing Sent Yet"
         case .trash: "Trash Is Empty"
         }
     }
 
     var emptyDescription: String {
         switch self {
-        case .inbox: "New conversations will appear here."
-        case .archive: "Conversations you archive will appear here."
-        case .starred: "Star a conversation to keep it close."
-        case .drafts: "Messages you save will appear here."
-        case .sent: "Messages you send will appear here."
-        case .trash: "Deleted conversations will appear here."
+        case .inbox: "When new mail arrives, it’ll show up here."
+        case .archive: "Archive a conversation to tuck it away without deleting it."
+        case .starred: "Star something important and it’ll live here for quick access."
+        case .drafts: "Saved drafts will wait here until you’re ready to send."
+        case .sent: "Messages you send will collect here."
+        case .trash: "Deleted conversations stay here until they’re purged."
         }
     }
 }

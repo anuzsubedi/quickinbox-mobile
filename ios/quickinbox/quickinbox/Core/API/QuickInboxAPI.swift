@@ -3,6 +3,7 @@ import Foundation
 actor QuickInboxAPI {
     private let session: URLSession
     private var credential: Credential?
+    private var onUnauthorized: (@Sendable () -> Void)?
 
     init(credential: Credential? = nil, session: URLSession = .shared) {
         self.credential = credential
@@ -17,6 +18,10 @@ actor QuickInboxAPI {
 
     func clearCredential() {
         credential = nil
+    }
+
+    func setOnUnauthorized(_ handler: (@Sendable () -> Void)?) {
+        onUnauthorized = handler
     }
 
     func pair(origin rawOrigin: String, code: String, deviceName: String) async throws -> Credential {
@@ -167,7 +172,7 @@ actor QuickInboxAPI {
         }
 
         credential = nil
-        try await credentialStore.delete()
+        try credentialStore.delete()
         if let revocationError { throw revocationError }
     }
 
@@ -293,14 +298,20 @@ actor QuickInboxAPI {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         if authenticated {
-            guard let credential, !credential.isExpired else { throw APIError.unauthorized }
+            guard let credential, !credential.isExpired else {
+                noteUnauthorized()
+                throw APIError.unauthorized
+            }
             request.setValue("Bearer \(credential.token)", forHTTPHeaderField: "Authorization")
         }
         return request
     }
 
     private func authenticatedOrigin() throws -> URL {
-        guard let credential, !credential.isExpired else { throw APIError.unauthorized }
+        guard let credential, !credential.isExpired else {
+            noteUnauthorized()
+            throw APIError.unauthorized
+        }
         return credential.origin
     }
 
@@ -309,7 +320,9 @@ actor QuickInboxAPI {
         guard (200..<300).contains(response.statusCode) else {
             let message = data.flatMap(serverMessage(from:)) ?? HTTPURLResponse.localizedString(forStatusCode: response.statusCode)
             switch response.statusCode {
-            case 401: throw APIError.unauthorized
+            case 401:
+                noteUnauthorized()
+                throw APIError.unauthorized
             case 403: throw APIError.forbidden(message)
             case 404: throw APIError.notFound(message)
             case 429:
@@ -320,6 +333,10 @@ actor QuickInboxAPI {
             }
         }
         return response
+    }
+
+    private func noteUnauthorized() {
+        onUnauthorized?()
     }
 
     private func serverMessage(from data: Data) -> String? {

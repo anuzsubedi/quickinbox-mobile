@@ -1,7 +1,9 @@
 import Foundation
 import Security
 
-actor CredentialStore {
+/// Synchronous Keychain wrapper. SecItem calls are blocking and thread-safe, so an actor
+/// only added scheduling latency on the launch path.
+final class CredentialStore: Sendable {
     private let service: String
     private let account = "mobile-session"
 

@@ -176,13 +176,20 @@ struct ComposeView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else if model.addresses.isEmpty {
-                HStack(spacing: 10) {
-                    Text("No address available")
+                HStack(alignment: .center, spacing: 12) {
+                    EmptyStateGlyph(
+                        systemImage: "at.badge.minus",
+                        tone: .muted,
+                        size: 36,
+                        iconSize: 15
+                    )
+                    Text("No sending address available")
                         .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
                     Spacer(minLength: 8)
                     Button("Retry") {
                         Task { await model.retryLoadingAddresses() }
                     }
+                    .quickInboxBorderedButtonStyle()
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {

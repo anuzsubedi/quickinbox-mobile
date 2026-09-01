@@ -8,7 +8,18 @@
 
 /* Begin PBXFileReference section */
 		7DD387A9303B67EE0045BCB5 /* quickinbox.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = quickinbox.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CAC00001303B67EE0045BCB5 /* quickinboxTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = quickinboxTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXContainerItemProxy section */
+		CAC00009303B67EE0045BCB5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7DD387A1303B67EE0045BCB5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7DD387A8303B67EE0045BCB5;
+			remoteInfo = quickinbox;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		7DD387AB303B67EE0045BCB5 /* quickinbox */ = {
@@ -16,10 +27,22 @@
 			path = quickinbox;
 			sourceTree = "<group>";
 		};
+		CAC00002303B67EE0045BCB5 /* quickinboxTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = quickinboxTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		7DD387A6303B67EE0045BCB5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CAC00003303B67EE0045BCB5 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +56,7 @@
 			isa = PBXGroup;
 			children = (
 				7DD387AB303B67EE0045BCB5 /* quickinbox */,
+				CAC00002303B67EE0045BCB5 /* quickinboxTests */,
 				7DD387AA303B67EE0045BCB5 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +65,7 @@
 			isa = PBXGroup;
 			children = (
 				7DD387A9303B67EE0045BCB5 /* quickinbox.app */,
+				CAC00001303B67EE0045BCB5 /* quickinboxTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +95,29 @@
 			productReference = 7DD387A9303B67EE0045BCB5 /* quickinbox.app */;
 			productType = "com.apple.product-type.application";
 		};
+		CAC00006303B67EE0045BCB5 /* quickinboxTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CAC0000C303B67EE0045BCB5 /* Build configuration list for PBXNativeTarget "quickinboxTests" */;
+			buildPhases = (
+				CAC00004303B67EE0045BCB5 /* Sources */,
+				CAC00003303B67EE0045BCB5 /* Frameworks */,
+				CAC00005303B67EE0045BCB5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CAC0000A303B67EE0045BCB5 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				CAC00002303B67EE0045BCB5 /* quickinboxTests */,
+			);
+			name = quickinboxTests;
+			packageProductDependencies = (
+			);
+			productName = quickinboxTests;
+			productReference = CAC00001303B67EE0045BCB5 /* quickinboxTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -82,6 +130,10 @@
 				TargetAttributes = {
 					7DD387A8303B67EE0045BCB5 = {
 						CreatedOnToolsVersion = 26.6;
+					};
+					CAC00006303B67EE0045BCB5 = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = 7DD387A8303B67EE0045BCB5;
 					};
 				};
 			};
@@ -100,12 +152,20 @@
 			projectRoot = "";
 			targets = (
 				7DD387A8303B67EE0045BCB5 /* quickinbox */,
+				CAC00006303B67EE0045BCB5 /* quickinboxTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		7DD387A7303B67EE0045BCB5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CAC00005303B67EE0045BCB5 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +182,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CAC00004303B67EE0045BCB5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		CAC0000A303B67EE0045BCB5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7DD387A8303B67EE0045BCB5 /* quickinbox */;
+			targetProxy = CAC00009303B67EE0045BCB5 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		7DD387B2303B67EE0045BCB5 /* Debug */ = {
@@ -160,7 +235,6 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -224,7 +298,6 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -253,7 +326,6 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
@@ -271,7 +343,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.quickinbox;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.anuz.quickinbox;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -290,7 +362,6 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
@@ -308,7 +379,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.quickinbox;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.anuz.quickinbox;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -317,6 +388,46 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		CAC0000B303B67EE0045BCB5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.anuz.quickinboxTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/quickinbox.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/quickinbox";
+			};
+			name = Debug;
+		};
+		CAC0000D303B67EE0045BCB5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.anuz.quickinboxTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/quickinbox.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/quickinbox";
 			};
 			name = Release;
 		};
@@ -337,6 +448,15 @@
 			buildConfigurations = (
 				7DD387B5303B67EE0045BCB5 /* Debug */,
 				7DD387B6303B67EE0045BCB5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CAC0000C303B67EE0045BCB5 /* Build configuration list for PBXNativeTarget "quickinboxTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CAC0000B303B67EE0045BCB5 /* Debug */,
+				CAC0000D303B67EE0045BCB5 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -151,18 +151,6 @@ struct SettingsView: View {
             await model.loadIfNeeded()
         }
         .refreshable { await model.load() }
-        .alert(
-            "Revoke Device?",
-            isPresented: $showingRevokeConfirmation,
-            presenting: deviceToRevoke
-        ) { device in
-            Button("Revoke", role: .destructive) {
-                Task { await model.revoke(device) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { device in
-            Text("\(model.displayName(for: device)) will lose access the next time it contacts your server.")
-        }
         .alert("Couldn’t Complete Request", isPresented: operationErrorPresented) {
             Button("OK", role: .cancel) { model.operationError = nil }
         } message: {
@@ -235,16 +223,38 @@ struct SettingsView: View {
                 Text("Choose your canvas")
                     .font(.title2.weight(.bold))
                     .foregroundStyle(settingsPalette.primaryText)
-                Text("Each theme reshapes the surfaces and contrast throughout QuickInbox.")
+                Text("Paper is the QuickInbox signature. Every theme keeps your account and settings intact.")
                     .font(.subheadline)
                     .foregroundStyle(settingsPalette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            ForEach(AppThemeRegistry.all) { theme in
-                themeChoice(theme)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Theme")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(settingsPalette.secondaryText)
+                    .padding(.horizontal, 2)
+
+                LazyVGrid(columns: appearanceGridColumns, spacing: 10) {
+                    ForEach(AppThemeRegistry.all) { theme in
+                        themeChoice(theme)
+                    }
+                }
             }
+
+            Text(selectedTheme.detail)
+                .font(.footnote)
+                .foregroundStyle(settingsPalette.secondaryText)
+                .padding(.horizontal, 4)
+                .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private var appearanceGridColumns: [GridItem] {
+        if dynamicTypeSize.isAccessibilitySize {
+            return [GridItem(.flexible(), spacing: 10)]
+        }
+        return Array(repeating: GridItem(.flexible(), spacing: 10), count: 2)
     }
 
     private func themeChoice(_ theme: AppTheme) -> some View {
@@ -255,123 +265,80 @@ struct SettingsView: View {
         return Button {
             selectTheme(theme)
         } label: {
-            VStack(spacing: 0) {
-                canvasPreview(palette: previewPalette)
+            VStack(alignment: .leading, spacing: 10) {
+                ZStack(alignment: .topTrailing) {
+                    themeSwatchPreview(palette: previewPalette)
 
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 7) {
-                            Text(theme.title)
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(settingsPalette.primaryText)
-
-                            Text(themeModeLabel(theme))
-                                .font(.caption2.weight(.semibold))
-                                .textCase(.uppercase)
-                                .foregroundStyle(settingsPalette.secondaryText)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(settingsPalette.fill, in: Capsule())
-                        }
-
-                        Text(theme.detail)
-                            .font(.footnote)
-                            .foregroundStyle(settingsPalette.secondaryText)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
+                    if isSelected {
+                        Circle()
+                            .fill(previewPalette.paper)
+                            .frame(width: 22, height: 22)
+                            .overlay {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundStyle(previewPalette.interactiveTint)
+                            }
+                            .padding(6)
                     }
-
-                    Spacer(minLength: 4)
-
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
-                        .foregroundStyle(
-                            isSelected
-                                ? settingsPalette.interactiveTint
-                                : settingsPalette.secondaryText.opacity(0.45)
-                        )
-                        .accessibilityHidden(true)
                 }
-                .padding(14)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(theme.title)
+                        .font(.subheadline.weight(isSelected ? .semibold : .medium))
+                        .foregroundStyle(settingsPalette.primaryText)
+                        .lineLimit(1)
+
+                    Text(themeModeLabel(theme))
+                        .font(.caption)
+                        .foregroundStyle(settingsPalette.secondaryText)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 106, alignment: .topLeading)
             .background(settingsPalette.paper, in: shape)
             .overlay {
                 shape.stroke(
-                    isSelected ? settingsPalette.interactiveTint.opacity(0.9) : settingsPalette.separator,
-                    lineWidth: isSelected ? 2 : 0.75
+                    isSelected ? settingsPalette.interactiveTint : settingsPalette.separator,
+                    lineWidth: isSelected ? 2 : 1
                 )
             }
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.18 : 0.05), radius: 10, y: 4)
             .contentShape(shape)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(theme.title)
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityValue(isSelected ? "Selected, \(themeModeLabel(theme))" : themeModeLabel(theme))
         .accessibilityHint(theme.detail)
     }
 
-    private func canvasPreview(palette: AppThemePalette) -> some View {
-        let shape = UnevenRoundedRectangle(
-            topLeadingRadius: 17,
-            bottomLeadingRadius: 0,
-            bottomTrailingRadius: 0,
-            topTrailingRadius: 17,
-            style: .continuous
-        )
-        return ZStack {
-            shape.fill(palette.grouped)
-
-            VStack(spacing: 0) {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(palette.interactiveTint)
-                        .frame(width: 10, height: 10)
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(palette.primaryText.opacity(0.78))
-                        .frame(width: 48, height: 5)
-                    Spacer()
-                    Circle()
-                        .fill(palette.fill)
-                        .frame(width: 24, height: 24)
-                }
-                .padding(.horizontal, 12)
-                .frame(height: 38)
-                .background(palette.paper)
-
-                VStack(spacing: 0) {
-                    previewMailRow(palette: palette, emphasized: true)
-                    Rectangle().fill(palette.separator).frame(height: 0.5)
-                    previewMailRow(palette: palette, emphasized: false)
-                }
-                .background(palette.raised)
-            }
-        }
-        .frame(height: 112)
-        .clipShape(shape)
-        .accessibilityHidden(true)
-    }
-
-    private func previewMailRow(palette: AppThemePalette, emphasized: Bool) -> some View {
-        HStack(spacing: 9) {
+    private func themeSwatchPreview(palette: AppThemePalette) -> some View {
+        HStack(spacing: 6) {
             Circle()
-                .fill(emphasized ? palette.interactiveTint.opacity(0.9) : palette.fill)
-                .frame(width: 24, height: 24)
+                .fill(palette.interactiveTint)
+                .frame(width: 20, height: 20)
 
-            VStack(alignment: .leading, spacing: 5) {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(palette.primaryText.opacity(emphasized ? 0.82 : 0.55))
-                    .frame(width: emphasized ? 88 : 68, height: 5)
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(palette.secondaryText.opacity(0.42))
-                    .frame(maxWidth: emphasized ? 170 : 138)
-                    .frame(height: 4)
-            }
+            Circle()
+                .fill(palette.primaryText.opacity(0.72))
+                .frame(width: 16, height: 16)
 
-            Spacer()
+            Circle()
+                .fill(palette.raised)
+                .frame(width: 12, height: 12)
+
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 12)
-        .frame(height: 37)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .background(
+            palette.grouped,
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(palette.separator.opacity(0.5), lineWidth: 0.5)
+        }
+        .accessibilityHidden(true)
     }
 
     private func themeModeLabel(_ theme: AppTheme) -> String {
@@ -454,6 +421,18 @@ struct SettingsView: View {
         .navigationTitle("Connected Devices")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.load() }
+        .alert(
+            "Revoke Device?",
+            isPresented: $showingRevokeConfirmation,
+            presenting: deviceToRevoke
+        ) { device in
+            Button("Revoke", role: .destructive) {
+                Task { await model.revoke(device) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { device in
+            Text("\(model.displayName(for: device)) will lose access the next time it contacts your server.")
+        }
     }
 
     private var connectionPage: some View {
@@ -821,10 +800,13 @@ struct SettingsView: View {
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if model.addresses.isEmpty {
-                Label("No sending addresses available", systemImage: "at.badge.minus")
-                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                EmptyStateView(
+                    systemImage: "at.badge.minus",
+                    title: "No Sending Addresses",
+                    message: "Add an address on the web to start sending from this account.",
+                    tone: .muted,
+                    layout: .inline
+                )
             } else {
                 if model.addresses.count == 1 {
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -965,10 +947,13 @@ struct SettingsView: View {
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if model.devices.isEmpty {
-                Label("No connected devices found", systemImage: "rectangle.stack.badge.minus")
-                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                EmptyStateView(
+                    systemImage: "rectangle.stack.badge.minus",
+                    title: "No Connected Devices",
+                    message: "Devices paired with this account will show up here.",
+                    tone: .muted,
+                    layout: .inline
+                )
             } else {
                 ForEach(model.devices) { device in
                     deviceRow(device)
@@ -1346,6 +1331,7 @@ private final class SettingsViewModel: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
+            guard !Self.isUnauthorized(error) else { return }
             operationError = error.localizedDescription
         }
     }
@@ -1363,6 +1349,7 @@ private final class SettingsViewModel: ObservableObject {
             signatureSaved = true
             AppFeedback.success()
         } catch {
+            guard !Self.isUnauthorized(error) else { return }
             operationError = error.localizedDescription
             AppFeedback.error()
         }
@@ -1379,6 +1366,7 @@ private final class SettingsViewModel: ObservableObject {
             devices.removeAll { $0.id == device.id }
             AppFeedback.play(.destructiveConfirmed)
         } catch {
+            guard !Self.isUnauthorized(error) else { return }
             operationError = error.localizedDescription
             AppFeedback.error()
         }
@@ -1464,5 +1452,10 @@ private final class SettingsViewModel: ObservableObject {
     private func clearLocalPreferences() {
         selectedAddressID = ""
         UserDefaults.standard.removeObject(forKey: AppPreferences.selectedSendingAddressID)
+    }
+
+    private static func isUnauthorized(_ error: Error) -> Bool {
+        if let apiError = error as? APIError, apiError == .unauthorized { return true }
+        return false
     }
 }

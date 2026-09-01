@@ -8,6 +8,7 @@ struct ThreadReaderView: View {
 
     private let api: QuickInboxAPI
     private let refreshToken: UUID
+    private let needsSignOut: Bool
     private let onReply: (String) -> Void
     private let onForward: ([ThreadMessage]) -> Void
     private let onMailboxMutation: () -> Void
@@ -23,9 +24,12 @@ struct ThreadReaderView: View {
 
     init(
         api: QuickInboxAPI,
+        userID: String,
         threadID: String,
         summary: ThreadSummary? = nil,
+        cache: ThreadDetailCache,
         refreshToken: UUID = UUID(),
+        needsSignOut: Bool = false,
         onReply: @escaping (String) -> Void,
         onForward: @escaping ([ThreadMessage]) -> Void,
         onMailboxMutation: @escaping () -> Void = {},
@@ -33,19 +37,31 @@ struct ThreadReaderView: View {
     ) {
         self.api = api
         self.refreshToken = refreshToken
+        self.needsSignOut = needsSignOut
         self.onReply = onReply
         self.onForward = onForward
         self.onMailboxMutation = onMailboxMutation
         self.onExit = onExit
         _model = StateObject(
-            wrappedValue: ThreadReaderViewModel(api: api, threadID: threadID, summary: summary)
+            wrappedValue: ThreadReaderViewModel(
+                api: api,
+                userID: userID,
+                threadID: threadID,
+                summary: summary,
+                cache: cache
+            )
         )
     }
 
     var body: some View {
         Group {
             if let detail = model.detail {
-                threadContent(detail)
+                VStack(spacing: 0) {
+                    if model.isShowingCachedData || model.refreshError != nil {
+                        savedDataBanner
+                    }
+                    threadContent(detail)
+                }
             } else if model.isLoading {
                 readerLoadingState
             } else if let error = model.errorMessage {
@@ -82,7 +98,12 @@ struct ThreadReaderView: View {
             if model.detail == nil { await model.load() }
         }
         .onChange(of: refreshToken) {
-            Task { await model.load() }
+            Task { await model.invalidateAndLoad() }
+        }
+        .onChange(of: needsSignOut) { _, revoked in
+            if revoked {
+                model.clearSensitiveState()
+            }
         }
         .alert("That Change Didn’t Go Through", isPresented: actionErrorPresented) {
             Button("OK", role: .cancel) { model.errorMessage = nil }
@@ -140,13 +161,12 @@ struct ThreadReaderView: View {
                 conversationHeader(detail, messages: messages)
 
                 if messages.isEmpty {
-                    ContentUnavailableView {
-                        Label("Conversation Is Empty", systemImage: "envelope.open")
-                    } description: {
-                        Text("Messages in this conversation will appear here.")
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 72)
+                    EmptyStateView(
+                        systemImage: "envelope.open.fill",
+                        title: "Conversation Is Empty",
+                        message: "Messages in this conversation will appear here.",
+                        layout: .embedded
+                    )
                 } else {
                     ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                         if index > 0 {
@@ -229,6 +249,42 @@ struct ThreadReaderView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
+    }
+
+    private var savedDataBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: model.refreshError == nil ? "arrow.triangle.2.circlepath" : "wifi.slash")
+                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.refreshError == nil ? "Saved conversation" : "Showing saved conversation")
+                    .font(.subheadline.weight(.semibold))
+                Text(model.refreshError ?? "Checking for updates…")
+                    .font(.caption)
+                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                    .lineLimit(2)
+            }
+
+            Spacer()
+
+            if model.refreshError != nil {
+                Button("Retry") {
+                    Task { await model.load() }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            } else if model.isRefreshing {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 10)
+        .background(QuickInboxDesign.Palette.paperRaised)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
     }
 
     private var replyDock: some View {

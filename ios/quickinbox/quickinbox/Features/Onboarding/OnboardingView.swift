@@ -562,7 +562,7 @@ struct OnboardingView: View {
                 let user = try await api.currentUser()
                 let restorableCredential = credential.caching(user: user)
                 await api.install(restorableCredential)
-                try await credentialStore.save(restorableCredential)
+                try credentialStore.save(restorableCredential)
 
                 isConnecting = false
                 AppFeedback.success()
