@@ -21,6 +21,7 @@ class AppSession(
     val api: QuickInboxApi,
     val credentialStore: CredentialStore,
     val mailboxCache: MailboxCache,
+    val threadCache: ThreadCache,
     val preferences: AppPreferences
 ) {
     private val mutex = Mutex()
@@ -58,6 +59,7 @@ class AppSession(
         restoreGeneration += 1
         preferences.cachedUser = null
         mailboxCache.clearAll()
+        threadCache.clearAll()
         api.clearCredential()
         _phase.value = SessionPhase.Onboarding(message)
     }
@@ -68,6 +70,7 @@ class AppSession(
         withContext(Dispatchers.IO) { credentialStore.delete() }
         api.clearCredential()
         mailboxCache.clearAll()
+        threadCache.clearAll()
         _phase.value = SessionPhase.Onboarding(null)
     }
 
@@ -80,6 +83,7 @@ class AppSession(
         }
         api.clearCredential()
         mailboxCache.clearAll()
+        threadCache.clearAll()
         _phase.value = SessionPhase.Onboarding("Your saved session is no longer valid. Connect this device again.")
     }
 
@@ -123,6 +127,8 @@ class AppSession(
             preferences.cachedUser = null
             withContext(Dispatchers.IO) { runCatching { credentialStore.delete() } }
             api.clearCredential()
+            mailboxCache.clearAll()
+            threadCache.clearAll()
             if (generation == restoreGeneration) {
                 _phase.value = SessionPhase.Onboarding(
                     "Your saved session is no longer valid. Connect this device again."

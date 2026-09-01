@@ -9,11 +9,14 @@ class AppContainer(context: Context) {
         .registerTypeAdapter(Date::class.java, ApiDateAdapter())
         .create()
 
-    val api = QuickInboxApi(gson)
+    private val networkStatus = NetworkStatus(context)
+    val api = QuickInboxApi(gson, hasInternetAccess = networkStatus::hasInternetAccess)
     val credentialStore = CredentialStore(context, gson)
     val mailboxCache = MailboxCache(context, gson)
+    val threadCache = ThreadCache(context, gson)
     val preferences = AppPreferences(context, gson)
-    val session = AppSession(api, credentialStore, mailboxCache, preferences)
+    val appLock = AppLockController(context)
+    val session = AppSession(api, credentialStore, mailboxCache, threadCache, preferences)
 
     init {
         api.onUnauthorized = { session.handleUnauthorized() }

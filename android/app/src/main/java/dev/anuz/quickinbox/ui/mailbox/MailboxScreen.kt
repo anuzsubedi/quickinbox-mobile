@@ -88,6 +88,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -95,12 +97,14 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -296,7 +300,7 @@ fun MailboxScreen(
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         itemsIndexed(state.threads, key = { _, thread -> thread.id }) { index, thread ->
-                            MailThreadItem(
+                            SwipeableMailThreadItem(
                                 thread = thread,
                                 mailbox = state.mailbox,
                                 first = index == 0,
@@ -317,6 +321,10 @@ fun MailboxScreen(
                                 onLongClick = {
                                     haptics.longPress()
                                     selectedIds = selectedIds.toggling(thread.id)
+                                },
+                                onSwipeAction = {
+                                    haptics.confirm()
+                                    perform(it, listOf(thread))
                                 },
                                 onStar = {
                                     perform(
@@ -813,6 +821,155 @@ private fun SelectionHeader(
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary
             )
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun SwipeableMailThreadItem(
+    thread: ThreadSummary,
+    mailbox: MailboxKind,
+    first: Boolean,
+    last: Boolean,
+    selected: Boolean,
+    selectionActive: Boolean,
+    working: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onSwipeAction: (MailAction) -> Unit,
+    onStar: () -> Unit
+) {
+    val startAction = mailbox.startSwipeAction(thread)
+    val endAction = mailbox.endSwipeAction()
+    val swipeEnabled = !selectionActive && !working
+    val currentStartAction = rememberUpdatedState(startAction)
+    val currentEndAction = rememberUpdatedState(endAction)
+    val currentOnSwipeAction = rememberUpdatedState(onSwipeAction)
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            val action = when (value) {
+                SwipeToDismissBoxValue.StartToEnd -> currentStartAction.value?.action
+                SwipeToDismissBoxValue.EndToStart -> currentEndAction.value.action
+                SwipeToDismissBoxValue.Settled -> null
+            }
+            if (action != null) currentOnSwipeAction.value(action)
+            false
+        }
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        backgroundContent = {
+            val swipeAction = when (dismissState.dismissDirection) {
+                SwipeToDismissBoxValue.StartToEnd -> startAction
+                SwipeToDismissBoxValue.EndToStart -> endAction
+                SwipeToDismissBoxValue.Settled -> null
+            }
+            SwipeActionBackground(
+                action = swipeAction,
+                direction = dismissState.dismissDirection,
+                first = first,
+                last = last
+            )
+        },
+        enableDismissFromStartToEnd = swipeEnabled && startAction != null,
+        enableDismissFromEndToStart = swipeEnabled
+    ) {
+        MailThreadItem(
+            thread = thread,
+            mailbox = mailbox,
+            first = first,
+            last = last,
+            selected = selected,
+            selectionActive = selectionActive,
+            working = working,
+            onClick = onClick,
+            onLongClick = onLongClick,
+            onStar = onStar
+        )
+    }
+}
+
+private data class ThreadSwipeAction(
+    val action: MailAction,
+    val label: String,
+    val icon: ImageVector,
+    val destructive: Boolean = false
+)
+
+private fun MailboxKind.startSwipeAction(thread: ThreadSummary): ThreadSwipeAction? =
+    when (this) {
+        MailboxKind.Drafts, MailboxKind.Trash -> null
+        else -> if (thread.isRead) {
+            ThreadSwipeAction(MailAction.Unread, "Mark unread", Icons.Rounded.MarkEmailUnread)
+        } else {
+            ThreadSwipeAction(MailAction.Read, "Mark read", Icons.Rounded.MarkEmailRead)
+        }
+    }
+
+private fun MailboxKind.endSwipeAction(): ThreadSwipeAction =
+    when (this) {
+        MailboxKind.Inbox ->
+            ThreadSwipeAction(MailAction.Archive, "Archive", Icons.Rounded.Archive)
+        MailboxKind.Archive ->
+            ThreadSwipeAction(MailAction.Unarchive, "Move to inbox", Icons.Rounded.Unarchive)
+        MailboxKind.Trash ->
+            ThreadSwipeAction(MailAction.Restore, "Restore", Icons.Rounded.RestoreFromTrash)
+        MailboxKind.Starred, MailboxKind.Drafts, MailboxKind.Sent ->
+            ThreadSwipeAction(MailAction.Trash, "Trash", Icons.Rounded.Delete, destructive = true)
+    }
+
+@Composable
+private fun SwipeActionBackground(
+    action: ThreadSwipeAction?,
+    direction: SwipeToDismissBoxValue,
+    first: Boolean,
+    last: Boolean
+) {
+    val backgroundColor by animateColorAsState(
+        targetValue = when {
+            action == null -> Color.Transparent
+            action.destructive -> MaterialTheme.colorScheme.errorContainer
+            else -> MaterialTheme.colorScheme.primaryContainer
+        },
+        label = "swipe-action-background"
+    )
+    val contentColor = when {
+        action == null -> Color.Transparent
+        action.destructive -> MaterialTheme.colorScheme.onErrorContainer
+        else -> MaterialTheme.colorScheme.onPrimaryContainer
+    }
+    val alignment = when (direction) {
+        SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
+        else -> Alignment.CenterStart
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+        shape = RoundedCornerShape(
+            topStart = if (first) 16.dp else 0.dp,
+            topEnd = if (first) 16.dp else 0.dp,
+            bottomStart = if (last) 16.dp else 0.dp,
+            bottomEnd = if (last) 16.dp else 0.dp
+        ),
+        color = backgroundColor
+    ) {
+        if (action != null) {
+            Row(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
+                horizontalArrangement = if (alignment == Alignment.CenterEnd) Arrangement.End else Arrangement.Start,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(action.icon, contentDescription = null, tint = contentColor)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = action.label,
+                    color = contentColor,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
     }
 }

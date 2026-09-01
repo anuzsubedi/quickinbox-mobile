@@ -168,7 +168,12 @@ fun AuthenticatedRoot(
     var composeSession by remember { mutableStateOf(0) }
     val mailboxViewModel: MailboxViewModel = viewModel(
         key = user.id,
-        factory = MailboxViewModelFactory(container.api, user.id, container.mailboxCache)
+        factory = MailboxViewModelFactory(
+            container.api,
+            user.id,
+            container.mailboxCache,
+            container.threadCache
+        )
     )
     val mailboxState by mailboxViewModel.state.collectAsStateWithLifecycle()
     val mailboxNavigationStyle by container.preferences.mailboxNavigationStyle.collectAsStateWithLifecycle()
@@ -214,7 +219,9 @@ fun AuthenticatedRoot(
                         container.api,
                         current.summary.threadId,
                         current.summary,
-                        context.cacheDir
+                        context.cacheDir,
+                        user.id,
+                        container.threadCache
                     )
                 )
                 val threadState by threadViewModel.state.collectAsStateWithLifecycle()
@@ -264,6 +271,14 @@ fun AuthenticatedRoot(
                     onIncludeOriginalAttachments = composeViewModel::onIncludeOriginalAttachments,
                     onSend = {
                         composeViewModel.send {
+                            val affectedThreadId = current.returnTo?.threadId
+                                ?: (current.mode as? ComposeMode.Forward.Thread)?.threadId
+                            val origin = container.api.credential?.origin
+                            if (affectedThreadId != null && origin != null) {
+                                runCatching {
+                                    container.threadCache.remove(origin, user.id, affectedThreadId)
+                                }
+                            }
                             mailboxRefresh += 1
                             destination = AuthDestination.Mailbox
                         }

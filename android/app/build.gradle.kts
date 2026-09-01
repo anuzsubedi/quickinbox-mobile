@@ -19,13 +19,29 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    buildTypes {
-        release {
-            optimization {
-                enable = false
+    // Release signing is supplied at build time so credentials and keystores stay
+    // outside the repository. Example properties are passed by the release script:
+    // quickInboxStoreFile, quickInboxStorePassword, quickInboxKeyAlias,
+    // quickInboxKeyPassword.
+    signingConfigs {
+        create("release") {
+            val storeFilePath = providers.gradleProperty("quickInboxStoreFile").orNull
+            if (storeFilePath != null) {
+                storeFile = file(storeFilePath)
+                storePassword = providers.gradleProperty("quickInboxStorePassword").orNull
+                keyAlias = providers.gradleProperty("quickInboxKeyAlias").orNull
+                keyPassword = providers.gradleProperty("quickInboxKeyPassword").orNull
             }
         }
     }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -62,7 +78,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.security.crypto)
+    implementation(libs.androidx.biometric)
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.okhttp.mockwebserver)
 }

@@ -254,6 +254,22 @@ fun ThreadScreen(
                     isStarred = state.isStarred,
                     onToggleStar = { onAction(if (state.isStarred) MailAction.Unstar else MailAction.Star) }
                 )
+                state.savedDataMessage?.let { message ->
+                    Row(
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (state.isRefreshing) {
+                            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                        }
+                        Text(
+                            message,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
                 state.errorMessage?.let {
                     Text(it, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.error)
                 }

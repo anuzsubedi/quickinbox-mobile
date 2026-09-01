@@ -14,6 +14,7 @@ import dev.anuz.quickinbox.domain.MailAddress
 import dev.anuz.quickinbox.domain.ForwardMessage
 import dev.anuz.quickinbox.domain.OutboundAttachment
 import dev.anuz.quickinbox.domain.ReplyMessage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -140,28 +141,33 @@ class ComposeViewModel(
             _state.update { it.copy(isImporting = true, attachmentMessage = null) }
             val imported = _state.value.attachments.toMutableList()
             val messages = mutableListOf<String>()
-            for (uri in uris) {
-                if (imported.size >= MAX_COUNT) {
-                    messages += "You can attach up to $MAX_COUNT files."
-                    break
-                }
-                try {
-                    val attachment = withContext(Dispatchers.IO) { readAttachment(context, uri) }
-                    if (imported.sumOf { it.byteCount } + attachment.byteCount > MAX_TOTAL_BYTES) {
-                        messages += "Attachments cannot exceed 25 MB in total."
-                        continue
+            try {
+                for (uri in uris) {
+                    if (imported.size >= MAX_COUNT) {
+                        messages += "You can attach up to $MAX_COUNT files."
+                        break
                     }
-                    imported += attachment
-                } catch (error: Exception) {
-                    messages += error.message ?: "A file could not be attached."
+                    try {
+                        val attachment = withContext(Dispatchers.IO) { readAttachment(context, uri) }
+                        if (imported.sumOf { it.byteCount } + attachment.byteCount > MAX_TOTAL_BYTES) {
+                            messages += "Attachments cannot exceed 25 MB in total."
+                            continue
+                        }
+                        imported += attachment
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        messages += error.message ?: "A file could not be attached."
+                    }
                 }
-            }
-            _state.update {
-                it.copy(
-                    attachments = imported,
-                    isImporting = false,
-                    attachmentMessage = messages.takeIf { list -> list.isNotEmpty() }?.joinToString("\n")
-                )
+                _state.update {
+                    it.copy(
+                        attachments = imported,
+                        attachmentMessage = messages.takeIf { list -> list.isNotEmpty() }?.joinToString("\n")
+                    )
+                }
+            } finally {
+                _state.update { it.copy(isImporting = false) }
             }
         }
     }
@@ -225,6 +231,8 @@ class ComposeViewModel(
                     }
                 }
                 onSent()
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 _state.update { it.copy(errorMessage = error.message ?: "QuickInbox could not send this message. Try again.") }
             } finally {
@@ -255,8 +263,12 @@ class ComposeViewModel(
                     } else state.errorMessage
                 )
             }
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             _state.update { it.copy(isLoadingAddresses = false, errorMessage = error.message ?: "Sending addresses could not be loaded.") }
+        } finally {
+            _state.update { it.copy(isLoadingAddresses = false) }
         }
     }
 
@@ -280,6 +292,8 @@ class ComposeViewModel(
                     isLoadingDraft = false
                 )
             }
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             _state.update {
                 it.copy(
@@ -287,6 +301,8 @@ class ComposeViewModel(
                     errorMessage = error.message ?: "QuickInbox couldn’t load this draft. Try again."
                 )
             }
+        } finally {
+            _state.update { it.copy(isLoadingDraft = false) }
         }
     }
 

@@ -1,9 +1,9 @@
 package dev.anuz.quickinbox.domain
 
-import android.net.Uri
+import com.google.gson.JsonParser
 import dev.anuz.quickinbox.data.ApiError
 import dev.anuz.quickinbox.data.OriginValidator
-import org.json.JSONObject
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 const val PAIRING_CODE_LENGTH = 22
 private const val MAXIMUM_PAYLOAD_BYTES = 2048
@@ -14,10 +14,9 @@ fun validatePayload(value: String): Pairing? {
     val bytes = value.toByteArray(Charsets.UTF_8)
     if (bytes.isEmpty() || bytes.size > MAXIMUM_PAYLOAD_BYTES) return null
     return try {
-        val json = JSONObject(value)
-        val keys = json.keys().asSequence().toSet()
-        if (keys != setOf("version", "origin", "code") || json.optInt("version") != 1) null
-        else validatePairing(json.getString("origin"), json.getString("code"))
+        val json = JsonParser.parseString(value).asJsonObject
+        if (json.keySet() != setOf("version", "origin", "code") || json.get("version").asInt != 1) null
+        else validatePairing(json.get("origin").asString, json.get("code").asString)
     } catch (_: Exception) {
         null
     }
@@ -35,4 +34,4 @@ fun validatePairing(origin: String, code: String): Pairing? = try {
     null
 }
 
-fun pairingHost(origin: String): String = Uri.parse(origin).host ?: origin
+fun pairingHost(origin: String): String = origin.toHttpUrlOrNull()?.host ?: origin

@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.fragment.app.FragmentActivity
 import dev.anuz.quickinbox.data.AppContainer
 import dev.anuz.quickinbox.data.MailboxNavigationStyle
 import dev.anuz.quickinbox.domain.DeviceSession
@@ -48,6 +49,7 @@ import dev.anuz.quickinbox.ui.theme.AppThemeOption
 import dev.anuz.quickinbox.ui.theme.LocalQuickInboxDarkTheme
 import dev.anuz.quickinbox.ui.theme.QuickInboxMotion
 import dev.anuz.quickinbox.ui.theme.materialScheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -67,6 +69,7 @@ fun SettingsScreen(
     onDisconnected: (String?) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val activity = LocalContext.current as? FragmentActivity
     var page by remember { mutableStateOf(SettingsPage.Overview) }
     var addresses by remember { mutableStateOf<List<MailAddress>>(emptyList()) }
     var devices by remember { mutableStateOf<List<DeviceSession>>(emptyList()) }
@@ -83,6 +86,7 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val themeId by container.preferences.themeId.collectAsState()
     val mailboxNavigationStyle by container.preferences.mailboxNavigationStyle.collectAsState()
+    val appLockState by container.appLock.state.collectAsState()
     val selectedId = container.preferences.selectedSendingAddressId
 
     fun navigateBack() {
@@ -101,13 +105,19 @@ fun SettingsScreen(
         loading = true
         try {
             addresses = withContext(Dispatchers.IO) { container.api.addresses() }
-            signature = withContext(Dispatchers.IO) { runCatching { container.api.signature() }.getOrDefault("") }
+            signature = withContext(Dispatchers.IO) {
+                callOrDefault("") { container.api.signature() }
+            }
             savedSignature = signature
-            devices = withContext(Dispatchers.IO) { runCatching { container.api.devices() }.getOrDefault(emptyList()) }
+            devices = withContext(Dispatchers.IO) {
+                callOrDefault(emptyList<DeviceSession>()) { container.api.devices() }
+            }
             if (container.preferences.selectedSendingAddressId == null) {
                 container.preferences.selectedSendingAddressId =
                     addresses.firstOrNull { it.isDefault }?.id ?: addresses.firstOrNull()?.id
             }
+        } catch (exception: CancellationException) {
+            throw exception
         } catch (exception: Exception) {
             error = exception.message
         } finally {
@@ -128,6 +138,8 @@ fun SettingsScreen(
                 signature = withContext(Dispatchers.IO) { container.api.updateSignature(signature) }
                 savedSignature = signature
                 snackbarHostState.showSnackbar("Signature saved")
+            } catch (exception: CancellationException) {
+                throw exception
             } catch (exception: Exception) {
                 error = exception.message
             } finally {
@@ -174,7 +186,7 @@ fun SettingsScreen(
             label = "settings page"
         ) { currentPage -> when (currentPage) {
             SettingsPage.Overview -> SettingsOverview(
-                padding, user, loading, devices.size, remoteImages,
+                padding, user, loading, devices.size, appLockState.isEnabled,
                 themeTitle = AppThemeOption.fromId(themeId).title,
                 onNavigate = { page = it }
             )
@@ -195,10 +207,18 @@ fun SettingsScreen(
                 },
                 onSignature = { if (it.length <= 1000) signature = it }
             )
-            SettingsPage.Privacy -> PrivacyPage(padding, remoteImages) {
-                remoteImages = it
-                container.preferences.showRemoteImagesByDefault = it
-            }
+            SettingsPage.Privacy -> PrivacyPage(
+                padding = padding,
+                remoteImages = remoteImages,
+                appLockState = appLockState,
+                onAppLock = { enabled ->
+                    activity?.let { container.appLock.requestSetEnabled(it, enabled) }
+                },
+                onRemoteImages = {
+                    remoteImages = it
+                    container.preferences.showRemoteImagesByDefault = it
+                }
+            )
             SettingsPage.Devices -> DevicesPage(padding, devices, loading, onRevoke = { deviceToRevoke = it })
             SettingsPage.Connection -> ConnectionPage(
                 padding, container.api.credential?.origin,
@@ -224,6 +244,8 @@ fun SettingsScreen(
                             withContext(Dispatchers.IO) { container.api.revokeDevice(device.id) }
                             devices = devices.filterNot { it.id == device.id }
                             snackbarHostState.showSnackbar("Device revoked")
+                        } catch (exception: CancellationException) {
+                            throw exception
                         } catch (exception: Exception) {
                             error = exception.message
                         }
@@ -309,7 +331,7 @@ private fun SettingsOverview(
     user: User,
     loading: Boolean,
     deviceCount: Int,
-    remoteImages: Boolean,
+    appLockEnabled: Boolean,
     themeTitle: String,
     onNavigate: (SettingsPage) -> Unit
 ) {
@@ -325,8 +347,8 @@ private fun SettingsOverview(
                 onNavigate(SettingsPage.Composing)
             }
             DestinationRow(
-                "Privacy & Security", "External message content", Icons.Rounded.Lock,
-                if (remoteImages) "On" else "Off"
+                "Privacy & Security", "App lock and external content", Icons.Rounded.Lock,
+                if (appLockEnabled) "On" else "Off"
             ) { onNavigate(SettingsPage.Privacy) }
         }
         SettingsGroup("Account Access") {
@@ -703,12 +725,56 @@ private fun ComposingPage(
 }
 
 @Composable
-private fun PrivacyPage(padding: PaddingValues, remoteImages: Boolean, onRemoteImages: (Boolean) -> Unit) {
+private fun PrivacyPage(
+    padding: PaddingValues,
+    remoteImages: Boolean,
+    appLockState: dev.anuz.quickinbox.data.AppLockState,
+    onAppLock: (Boolean) -> Unit,
+    onRemoteImages: (Boolean) -> Unit
+) {
     PageBody(padding) {
         InfoBanner(
             icon = Icons.Rounded.Shield,
             title = "Private by default",
-            text = "QuickInbox blocks remote message images unless you choose to load them."
+            text = "Protect your inbox when you leave the app and control externally hosted message content."
+        )
+        SettingsGroup("App access") {
+            SwitchRow(
+                title = "App Lock",
+                supporting = if (appLockState.isAvailable || appLockState.isEnabled) {
+                    "Require biometrics or your screen lock when returning to QuickInbox."
+                } else {
+                    "Set up biometrics or a screen lock in Android Settings first."
+                },
+                checked = appLockState.isEnabled,
+                enabled = appLockState.isAvailable || appLockState.isEnabled,
+                onCheckedChange = onAppLock
+            )
+            appLockState.errorMessage?.let { message ->
+                Row(
+                    Modifier.fillMaxWidth().background(settingsPanelColor()).padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                    Text(
+                        message,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        }
+        Text(
+            "When enabled, QuickInbox hides message content after you leave the app and asks you to authenticate when you return.",
+            modifier = Modifier.padding(horizontal = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         SettingsGroup("Message content") {
             SwitchRow(
@@ -842,7 +908,7 @@ private fun SupportPage(padding: PaddingValues) {
                 context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:quickinbox-support@quivren.com")))
             }
             ActionRow("Report an issue", "Open the GitHub issue tracker", Icons.Rounded.BugReport) {
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/anuzsubedi/quickinbox-ios/issues")))
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/anuzsubedi/quickinbox-mobile/issues")))
             }
         }
         SettingsGroup("Troubleshooting") {
@@ -937,10 +1003,12 @@ private fun SwitchRow(
     title: String,
     supporting: String,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
-        Modifier.fillMaxWidth().background(settingsPanelColor()).clickable { onCheckedChange(!checked) }.padding(16.dp),
+        Modifier.fillMaxWidth().background(settingsPanelColor())
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }.padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -948,7 +1016,7 @@ private fun SwitchRow(
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
             Text(supporting, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, enabled = enabled, onCheckedChange = onCheckedChange)
     }
 }
 
@@ -1026,12 +1094,16 @@ private suspend fun disconnect(
                 if (current != null) container.api.revokeDevice(current.id)
                 else container.api.logout(container.credentialStore, revokeCurrentDevice = true)
             }
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             revocationError = error
         }
     }
     try {
         withContext(Dispatchers.IO) { container.api.logout(container.credentialStore, revokeCurrentDevice = false) }
+    } catch (error: CancellationException) {
+        throw error
     } catch (error: Exception) {
         revocationError = revocationError ?: error
     }
@@ -1041,3 +1113,12 @@ private suspend fun disconnect(
         "This phone was disconnected locally, but the server could not confirm revocation. Revoke it from QuickInbox on the web."
     } else null
 }
+
+private suspend fun <T> callOrDefault(default: T, block: suspend () -> T): T =
+    try {
+        block()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        default
+    }
