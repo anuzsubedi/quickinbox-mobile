@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import dev.anuz.quickinbox.data.MailboxCache
 import dev.anuz.quickinbox.data.QuickInboxApi
+import dev.anuz.quickinbox.data.ThreadCache
 import dev.anuz.quickinbox.domain.MailAction
 import dev.anuz.quickinbox.domain.MailboxFilters
 import dev.anuz.quickinbox.domain.MailboxKind
@@ -12,11 +13,18 @@ import dev.anuz.quickinbox.domain.ThreadSummary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.Date
 
@@ -44,13 +52,15 @@ data class MailboxUiState(
 class MailboxViewModel(
     private val api: QuickInboxApi,
     private val userId: String,
-    private val cache: MailboxCache
+    private val cache: MailboxCache,
+    private val threadCache: ThreadCache
 ) : ViewModel() {
     private val _state = MutableStateFlow(MailboxUiState())
     val state = _state.asStateFlow()
 
     private var generation = 0
     private var searchJob: Job? = null
+    private var prefetchJob: Job? = null
     private var bootstrapped = false
 
     fun bootstrap() {
@@ -66,6 +76,7 @@ class MailboxViewModel(
         if (kind == _state.value.mailbox) return
         generation += 1
         searchJob?.cancel()
+        prefetchJob?.cancel()
         _state.value = MailboxUiState(mailbox = kind, isInitialLoading = true)
         viewModelScope.launch { reload(showInitialLoading = true) }
     }
@@ -73,6 +84,7 @@ class MailboxViewModel(
     fun onSearchChange(value: String) {
         _state.update { it.copy(searchText = value) }
         searchJob?.cancel()
+        prefetchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(350)
             reload(showInitialLoading = true)
@@ -80,6 +92,7 @@ class MailboxViewModel(
     }
 
     fun toggleUnreadOnly() {
+        prefetchJob?.cancel()
         _state.update { it.copy(unreadOnly = !it.unreadOnly) }
         viewModelScope.launch { reload(showInitialLoading = true) }
     }
@@ -116,6 +129,7 @@ class MailboxViewModel(
                 )
             }
             saveInboxCacheIfNeeded()
+            prefetchThreadDetails(_state.value.threads)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -166,6 +180,8 @@ class MailboxViewModel(
                         pageCount = maxOf(page.pageCount, 1)
                     )
                 }
+                saveInboxCacheIfNeeded()
+                prefetchThreadDetails(_state.value.threads)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -186,6 +202,7 @@ class MailboxViewModel(
         if (unique.isEmpty()) return
         val ids = unique.map { it.id }.toSet()
         if (_state.value.mutatingIds.any { it in ids }) return
+        prefetchJob?.cancel()
         viewModelScope.launch {
             _state.update { it.copy(mutatingIds = it.mutatingIds + ids) }
             try {
@@ -194,6 +211,9 @@ class MailboxViewModel(
                 }
                 if (!response.ok) throw IllegalStateException("The server could not update this conversation.")
                 unique.forEach { apply(action, it) }
+                if (action == MailAction.Delete) {
+                    invalidateThreadCache(unique)
+                }
                 saveInboxCacheIfNeeded()
             } catch (error: CancellationException) {
                 throw error
@@ -219,7 +239,7 @@ class MailboxViewModel(
             it.copy(
                 threads = cached.threads.deduplicated(),
                 total = cached.total,
-                currentPage = 1,
+                currentPage = cached.currentPage,
                 pageCount = cached.pageCount,
                 cachedAt = cached.updatedAt,
                 isShowingCachedData = true
@@ -237,12 +257,60 @@ class MailboxViewModel(
         ) return
         try {
             withContext(Dispatchers.IO) {
-                cache.save(snapshot.threads, snapshot.total, snapshot.pageCount, origin, userId)
+                cache.save(
+                    snapshot.threads,
+                    snapshot.total,
+                    snapshot.pageCount,
+                    origin,
+                    userId,
+                    snapshot.currentPage
+                )
             }
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
             // The cache is an optional offline fallback; a storage failure must not fail a live request.
+        }
+    }
+
+    private suspend fun invalidateThreadCache(threads: List<ThreadSummary>) {
+        val origin = api.credential?.origin ?: return
+        withContext(Dispatchers.IO) {
+            threads.forEach { thread ->
+                runCatching { threadCache.remove(origin, userId, thread.threadId) }
+            }
+        }
+    }
+
+    private fun prefetchThreadDetails(threads: List<ThreadSummary>) {
+        val origin = api.credential?.origin ?: return
+        val candidates = threads.distinctBy { it.threadId }.filter { it.threadId.isNotBlank() }
+        if (candidates.isEmpty()) return
+
+        prefetchJob?.cancel()
+        prefetchJob = viewModelScope.launch(Dispatchers.IO) {
+            delay(PREFETCH_DELAY_MILLIS)
+            val permits = Semaphore(PREFETCH_CONCURRENCY)
+            coroutineScope {
+                candidates.map { thread ->
+                    async {
+                        permits.withPermit {
+                            try {
+                                currentCoroutineContext().ensureActive()
+                                if (threadCache.load(origin, userId, thread.threadId) == null) {
+                                    val detail = api.thread(thread.threadId)
+                                    currentCoroutineContext().ensureActive()
+                                    threadCache.save(detail, origin, userId, thread.threadId)
+                                }
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (_: Exception) {
+                                // Prefetch is best effort and must never disrupt mailbox loading.
+                            }
+                        }
+                    }
+                }.awaitAll()
+            }
         }
     }
 
@@ -299,9 +367,13 @@ private fun List<ThreadSummary>.merging(incoming: List<ThreadSummary>): List<Thr
 class MailboxViewModelFactory(
     private val api: QuickInboxApi,
     private val userId: String,
-    private val cache: MailboxCache
+    private val cache: MailboxCache,
+    private val threadCache: ThreadCache
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        MailboxViewModel(api, userId, cache) as T
+        MailboxViewModel(api, userId, cache, threadCache) as T
 }
+
+private const val PREFETCH_CONCURRENCY = 3
+private const val PREFETCH_DELAY_MILLIS = 500L

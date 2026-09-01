@@ -51,7 +51,8 @@ class QuickInboxApi(
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
         .callTimeout(30, TimeUnit.SECONDS)
-        .build()
+        .build(),
+    private val hasInternetAccess: (() -> Boolean)? = null
 ) {
     @Volatile
     var credential: Credential? = null
@@ -221,7 +222,7 @@ class QuickInboxApi(
             throw error
         } catch (error: IOException) {
             folder?.deleteRecursively()
-            throw ApiError.Transport(error.localizedMessage ?: "Network error")
+            throw error.toTransportError(request.url.host, hasInternetAccess)
         }
     }
 
@@ -257,7 +258,7 @@ class QuickInboxApi(
         } catch (error: ApiError) {
             throw error
         } catch (error: IOException) {
-            throw ApiError.Transport(error.localizedMessage ?: "Network error")
+            throw error.toTransportError(httpRequest.url.host, hasInternetAccess)
         }
     }
 

@@ -13,6 +13,7 @@ import java.util.Date
 data class MailboxCacheSnapshot(
     val threads: List<ThreadSummary>,
     val total: Int,
+    val currentPage: Int,
     val pageCount: Int,
     val updatedAt: Date
 )
@@ -65,6 +66,7 @@ class MailboxCache(
                 MailboxCacheSnapshot(
                     threads = threads.filterNotNull(),
                     total = stored.total,
+                    currentPage = stored.currentPage.coerceIn(1, maxOf(stored.pageCount, 1)),
                     pageCount = maxOf(stored.pageCount, 1),
                     updatedAt = Date(stored.updatedAt)
                 )
@@ -80,7 +82,8 @@ class MailboxCache(
         total: Int,
         pageCount: Int,
         origin: String,
-        userId: String
+        userId: String,
+        currentPage: Int = 1
     ) {
         synchronized(lock) {
             val updatedAt = nowMillis()
@@ -89,6 +92,7 @@ class MailboxCache(
                 payload = gson.toJson(threads),
                 total = total,
                 pageCount = maxOf(pageCount, 1),
+                currentPage = currentPage.coerceIn(1, maxOf(pageCount, 1)),
                 updatedAt = updatedAt
             )
             val payload = gson.toJson(stored).toByteArray(Charsets.UTF_8)
@@ -142,6 +146,7 @@ class MailboxCache(
         val payload: String = "[]",
         val total: Int = 0,
         val pageCount: Int = 1,
+        val currentPage: Int = 1,
         val updatedAt: Long = 0
     )
 }

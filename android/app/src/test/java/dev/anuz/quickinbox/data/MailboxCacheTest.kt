@@ -25,14 +25,29 @@ class MailboxCacheTest {
         val cache = MailboxCache(directory, Gson(), { now }, maxAgeMillis = 10_000L)
         val thread = ThreadSummary(threadId = "thread-1", latestId = "message-1", subject = "Hello")
 
-        cache.save(listOf(thread), 4, 2, ORIGIN, USER_ID)
+        cache.save(listOf(thread), 4, 3, ORIGIN, USER_ID, currentPage = 2)
 
         val loaded = cache.load(ORIGIN, USER_ID)
         assertNotNull(loaded)
         assertEquals(listOf(thread), loaded?.threads)
         assertEquals(4, loaded?.total)
-        assertEquals(2, loaded?.pageCount)
+        assertEquals(2, loaded?.currentPage)
+        assertEquals(3, loaded?.pageCount)
         assertEquals(Date(now), loaded?.updatedAt)
+    }
+
+    @Test
+    fun recordsWithoutCurrentPageRestoreAsFirstPage() {
+        val now = 1_500_000L
+        val directory = temporaryFolder.newFolder("mailbox")
+        val gson = Gson()
+        val cache = MailboxCache(directory, gson, { now }, maxAgeMillis = 10_000L)
+        writeStored(directory, gson, ORIGIN, USER_ID, now)
+
+        val loaded = cache.load(ORIGIN, USER_ID)
+
+        assertNotNull(loaded)
+        assertEquals(1, loaded?.currentPage)
     }
 
     @Test

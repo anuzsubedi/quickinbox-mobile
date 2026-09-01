@@ -1,5 +1,8 @@
 package dev.anuz.quickinbox.data
 
+import java.io.IOException
+import java.net.UnknownHostException
+
 sealed class ApiError(message: String) : Exception(message) {
     class InvalidOrigin(detail: String) : ApiError(detail)
     data object InvalidPairingPayload : ApiError("This QuickInbox pairing code is not supported.")
@@ -17,4 +20,27 @@ sealed class ApiError(message: String) : Exception(message) {
     data object Decoding : ApiError("QuickInbox returned data this app could not read.")
 
     class CorruptCredential : Exception("The saved QuickInbox session was invalid and has been removed.")
+}
+
+internal fun IOException.toTransportError(
+    host: String?,
+    hasInternetAccess: (() -> Boolean)?
+): ApiError.Transport {
+    val online = hasInternetAccess?.let { check -> runCatching(check).getOrNull() }
+    if (online == false) {
+        return ApiError.Transport(
+            "No internet connection. Connect to Wi-Fi or mobile data and try again."
+        )
+    }
+
+    val server = host?.takeIf { it.isNotBlank() } ?: "your QuickInbox server"
+    return if (this is UnknownHostException) {
+        ApiError.Transport(
+            "QuickInbox couldn’t find $server. Check the server address or DNS settings."
+        )
+    } else {
+        ApiError.Transport(
+            "QuickInbox can’t reach $server. The server may be unavailable. Try again later."
+        )
+    }
 }
