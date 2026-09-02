@@ -2,6 +2,7 @@ package dev.anuz.quickinbox.data
 
 import android.content.Context
 import com.google.gson.Gson
+import dev.anuz.quickinbox.domain.MailboxKind
 import dev.anuz.quickinbox.domain.User
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,6 +27,8 @@ class AppPreferences(context: Context, private val gson: Gson) {
         !prefs.getBoolean(NAVIGATION_PROMPT_COMPLETED, false) && !existingAccountAtStartup
     )
     val navigationPromptPending = _navigationPromptPending.asStateFlow()
+    private val _mailboxSwipeControls = MutableStateFlow(loadMailboxSwipeControls())
+    val mailboxSwipeControls = _mailboxSwipeControls.asStateFlow()
 
     init {
         // Do not present new onboarding retroactively to users upgrading an existing account.
@@ -85,11 +88,76 @@ class AppPreferences(context: Context, private val gson: Gson) {
             prefs.edit().putBoolean(REMOTE_IMAGES, value).apply()
         }
 
+    fun setSwipeControl(mailbox: MailboxKind, direction: SwipeDirection, control: SwipeControl) {
+        if (mailbox !in ConfigurableSwipeMailboxes || control !in availableSwipeControls(mailbox)) return
+        val current = _mailboxSwipeControls.value[mailbox] ?: defaultSwipeControls(mailbox)
+        val updated = when (direction) {
+            SwipeDirection.StartToEnd -> current.copy(
+                startToEnd = control,
+                endToStart = if (control != SwipeControl.None && current.endToStart == control) {
+                    SwipeControl.None
+                } else {
+                    current.endToStart
+                }
+            )
+            SwipeDirection.EndToStart -> current.copy(
+                startToEnd = if (control != SwipeControl.None && current.startToEnd == control) {
+                    SwipeControl.None
+                } else {
+                    current.startToEnd
+                },
+                endToStart = control
+            )
+        }
+        storeSwipeControls(mailbox, updated)
+        _mailboxSwipeControls.value = _mailboxSwipeControls.value + (mailbox to updated)
+    }
+
+    fun resetSwipeControls() {
+        val defaults = ConfigurableSwipeMailboxes.associateWith(::defaultSwipeControls)
+        prefs.edit().apply {
+            ConfigurableSwipeMailboxes.forEach { mailbox ->
+                remove(swipeKey(mailbox, SwipeDirection.StartToEnd))
+                remove(swipeKey(mailbox, SwipeDirection.EndToStart))
+            }
+        }.apply()
+        _mailboxSwipeControls.value = defaults
+    }
+
+    private fun loadMailboxSwipeControls(): Map<MailboxKind, MailboxSwipeControls> =
+        ConfigurableSwipeMailboxes.associateWith { mailbox ->
+            val defaults = defaultSwipeControls(mailbox)
+            MailboxSwipeControls(
+                startToEnd = storedSwipeControl(mailbox, SwipeDirection.StartToEnd, defaults.startToEnd),
+                endToStart = storedSwipeControl(mailbox, SwipeDirection.EndToStart, defaults.endToStart)
+            )
+        }
+
+    private fun storedSwipeControl(
+        mailbox: MailboxKind,
+        direction: SwipeDirection,
+        fallback: SwipeControl
+    ): SwipeControl = prefs.getString(swipeKey(mailbox, direction), null)
+        ?.let { stored -> SwipeControl.entries.firstOrNull { it.name == stored } }
+        ?.takeIf { it in availableSwipeControls(mailbox) }
+        ?: fallback
+
+    private fun storeSwipeControls(mailbox: MailboxKind, controls: MailboxSwipeControls) {
+        prefs.edit()
+            .putString(swipeKey(mailbox, SwipeDirection.StartToEnd), controls.startToEnd.name)
+            .putString(swipeKey(mailbox, SwipeDirection.EndToStart), controls.endToStart.name)
+            .apply()
+    }
+
+    private fun swipeKey(mailbox: MailboxKind, direction: SwipeDirection): String =
+        "quickinbox.swipe.${mailbox.apiValue}.${direction.name}"
+
     fun clear() {
         prefs.edit().clear().apply()
         _themeId.value = DEFAULT_THEME
         _mailboxNavigationStyle.value = MailboxNavigationStyle.Legacy
         _navigationPromptPending.value = true
+        _mailboxSwipeControls.value = ConfigurableSwipeMailboxes.associateWith(::defaultSwipeControls)
     }
 
     companion object {

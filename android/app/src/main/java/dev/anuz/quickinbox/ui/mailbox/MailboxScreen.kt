@@ -110,6 +110,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -125,12 +126,16 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.anuz.quickinbox.R
 import dev.anuz.quickinbox.data.MailboxNavigationStyle
+import dev.anuz.quickinbox.data.MailboxSwipeControls
+import dev.anuz.quickinbox.data.SwipeControl
+import dev.anuz.quickinbox.data.defaultSwipeControls
 import dev.anuz.quickinbox.domain.MailAction
 import dev.anuz.quickinbox.domain.MailboxKind
 import dev.anuz.quickinbox.domain.ThreadSummary
 import dev.anuz.quickinbox.domain.mailboxRelativeLabel
 import dev.anuz.quickinbox.ui.components.Pressable
 import dev.anuz.quickinbox.ui.components.SenderTile
+import dev.anuz.quickinbox.ui.components.SwipeControlIcon
 import dev.anuz.quickinbox.ui.components.rememberQuickInboxHaptics
 import dev.anuz.quickinbox.ui.theme.LocalQuickInboxDarkTheme
 import dev.anuz.quickinbox.ui.theme.QuickInboxMotion
@@ -142,6 +147,7 @@ import kotlinx.coroutines.launch
 fun MailboxScreen(
     state: MailboxUiState,
     navigationStyle: MailboxNavigationStyle,
+    swipeControls: Map<MailboxKind, MailboxSwipeControls>,
     onSelectMailbox: (MailboxKind) -> Unit,
     onSearchChange: (String) -> Unit,
     onToggleUnread: () -> Unit,
@@ -160,6 +166,7 @@ fun MailboxScreen(
     val scope = rememberCoroutineScope()
     var selectedIds by remember { mutableStateOf(emptySet<String>()) }
     var actionTargets by remember { mutableStateOf<List<ThreadSummary>?>(null) }
+    var pendingSwipeDelete by remember { mutableStateOf<ThreadSummary?>(null) }
     var lastPrimaryMailbox by remember { mutableStateOf(MailboxKind.Inbox) }
     var moreExpanded by remember { mutableStateOf(false) }
     val selectedThreads = state.threads.filter { it.id in selectedIds }
@@ -303,6 +310,7 @@ fun MailboxScreen(
                             SwipeableMailThreadItem(
                                 thread = thread,
                                 mailbox = state.mailbox,
+                                controls = swipeControls[state.mailbox] ?: defaultSwipeControls(state.mailbox),
                                 first = index == 0,
                                 last = index == state.threads.lastIndex,
                                 selected = thread.id in selectedIds,
@@ -324,7 +332,11 @@ fun MailboxScreen(
                                 },
                                 onSwipeAction = {
                                     haptics.confirm()
-                                    perform(it, listOf(thread))
+                                    if (it == MailAction.Delete) {
+                                        pendingSwipeDelete = thread
+                                    } else {
+                                        perform(it, listOf(thread))
+                                    }
                                 },
                                 onStar = {
                                     perform(
@@ -446,6 +458,25 @@ fun MailboxScreen(
             mailbox = state.mailbox,
             onDismiss = { actionTargets = null },
             onAction = { perform(it, targets) }
+        )
+    }
+    pendingSwipeDelete?.let { thread ->
+        AlertDialog(
+            onDismissRequest = { pendingSwipeDelete = null },
+            icon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
+            title = { Text("Delete forever?") },
+            text = { Text("This conversation will be permanently deleted. This action cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingSwipeDelete = null
+                    perform(MailAction.Delete, listOf(thread))
+                }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingSwipeDelete = null }) { Text("Cancel") }
+            }
         )
     }
 }
@@ -830,6 +861,7 @@ private fun SelectionHeader(
 private fun SwipeableMailThreadItem(
     thread: ThreadSummary,
     mailbox: MailboxKind,
+    controls: MailboxSwipeControls,
     first: Boolean,
     last: Boolean,
     selected: Boolean,
@@ -840,8 +872,8 @@ private fun SwipeableMailThreadItem(
     onSwipeAction: (MailAction) -> Unit,
     onStar: () -> Unit
 ) {
-    val startAction = mailbox.startSwipeAction(thread)
-    val endAction = mailbox.endSwipeAction()
+    val startAction = controls.startToEnd.toThreadSwipeAction(thread)
+    val endAction = controls.endToStart.toThreadSwipeAction(thread)
     val swipeEnabled = !selectionActive && !working
     val currentStartAction = rememberUpdatedState(startAction)
     val currentEndAction = rememberUpdatedState(endAction)
@@ -850,12 +882,13 @@ private fun SwipeableMailThreadItem(
         confirmValueChange = { value ->
             val action = when (value) {
                 SwipeToDismissBoxValue.StartToEnd -> currentStartAction.value?.action
-                SwipeToDismissBoxValue.EndToStart -> currentEndAction.value.action
+                SwipeToDismissBoxValue.EndToStart -> currentEndAction.value?.action
                 SwipeToDismissBoxValue.Settled -> null
             }
             if (action != null) currentOnSwipeAction.value(action)
             false
-        }
+        },
+        positionalThreshold = { distance -> distance * 0.5f }
     )
 
     SwipeToDismissBox(
@@ -869,12 +902,13 @@ private fun SwipeableMailThreadItem(
             SwipeActionBackground(
                 action = swipeAction,
                 direction = dismissState.dismissDirection,
+                progress = dismissState.progress,
                 first = first,
                 last = last
             )
         },
         enableDismissFromStartToEnd = swipeEnabled && startAction != null,
-        enableDismissFromEndToStart = swipeEnabled
+        enableDismissFromEndToStart = swipeEnabled && endAction != null
     ) {
         MailThreadItem(
             thread = thread,
@@ -892,48 +926,52 @@ private fun SwipeableMailThreadItem(
 }
 
 private data class ThreadSwipeAction(
+    val control: SwipeControl,
     val action: MailAction,
     val label: String,
-    val icon: ImageVector,
     val destructive: Boolean = false
 )
 
-private fun MailboxKind.startSwipeAction(thread: ThreadSummary): ThreadSwipeAction? =
-    when (this) {
-        MailboxKind.Drafts, MailboxKind.Trash -> null
-        else -> if (thread.isRead) {
-            ThreadSwipeAction(MailAction.Unread, "Mark unread", Icons.Rounded.MarkEmailUnread)
-        } else {
-            ThreadSwipeAction(MailAction.Read, "Mark read", Icons.Rounded.MarkEmailRead)
-        }
+private fun SwipeControl.toThreadSwipeAction(thread: ThreadSummary): ThreadSwipeAction? {
+    val action = resolve(thread) ?: return null
+    val label = when (action) {
+        MailAction.Read -> "Mark read"
+        MailAction.Unread -> "Mark unread"
+        MailAction.Star -> "Star"
+        MailAction.Unstar -> "Unstar"
+        MailAction.Archive -> "Archive"
+        MailAction.Unarchive -> "Move to inbox"
+        MailAction.Trash -> "Move to trash"
+        MailAction.Restore -> "Restore"
+        MailAction.Delete -> "Delete forever"
+        else -> title
     }
-
-private fun MailboxKind.endSwipeAction(): ThreadSwipeAction =
-    when (this) {
-        MailboxKind.Inbox ->
-            ThreadSwipeAction(MailAction.Archive, "Archive", Icons.Rounded.Archive)
-        MailboxKind.Archive ->
-            ThreadSwipeAction(MailAction.Unarchive, "Move to inbox", Icons.Rounded.Unarchive)
-        MailboxKind.Trash ->
-            ThreadSwipeAction(MailAction.Restore, "Restore", Icons.Rounded.RestoreFromTrash)
-        MailboxKind.Starred, MailboxKind.Drafts, MailboxKind.Sent ->
-            ThreadSwipeAction(MailAction.Trash, "Trash", Icons.Rounded.Delete, destructive = true)
-    }
+    return ThreadSwipeAction(
+        control = this,
+        action = action,
+        label = label,
+        destructive = action == MailAction.Trash || action == MailAction.Delete
+    )
+}
 
 @Composable
 private fun SwipeActionBackground(
     action: ThreadSwipeAction?,
     direction: SwipeToDismissBoxValue,
+    progress: Float,
     first: Boolean,
     last: Boolean
 ) {
-    val backgroundColor by animateColorAsState(
-        targetValue = when {
-            action == null -> Color.Transparent
-            action.destructive -> MaterialTheme.colorScheme.errorContainer
-            else -> MaterialTheme.colorScheme.primaryContainer
-        },
-        label = "swipe-action-background"
+    val revealedProgress = progress.coerceIn(0f, 1f)
+    val targetBackgroundColor = when {
+        action == null -> MaterialTheme.colorScheme.surfaceContainer
+        action.destructive -> MaterialTheme.colorScheme.errorContainer
+        else -> MaterialTheme.colorScheme.primaryContainer
+    }
+    val backgroundColor = lerp(
+        MaterialTheme.colorScheme.surfaceContainer,
+        targetBackgroundColor,
+        revealedProgress
     )
     val contentColor = when {
         action == null -> Color.Transparent
@@ -944,6 +982,7 @@ private fun SwipeActionBackground(
         SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
         else -> Alignment.CenterStart
     }
+    val animationProgress = (revealedProgress / 0.4f).coerceIn(0f, 1f)
 
     Surface(
         modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
@@ -956,18 +995,16 @@ private fun SwipeActionBackground(
         color = backgroundColor
     ) {
         if (action != null) {
-            Row(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
-                horizontalArrangement = if (alignment == Alignment.CenterEnd) Arrangement.End else Arrangement.Start,
-                verticalAlignment = Alignment.CenterVertically
+            Box(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp),
+                contentAlignment = alignment
             ) {
-                Icon(action.icon, contentDescription = null, tint = contentColor)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = action.label,
+                SwipeControlIcon(
+                    control = action.control,
+                    progress = animationProgress,
                     color = contentColor,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold
+                    modifier = Modifier.size(32.dp),
+                    resolvedAction = action.action
                 )
             }
         }

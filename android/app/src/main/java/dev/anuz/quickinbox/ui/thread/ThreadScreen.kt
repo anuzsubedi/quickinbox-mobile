@@ -478,10 +478,22 @@ private fun ThreadMessageCard(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(sender, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            text = sender,
+                            modifier = Modifier.weight(1f),
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                         if (time.isNotBlank()) {
                             Spacer(Modifier.width(6.dp))
-                            Text(time, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                text = time,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                     if (expanded) {
@@ -509,9 +521,6 @@ private fun ThreadMessageCard(
                     }
                 }
                 if (expanded) {
-                    IconButton(onClick = onReply) {
-                        Icon(Icons.AutoMirrored.Outlined.Reply, contentDescription = "Reply")
-                    }
                     Box {
                         IconButton(onClick = { menuExpanded = true }) {
                             Icon(Icons.Rounded.MoreVert, contentDescription = "Message actions")

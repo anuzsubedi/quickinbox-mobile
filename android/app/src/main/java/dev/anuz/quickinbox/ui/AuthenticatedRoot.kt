@@ -177,6 +177,7 @@ fun AuthenticatedRoot(
     )
     val mailboxState by mailboxViewModel.state.collectAsStateWithLifecycle()
     val mailboxNavigationStyle by container.preferences.mailboxNavigationStyle.collectAsStateWithLifecycle()
+    val mailboxSwipeControls by container.preferences.mailboxSwipeControls.collectAsStateWithLifecycle()
     val navigationPromptPending by container.preferences.navigationPromptPending.collectAsStateWithLifecycle()
 
     LaunchedEffect(user.id, mailboxRefresh) {
@@ -193,6 +194,7 @@ fun AuthenticatedRoot(
             AuthDestination.Mailbox -> MailboxScreen(
                 state = mailboxState,
                 navigationStyle = mailboxNavigationStyle,
+                swipeControls = mailboxSwipeControls,
                 onSelectMailbox = mailboxViewModel::selectMailbox,
                 onSearchChange = mailboxViewModel::onSearchChange,
                 onToggleUnread = mailboxViewModel::toggleUnreadOnly,

@@ -23,6 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
@@ -40,9 +41,16 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import dev.anuz.quickinbox.data.AppContainer
+import dev.anuz.quickinbox.data.ConfigurableSwipeMailboxes
+import dev.anuz.quickinbox.data.MailboxSwipeControls
 import dev.anuz.quickinbox.data.MailboxNavigationStyle
+import dev.anuz.quickinbox.data.SwipeControl
+import dev.anuz.quickinbox.data.SwipeDirection
+import dev.anuz.quickinbox.data.availableSwipeControls
+import dev.anuz.quickinbox.data.defaultSwipeControls
 import dev.anuz.quickinbox.domain.DeviceSession
 import dev.anuz.quickinbox.domain.MailAddress
+import dev.anuz.quickinbox.domain.MailboxKind
 import dev.anuz.quickinbox.domain.User
 import dev.anuz.quickinbox.ui.privacy.PrivacyScreen
 import dev.anuz.quickinbox.ui.theme.AppThemeOption
@@ -56,7 +64,7 @@ import kotlinx.coroutines.withContext
 
 private enum class SettingsPage(val title: String) {
     Overview("Settings"), Account("Account"), Appearance("Appearance"),
-    Composing("Composing"), Privacy("Privacy & Security"), Devices("Connected Devices"),
+    Composing("Composing"), SwipeActions("Swipe Actions"), Privacy("Privacy & Security"), Devices("Connected Devices"),
     Connection("Server & Session"), Support("Support"), PrivacyPolicy("Privacy Policy")
 }
 
@@ -86,6 +94,7 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val themeId by container.preferences.themeId.collectAsState()
     val mailboxNavigationStyle by container.preferences.mailboxNavigationStyle.collectAsState()
+    val mailboxSwipeControls by container.preferences.mailboxSwipeControls.collectAsState()
     val appLockState by container.appLock.state.collectAsState()
     val selectedId = container.preferences.selectedSendingAddressId
 
@@ -206,6 +215,12 @@ fun SettingsScreen(
                     fromOpen = false
                 },
                 onSignature = { if (it.length <= 1000) signature = it }
+            )
+            SettingsPage.SwipeActions -> SwipeActionsPage(
+                padding = padding,
+                controls = mailboxSwipeControls,
+                onControlChanged = container.preferences::setSwipeControl,
+                onRestoreDefaults = container.preferences::resetSwipeControls
             )
             SettingsPage.Privacy -> PrivacyPage(
                 padding = padding,
@@ -343,6 +358,9 @@ private fun SettingsOverview(
             }
         }
         SettingsGroup("Mail") {
+            DestinationRow("Swipe actions", "Customize Inbox, Archive, and Trash", Icons.Rounded.Swipe) {
+                onNavigate(SettingsPage.SwipeActions)
+            }
             DestinationRow("Composing", "Sender address and signature", Icons.Rounded.Edit) {
                 onNavigate(SettingsPage.Composing)
             }
@@ -373,6 +391,297 @@ private fun SettingsOverview(
         Spacer(Modifier.height(16.dp))
     }
 }
+
+private data class SwipeEditorTarget(
+    val mailbox: MailboxKind,
+    val direction: SwipeDirection
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeActionsPage(
+    padding: PaddingValues,
+    controls: Map<MailboxKind, MailboxSwipeControls>,
+    onControlChanged: (MailboxKind, SwipeDirection, SwipeControl) -> Unit,
+    onRestoreDefaults: () -> Unit
+) {
+    var editorTarget by remember { mutableStateOf<SwipeEditorTarget?>(null) }
+
+    PageBody(padding) {
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(
+                "Your swipe shortcuts",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "Choose what each direction does in every mailbox.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            ConfigurableSwipeMailboxes.forEach { mailbox ->
+                val mailboxControls = controls[mailbox] ?: defaultSwipeControls(mailbox)
+                SwipeMailboxCard(
+                    mailbox = mailbox,
+                    controls = mailboxControls,
+                    onEdit = { direction -> editorTarget = SwipeEditorTarget(mailbox, direction) }
+                )
+            }
+        }
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    Icons.Rounded.Security,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "Permanent delete always asks for confirmation.",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        TextButton(onClick = onRestoreDefaults, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            Icon(Icons.Rounded.Restore, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Restore defaults")
+        }
+    }
+
+    editorTarget?.let { target ->
+        val selected = (controls[target.mailbox] ?: defaultSwipeControls(target.mailbox)).control(target.direction)
+        ModalBottomSheet(
+            onDismissRequest = { editorTarget = null },
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            dragHandle = {
+                Box(
+                    Modifier.padding(top = 12.dp, bottom = 8.dp)
+                        .size(width = 36.dp, height = 4.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f))
+                )
+            }
+        ) {
+            Column(
+                Modifier.fillMaxWidth().navigationBarsPadding()
+                    .padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Column {
+                    availableSwipeControls(target.mailbox).forEach { control ->
+                        SwipeChoiceCard(
+                            control = control,
+                            selected = control == selected,
+                            onClick = {
+                                onControlChanged(target.mailbox, target.direction, control)
+                                editorTarget = null
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SwipeMailboxCard(
+    mailbox: MailboxKind,
+    controls: MailboxSwipeControls,
+    onEdit: (SwipeDirection) -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = settingsPanelColor(),
+        tonalElevation = 1.dp
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    Modifier.size(34.dp),
+                    RoundedCornerShape(11.dp),
+                    MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            when (mailbox) {
+                                MailboxKind.Inbox -> Icons.Rounded.Inbox
+                                MailboxKind.Archive -> Icons.Rounded.Archive
+                                MailboxKind.Trash -> Icons.Rounded.DeleteOutline
+                                else -> Icons.Rounded.Folder
+                            },
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+                Text(
+                    mailbox.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                SwipeDirectionTile(
+                    label = "RIGHT",
+                    directionIcon = Icons.AutoMirrored.Rounded.ArrowForward,
+                    control = controls.startToEnd,
+                    onClick = { onEdit(SwipeDirection.StartToEnd) },
+                    modifier = Modifier.weight(1f)
+                )
+                SwipeDirectionTile(
+                    label = "LEFT",
+                    directionIcon = Icons.AutoMirrored.Rounded.ArrowBack,
+                    control = controls.endToStart,
+                    onClick = { onEdit(SwipeDirection.EndToStart) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SwipeDirectionTile(
+    label: String,
+    directionIcon: ImageVector,
+    control: SwipeControl,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val destructive = control == SwipeControl.Trash || control == SwipeControl.Delete
+    val accent = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    val shape = RoundedCornerShape(16.dp)
+    Surface(
+        modifier = modifier.clip(shape).clickable(onClick = onClick),
+        shape = shape,
+        color = if (destructive) {
+            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.52f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.16f))
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(directionIcon, contentDescription = null, modifier = Modifier.size(16.dp), tint = accent)
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = accent,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    control.title,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SwipeChoiceCard(
+    control: SwipeControl,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val destructive = control == SwipeControl.Trash || control == SwipeControl.Delete
+    val selectionColor = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    val shape = RoundedCornerShape(18.dp)
+    Surface(
+        modifier = modifier.clip(shape).clickable(onClick = onClick),
+        shape = shape,
+        color = if (selected) {
+            if (destructive) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
+        } else {
+            Color.Transparent
+        }
+    ) {
+        Row(
+            Modifier.fillMaxWidth().defaultMinSize(minHeight = 68.dp).padding(horizontal = 16.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    control.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    control.settingsDescription,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (selected && destructive) {
+                        MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.72f)
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            RadioButton(
+                selected = selected,
+                onClick = null,
+                colors = RadioButtonDefaults.colors(selectedColor = selectionColor)
+            )
+        }
+    }
+}
+
+private val SwipeControl.settingsDescription: String
+    get() = when (this) {
+        SwipeControl.None -> "No action for this direction"
+        SwipeControl.ToggleRead -> "Switch between read and unread"
+        SwipeControl.ToggleStar -> "Add or remove the star"
+        SwipeControl.Archive -> "Remove from the inbox"
+        SwipeControl.MoveToInbox -> "Return to the inbox"
+        SwipeControl.Trash -> "Move to the trash folder"
+        SwipeControl.Restore -> "Return to its previous mailbox"
+        SwipeControl.Delete -> "Permanently remove after confirmation"
+    }
 
 @Composable
 private fun AccountCard(user: User, onClick: (() -> Unit)?) {
