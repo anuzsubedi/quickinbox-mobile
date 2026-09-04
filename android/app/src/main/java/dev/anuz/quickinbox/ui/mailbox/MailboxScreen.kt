@@ -441,7 +441,7 @@ fun MailboxScreen(
             drawerState = drawerState,
             gesturesEnabled = !selectionActive,
             drawerContent = {
-                LegacyMailboxDrawer(
+                MailboxDrawer(
                     selected = state.mailbox,
                     onSelect = { kind ->
                         onSelectMailbox(kind)
@@ -493,54 +493,6 @@ fun MailboxScreen(
                 TextButton(onClick = { pendingSwipeDelete = null }) { Text("Cancel") }
             }
         )
-    }
-}
-
-@Composable
-private fun LegacyMailboxDrawer(
-    selected: MailboxKind,
-    onSelect: (MailboxKind) -> Unit,
-    onSettings: () -> Unit
-) {
-    ModalDrawerSheet {
-        Column(Modifier.fillMaxHeight().padding(vertical = 12.dp)) {
-            Row(
-                modifier = Modifier.padding(horizontal = 28.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.ic_quickinbox),
-                    contentDescription = null,
-                    modifier = Modifier.size(40.dp)
-                )
-                Spacer(Modifier.width(10.dp))
-                Text("QuickInbox", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            }
-            Text(
-                "Mailboxes",
-                modifier = Modifier.padding(horizontal = 28.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            MailboxKind.entries.forEach { kind ->
-                NavigationDrawerItem(
-                    selected = kind == selected,
-                    onClick = { onSelect(kind) },
-                    icon = { Icon(kind.icon, contentDescription = null) },
-                    label = { Text(kind.title) },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            HorizontalDivider(Modifier.padding(horizontal = 28.dp, vertical = 8.dp))
-            NavigationDrawerItem(
-                selected = false,
-                onClick = onSettings,
-                icon = { Icon(Icons.Rounded.Settings, contentDescription = null) },
-                label = { Text("Settings") },
-                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-            )
-        }
     }
 }
 
