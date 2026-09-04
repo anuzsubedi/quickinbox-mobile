@@ -356,7 +356,7 @@ fun MailboxScreen(
 
         if (isNativeNavigation && !selectionActive) {
             val fabBottomInset by animateDpAsState(
-                targetValue = if (inOverflow) 16.dp else DockHeight + 28.dp + 16.dp,
+                targetValue = if (inOverflow) 16.dp else DockHeight + DockVerticalPadding * 2 + 16.dp,
                 animationSpec = tween(
                     if (inOverflow) QuickInboxMotion.DurationShort else QuickInboxMotion.DurationMedium,
                     easing = QuickInboxMotion.Decelerate
@@ -529,7 +529,7 @@ private fun ComposeFab(elevation: Dp, onClick: () -> Unit) {
 }
 
 /**
- * Occupies the corner FAB slot while viewing an overflow mailbox (Archive, Trash, ...) —
+ * Occupies the corner FAB slot while viewing an overflow mailbox (Drafts, Trash) —
  * the same spot and color as Compose, just swapped to a close affordance so leaving the
  * mailbox reads as dismissing it rather than a separate, disconnected control.
  */
