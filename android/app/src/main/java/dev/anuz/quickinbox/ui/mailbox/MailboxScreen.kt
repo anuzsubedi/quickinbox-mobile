@@ -969,7 +969,7 @@ private fun MailThreadItem(
                     onClick = onClick,
                     onLongClick = onLongClick
                 )
-                .padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+                .padding(start = 16.dp, end = if (selectionActive) 16.dp else 8.dp, top = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (selected) {
@@ -1066,7 +1066,7 @@ private fun MailThreadItem(
                 working -> Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 }
-                selectionActive -> Spacer(Modifier.size(48.dp))
+                selectionActive -> Unit
                 else -> IconButton(onClick = onStar) {
                     Icon(
                         if (thread.isStarred) Icons.Rounded.Star else Icons.Outlined.StarOutline,
