@@ -165,7 +165,7 @@ fun MailboxScreen(
     val drawerState = androidx.compose.material3.rememberDrawerState(androidx.compose.material3.DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var selectedIds by remember { mutableStateOf(emptySet<String>()) }
-    var actionTargets by remember { mutableStateOf<List<ThreadSummary>?>(null) }
+    var pendingSelectionDelete by remember { mutableStateOf<List<ThreadSummary>?>(null) }
     var pendingSwipeDelete by remember { mutableStateOf<ThreadSummary?>(null) }
     var lastPrimaryMailbox by remember { mutableStateOf(MailboxKind.Inbox) }
     var moreExpanded by remember { mutableStateOf(false) }
@@ -202,7 +202,7 @@ fun MailboxScreen(
         if (targets.isEmpty()) return
         onAction(action, targets)
         selectedIds = emptySet()
-        actionTargets = null
+        pendingSelectionDelete = null
     }
 
     val inOverflow = isNativeNavigation && state.mailbox in OverflowMailboxes
@@ -223,6 +223,22 @@ fun MailboxScreen(
             }
         },
         bottomBar = {
+            if (selectionActive) {
+                SelectionDock(
+                    selected = selectedThreads,
+                    allSelected = selectedThreads.size == state.threads.size,
+                    mailbox = state.mailbox,
+                    onToggleAll = {
+                        haptics.selectionChanged()
+                        selectedIds = if (selectedThreads.size == state.threads.size) emptySet()
+                        else state.threads.mapTo(mutableSetOf()) { it.id }
+                    },
+                    onAction = {
+                        if (it == MailAction.Delete) pendingSelectionDelete = selectedThreads
+                        else perform(it, selectedThreads)
+                    }
+                )
+            }
             AnimatedVisibility(
                 visible = isNativeNavigation && !selectionActive && !inOverflow,
                 enter = fadeIn(tween(QuickInboxMotion.DurationMedium, easing = QuickInboxMotion.Decelerate)) +
@@ -263,17 +279,8 @@ fun MailboxScreen(
                 ) { selecting ->
                     if (selecting) {
                         SelectionHeader(
-                            selected = selectedThreads,
-                            allThreads = state.threads,
-                            mailbox = state.mailbox,
-                            onClose = { selectedIds = emptySet() },
-                            onToggleAll = {
-                                haptics.selectionChanged()
-                                selectedIds = if (selectedIds.size == state.threads.size) emptySet()
-                                else state.threads.mapTo(mutableSetOf()) { it.id }
-                            },
-                            onAction = { perform(it, selectedThreads) },
-                            onMore = { actionTargets = selectedThreads }
+                            selectedCount = selectedThreads.size,
+                            onClose = { selectedIds = emptySet() }
                         )
                     } else {
                         MailboxControls(
@@ -452,12 +459,20 @@ fun MailboxScreen(
         )
     }
 
-    actionTargets?.let { targets ->
-        ConversationActionsSheet(
-            targets = targets,
-            mailbox = state.mailbox,
-            onDismiss = { actionTargets = null },
-            onAction = { perform(it, targets) }
+    pendingSelectionDelete?.let { targets ->
+        AlertDialog(
+            onDismissRequest = { pendingSelectionDelete = null },
+            icon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
+            title = { Text(if (targets.size == 1) "Delete forever?" else "Delete ${targets.size} conversations?") },
+            text = { Text("This action cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = { perform(MailAction.Delete, targets) }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingSelectionDelete = null }) { Text("Cancel") }
+            }
         )
     }
     pendingSwipeDelete?.let { thread ->
@@ -795,69 +810,6 @@ private fun UnreadToggle(selected: Boolean, onClick: () -> Unit) {
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-private fun SelectionHeader(
-    selected: List<ThreadSummary>,
-    allThreads: List<ThreadSummary>,
-    mailbox: MailboxKind,
-    onClose: () -> Unit,
-    onToggleAll: () -> Unit,
-    onAction: (MailAction) -> Unit,
-    onMore: () -> Unit
-) {
-    val allRead = selected.all { it.isRead }
-    val allSelected = selected.size == allThreads.size && allThreads.isNotEmpty()
-    Column(Modifier.background(MaterialTheme.colorScheme.surfaceContainer)) {
-        TopAppBar(
-            navigationIcon = {
-                IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Clear selection") }
-            },
-            title = { Text(selected.size.toString(), fontWeight = FontWeight.SemiBold) },
-            actions = {
-                when (mailbox) {
-                    MailboxKind.Archive -> IconButton(onClick = { onAction(MailAction.Unarchive) }) {
-                        Icon(Icons.Rounded.Unarchive, contentDescription = "Move to inbox")
-                    }
-                    MailboxKind.Trash -> IconButton(onClick = { onAction(MailAction.Restore) }) {
-                        Icon(Icons.Rounded.RestoreFromTrash, contentDescription = "Restore")
-                    }
-                    MailboxKind.Drafts -> Unit
-                    else -> IconButton(onClick = { onAction(MailAction.Archive) }) {
-                        Icon(Icons.Rounded.Archive, contentDescription = "Archive")
-                    }
-                }
-                if (mailbox != MailboxKind.Trash) {
-                    IconButton(onClick = { onAction(MailAction.Trash) }) {
-                        Icon(Icons.Rounded.Delete, contentDescription = "Move to trash")
-                    }
-                }
-                IconButton(onClick = { onAction(if (allRead) MailAction.Unread else MailAction.Read) }) {
-                    Icon(
-                        if (allRead) Icons.Outlined.MarkEmailUnread else Icons.Rounded.MarkEmailRead,
-                        contentDescription = if (allRead) "Mark as unread" else "Mark as read"
-                    )
-                }
-                IconButton(onClick = onMore) { Icon(Icons.Rounded.MoreVert, contentDescription = "More actions") }
-            },
-            windowInsets = WindowInsets(0, 0, 0, 0),
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onToggleAll).padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Checkbox(checked = allSelected, onCheckedChange = { onToggleAll() })
-            Spacer(Modifier.width(12.dp))
-            Text(
-                if (allSelected) "Clear all" else "Select all",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-    }
-}
-
-@Composable
-@OptIn(ExperimentalMaterial3Api::class)
 private fun SwipeableMailThreadItem(
     thread: ThreadSummary,
     mailbox: MailboxKind,
@@ -1168,90 +1120,6 @@ private fun MailThreadItem(
                 }
             }
         }
-    }
-}
-
-private data class ActionItem(
-    val action: MailAction,
-    val label: String,
-    val icon: ImageVector,
-    val destructive: Boolean = false
-)
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ConversationActionsSheet(
-    targets: List<ThreadSummary>,
-    mailbox: MailboxKind,
-    onDismiss: () -> Unit,
-    onAction: (MailAction) -> Unit
-) {
-    var confirmDelete by remember { mutableStateOf(false) }
-    val allRead = targets.all { it.isRead }
-    val allStarred = targets.all { it.isStarred }
-    val actions = buildList {
-        add(ActionItem(if (allRead) MailAction.Unread else MailAction.Read, if (allRead) "Mark as unread" else "Mark as read", if (allRead) Icons.Outlined.MarkEmailUnread else Icons.Rounded.MarkEmailRead))
-        add(ActionItem(if (allStarred) MailAction.Unstar else MailAction.Star, if (allStarred) "Remove star" else "Add star", if (allStarred) Icons.Outlined.StarOutline else Icons.Rounded.Star))
-        when {
-            mailbox == MailboxKind.Archive -> add(ActionItem(MailAction.Unarchive, "Move to inbox", Icons.Rounded.Unarchive))
-            mailbox != MailboxKind.Trash && mailbox != MailboxKind.Drafts -> add(ActionItem(MailAction.Archive, "Archive", Icons.Rounded.Archive))
-        }
-        if (mailbox == MailboxKind.Trash) {
-            add(ActionItem(MailAction.Restore, "Restore", Icons.Rounded.RestoreFromTrash))
-            add(ActionItem(MailAction.Delete, "Delete forever", Icons.Rounded.Delete, destructive = true))
-        } else {
-            add(ActionItem(MailAction.Trash, "Move to trash", Icons.Rounded.Delete))
-        }
-    }
-
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(bottom = 24.dp)) {
-            Text(
-                if (targets.size == 1) "Conversation actions" else "${targets.size} conversations",
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-            actions.forEach { item ->
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            item.label,
-                            color = if (item.destructive) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurface
-                        )
-                    },
-                    leadingContent = {
-                        Icon(
-                            item.icon,
-                            contentDescription = null,
-                            tint = if (item.destructive) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    },
-                    modifier = Modifier.clickable {
-                        if (item.action == MailAction.Delete) confirmDelete = true else onAction(item.action)
-                    }
-                )
-            }
-        }
-    }
-
-    if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            icon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
-            title = { Text(if (targets.size == 1) "Delete forever?" else "Delete ${targets.size} conversations?") },
-            text = { Text("This action cannot be undone.") },
-            confirmButton = {
-                TextButton(onClick = { onAction(MailAction.Delete) }) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
-            }
-        )
     }
 }
 
