@@ -1,5 +1,6 @@
 package dev.anuz.quickinbox.ui.thread
 
+import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -7,21 +8,9 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.gestures.stopScroll
-import androidx.compose.material.icons.rounded.MoreHoriz
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.snapshotFlow
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.layout.onSizeChanged
-import kotlinx.coroutines.launch
-import kotlin.math.abs
-
-import android.content.Intent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.stopScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,6 +41,7 @@ import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.MarkEmailRead
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.RestoreFromTrash
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Unarchive
@@ -61,9 +51,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -73,6 +65,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,6 +76,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.text.InlineTextContent
@@ -104,6 +101,8 @@ import dev.anuz.quickinbox.ui.components.SenderTile
 import dev.anuz.quickinbox.ui.compose.ComposeMode
 import dev.anuz.quickinbox.ui.theme.LocalQuickInboxDarkTheme
 import dev.anuz.quickinbox.ui.theme.QuickInboxMotion
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 import java.text.DateFormat
 import java.util.Calendar
 import java.util.Date
@@ -125,6 +124,26 @@ fun ThreadScreen(
     val latest = messages.lastOrNull()
     val subject = state.detail?.subject ?: summary?.subject ?: "Conversation"
     val actionsEnabled = state.actionInProgress == null
+    val readerScroll = rememberScrollState()
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    val edgeThreshold = with(density) { 32.dp.roundToPx() }
+    val collapseDistance = with(density) { 24.dp.roundToPx() }
+    var expandedAtScroll by remember { mutableStateOf<Int?>(null) }
+    var dockClearance by remember { mutableStateOf(96.dp) }
+    val showDock by remember(edgeThreshold) {
+        derivedStateOf {
+            expandedAtScroll != null || readerScroll.value <= edgeThreshold ||
+                readerScroll.maxValue - readerScroll.value <= edgeThreshold
+        }
+    }
+    LaunchedEffect(readerScroll, collapseDistance) {
+        snapshotFlow { readerScroll.value }.collect { position ->
+            expandedAtScroll?.let { anchor ->
+                if (abs(position - anchor) > collapseDistance) expandedAtScroll = null
+            }
+        }
+    }
     var menuExpanded by remember { mutableStateOf(false) }
     var confirmPermanentDelete by remember { mutableStateOf(false) }
 
@@ -228,85 +247,115 @@ fun ThreadScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
-        },
-        bottomBar = {
-            if (latest != null) {
-                ThreadActionDock(
-                    isArchived = state.isArchived,
-                    isTrashed = state.isTrashed,
-                    enabled = actionsEnabled,
-                    onReply = { replyTo(latest) },
-                    onReplyAll = { replyTo(latest, replyAll = true) },
-                    onForward = ::forwardAll,
-                    onArchive = { onAction(if (state.isArchived) MailAction.Unarchive else MailAction.Archive) },
-                    onTrash = { onAction(if (state.isTrashed) MailAction.Restore else MailAction.Trash) }
-                )
-            }
         }
     ) { padding ->
-        when {
-            state.isLoading && state.detail == null -> Box(
-                Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
-            ) { CircularProgressIndicator() }
-            state.errorMessage != null && state.detail == null -> Box(
-                Modifier.fillMaxSize().padding(padding).padding(32.dp),
-                contentAlignment = Alignment.Center
-            ) { Text(state.errorMessage, color = MaterialTheme.colorScheme.error) }
-            else -> Column(
-                Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
-            ) {
-                ThreadSubjectHeader(
-                    subject = subject,
-                    mailboxLabel = when {
-                        state.isTrashed -> "Trash"
-                        state.isArchived -> "Archive"
-                        else -> "Inbox"
-                    },
-                    isStarred = state.isStarred,
-                    starEnabled = actionsEnabled,
-                    onToggleStar = { onAction(if (state.isStarred) MailAction.Unstar else MailAction.Star) }
-                )
-                state.savedDataMessage?.let { message ->
-                    Row(
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (state.isRefreshing) {
-                            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-                        }
-                        Text(
-                            message,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                state.errorMessage?.let {
-                    Text(it, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.error)
-                }
-                if (messages.isNotEmpty()) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        messages.forEachIndexed { index, message ->
-                            ThreadMessageCard(
-                                message = message,
-                                first = index == 0,
-                                last = index == messages.lastIndex,
-                                initiallyExpanded = index == messages.lastIndex,
-                                showRemoteImagesByDefault = preferences.showRemoteImagesByDefault,
-                                downloadingIds = state.downloadingIds,
-                                onReply = { replyTo(message) },
-                                onForward = { forward(message) },
-                                onDownload = { onDownload(message, it) }
+        Box(Modifier.fillMaxSize()) {
+            when {
+                state.isLoading && state.detail == null -> Box(
+                    Modifier.fillMaxSize().padding(padding),
+                    contentAlignment = Alignment.Center
+                ) { CircularProgressIndicator() }
+                state.errorMessage != null && state.detail == null -> Box(
+                    Modifier.fillMaxSize().padding(padding).padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) { Text(state.errorMessage, color = MaterialTheme.colorScheme.error) }
+                else -> Column(
+                    Modifier.fillMaxSize().padding(padding).verticalScroll(readerScroll)
+                ) {
+                    ThreadSubjectHeader(
+                        subject = subject,
+                        mailboxLabel = when {
+                            state.isTrashed -> "Trash"
+                            state.isArchived -> "Archive"
+                            else -> "Inbox"
+                        },
+                        isStarred = state.isStarred,
+                        starEnabled = actionsEnabled,
+                        onToggleStar = { onAction(if (state.isStarred) MailAction.Unstar else MailAction.Star) }
+                    )
+                    state.savedDataMessage?.let { message ->
+                        Row(
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (state.isRefreshing) {
+                                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                            }
+                            Text(
+                                message,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
+                    state.errorMessage?.let {
+                        Text(it, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.error)
+                    }
+                    if (messages.isNotEmpty()) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            messages.forEachIndexed { index, message ->
+                                ThreadMessageCard(
+                                    message = message,
+                                    first = index == 0,
+                                    last = index == messages.lastIndex,
+                                    initiallyExpanded = index == messages.lastIndex,
+                                    showRemoteImagesByDefault = preferences.showRemoteImagesByDefault,
+                                    downloadingIds = state.downloadingIds,
+                                    onReply = { replyTo(message) },
+                                    onForward = { forward(message) },
+                                    onDownload = { onDownload(message, it) }
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(dockClearance))
                 }
-                Spacer(Modifier.height(24.dp))
+            }
+            if (latest != null) {
+                AnimatedVisibility(
+                    visible = showDock,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    enter = fadeIn(tween(180)) + slideInVertically(tween(220)) { it / 2 },
+                    exit = fadeOut(tween(120)) + slideOutVertically(tween(180)) { it / 2 }
+                ) {
+                    ThreadActionDock(
+                        modifier = Modifier.onSizeChanged { size ->
+                            dockClearance = with(density) { size.height.toDp() } + 16.dp
+                        },
+                        isArchived = state.isArchived,
+                        isTrashed = state.isTrashed,
+                        enabled = actionsEnabled,
+                        onReply = { replyTo(latest) },
+                        onReplyAll = { replyTo(latest, replyAll = true) },
+                        onForward = ::forwardAll,
+                        onArchive = { onAction(if (state.isArchived) MailAction.Unarchive else MailAction.Archive) },
+                        onTrash = { onAction(if (state.isTrashed) MailAction.Restore else MailAction.Trash) }
+                    )
+                }
+                AnimatedVisibility(
+                    visible = !showDock,
+                    modifier = Modifier.align(Alignment.BottomEnd)
+                        .navigationBarsPadding().padding(end = 16.dp, bottom = 16.dp),
+                    enter = fadeIn(tween(180)) + scaleIn(tween(220), initialScale = 0.8f),
+                    exit = fadeOut(tween(120)) + scaleOut(tween(120), targetScale = 0.8f)
+                ) {
+                    FloatingActionButton(
+                        onClick = {
+                            scope.launch {
+                                readerScroll.stopScroll()
+                                expandedAtScroll = readerScroll.value
+                            }
+                        },
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    ) {
+                        Icon(Icons.Rounded.MoreHoriz, contentDescription = "Show conversation actions")
+                    }
+                }
             }
         }
     }
