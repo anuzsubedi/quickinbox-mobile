@@ -173,10 +173,15 @@ fun MailboxScreen(
     val selectionActive = selectedThreads.isNotEmpty()
 
     BackHandler(enabled = selectionActive) { selectedIds = emptySet() }
-    LaunchedEffect(state.mailbox) {
+    LaunchedEffect(state.mailbox, state.searchText, state.unreadOnly) {
         selectedIds = emptySet()
+        pendingSelectionDelete = null
+        pendingSwipeDelete = null
         moreExpanded = false
         if (state.mailbox in PrimaryMailboxes) lastPrimaryMailbox = state.mailbox
+    }
+    LaunchedEffect(state.threads) {
+        selectedIds = selectedIds.intersect(state.threads.mapTo(mutableSetOf()) { it.id })
     }
     val isNativeNavigation = navigationStyle == MailboxNavigationStyle.Native
     BackHandler(enabled = isNativeNavigation && !selectionActive && state.mailbox in OverflowMailboxes) {

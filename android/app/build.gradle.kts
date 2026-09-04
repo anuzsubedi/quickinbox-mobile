@@ -81,6 +81,7 @@ dependencies {
     implementation(libs.androidx.biometric)
     implementation(libs.lottie.compose)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)

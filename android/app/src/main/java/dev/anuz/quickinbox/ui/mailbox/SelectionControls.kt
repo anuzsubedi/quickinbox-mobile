@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import dev.anuz.quickinbox.domain.MailAction
 import dev.anuz.quickinbox.domain.MailboxKind
 import dev.anuz.quickinbox.domain.ThreadSummary
+import dev.anuz.quickinbox.domain.selectionReadAction
 import dev.anuz.quickinbox.ui.components.rememberQuickInboxHaptics
 
 @Composable
@@ -58,7 +59,7 @@ internal fun SelectionDock(
     onToggleAll: () -> Unit,
     onAction: (MailAction) -> Unit
 ) {
-    val readAction = if (selected.all { it.isRead }) MailAction.Unread else MailAction.Read
+    val readAction = selectionReadAction(selected)
     val allStarred = selected.all { it.isStarred }
     Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 14.dp, vertical = 8.dp)) {
         Surface(

@@ -227,7 +227,9 @@ fun AuthenticatedRoot(
                     )
                 )
                 val threadState by threadViewModel.state.collectAsStateWithLifecycle()
-                LaunchedEffect(current.summary.id) { threadViewModel.load() }
+                LaunchedEffect(current.summary.id) {
+                    threadViewModel.load { detail -> mailboxViewModel.onThreadLoaded(current.summary, detail) }
+                }
                 ThreadScreen(
                     state = threadState,
                     summary = current.summary,
@@ -242,7 +244,10 @@ fun AuthenticatedRoot(
                         )
                     },
                     onAction = { action ->
-                        threadViewModel.perform(action, onMailboxMutation = { mailboxRefresh += 1 }, onExit = {
+                        threadViewModel.perform(action, onMailboxMutation = {
+                            mailboxViewModel.onThreadMutation(action, current.summary)
+                            mailboxViewModel.refresh()
+                        }, onExit = {
                             destination = AuthDestination.Mailbox
                         })
                     },

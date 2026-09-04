@@ -11,8 +11,11 @@ import dev.anuz.quickinbox.domain.MailAction
 import dev.anuz.quickinbox.domain.ThreadDetail
 import dev.anuz.quickinbox.domain.ThreadMessage
 import dev.anuz.quickinbox.domain.ThreadSummary
+import dev.anuz.quickinbox.domain.applying
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -51,7 +54,8 @@ class ThreadViewModel(
     summary: ThreadSummary?,
     private val cacheDirectory: File,
     private val userId: String,
-    private val cache: ThreadCache
+    private val cache: ThreadCache,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
     private val _state = MutableStateFlow(
         ThreadUiState(
@@ -62,9 +66,11 @@ class ThreadViewModel(
     )
     val state = _state.asStateFlow()
 
-    fun load() {
-        if (_state.value.isLoading || _state.value.isRefreshing) return
-        viewModelScope.launch {
+    private var loadJob: Job? = null
+
+    fun load(onLoaded: (ThreadDetail) -> Unit = {}) {
+        if (loadJob?.isActive == true || _state.value.actionInProgress != null) return
+        loadJob = viewModelScope.launch {
             val origin = api.credential?.origin
             _state.update {
                 it.copy(
@@ -75,7 +81,7 @@ class ThreadViewModel(
             }
             try {
                 if (_state.value.detail == null && origin != null) {
-                    val cached = withContext(Dispatchers.IO) {
+                    val cached = withContext(ioDispatcher) {
                         runCatching { cache.load(origin, userId, threadId) }.getOrNull()
                     }
                     if (cached != null) {
@@ -89,18 +95,34 @@ class ThreadViewModel(
                         }
                     }
                 }
-                val value = withContext(Dispatchers.IO) { api.thread(threadId) }
+                val value = withContext(ioDispatcher) { api.thread(threadId) }
+                // Persist the read action before publishing the opened conversation to the mailbox.
+                val opened = if (value.messages.any { !it.isRead }) {
+                    try {
+                        val response = withContext(ioDispatcher) {
+                            api.perform(MailAction.Read, listOf(value.messages.maxBy { it.createdAt ?: Date(0) }.id))
+                        }
+                        if (!response.ok) throw IllegalStateException("The server could not mark this conversation as read.")
+                        value.applying(MailAction.Read)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        _state.update { it.copy(errorMessage = error.message) }
+                        value
+                    }
+                } else value
                 _state.update {
-                    it.withDetail(value).copy(
+                    it.withDetail(opened).copy(
                         isLoading = false,
                         isRefreshing = false,
                         isShowingSavedData = false,
                         savedDataMessage = null
                     )
                 }
+                onLoaded(opened)
                 if (origin != null) {
-                    withContext(Dispatchers.IO) {
-                        runCatching { cache.save(value, origin, userId, threadId) }
+                    withContext(ioDispatcher) {
+                        runCatching { cache.save(opened, origin, userId, threadId) }
                     }
                 }
             } catch (error: CancellationException) {
@@ -127,17 +149,21 @@ class ThreadViewModel(
 
     fun perform(action: MailAction, onMailboxMutation: () -> Unit, onExit: (() -> Unit)? = null) {
         if (_state.value.actionInProgress != null) return
+        val pendingLoad = loadJob
+        _state.update { it.copy(actionInProgress = action, errorMessage = null) }
         viewModelScope.launch {
-            _state.update { it.copy(actionInProgress = action, errorMessage = null) }
             try {
+                // Finish any reader load before applying the user's newer action.
+                pendingLoad?.join()
                 val target = _state.value.actionTargetId.ifEmpty { threadId }
-                withContext(Dispatchers.IO) {
-                    if (action == MailAction.Delete) api.deletePermanently(target)
-                    else api.perform(action, listOf(target))
+                withContext(ioDispatcher) {
+                    val ok = if (action == MailAction.Delete) api.deletePermanently(target).ok
+                    else api.perform(action, listOf(target)).ok
+                    if (!ok) throw IllegalStateException("The server could not update this conversation.")
                 }
                 apply(action)
-                persistMutation(action)
                 onMailboxMutation()
+                persistMutation(action)
                 if (action == MailAction.Trash || action == MailAction.Delete || action == MailAction.Archive) {
                     onExit?.invoke()
                 }
@@ -156,7 +182,7 @@ class ThreadViewModel(
         viewModelScope.launch {
             _state.update { it.copy(downloadingIds = it.downloadingIds + attachment.id, errorMessage = null) }
             try {
-                val downloaded = withContext(Dispatchers.IO) {
+                val downloaded = withContext(ioDispatcher) {
                     api.downloadAttachment(message.id, attachment, File(cacheDirectory, "attachments"))
                 }
                 _state.update { it.copy(openedAttachment = downloaded) }
@@ -193,7 +219,7 @@ class ThreadViewModel(
 
     private suspend fun persistMutation(action: MailAction) {
         val origin = api.credential?.origin ?: return
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             if (action == MailAction.Delete) {
                 runCatching { cache.remove(origin, userId, threadId) }
             } else {
@@ -217,24 +243,7 @@ class ThreadViewModel(
             copy(detail = value)
         }
 
-    private fun ThreadDetail.applying(action: MailAction): ThreadDetail {
-        val now = Date()
-        return copy(
-            messages = messages.map { message ->
-                when (action) {
-                    MailAction.Read -> message.copy(isRead = true)
-                    MailAction.Unread -> message.copy(isRead = false)
-                    MailAction.Star -> message.copy(isStarred = true)
-                    MailAction.Unstar -> message.copy(isStarred = false)
-                    MailAction.Archive -> message.copy(archivedAt = message.archivedAt ?: now)
-                    MailAction.Unarchive -> message.copy(archivedAt = null)
-                    MailAction.Trash -> message.copy(deletedAt = message.deletedAt ?: now)
-                    MailAction.Restore -> message.copy(deletedAt = null)
-                    else -> message
-                }
-            }
-        )
-    }
+
 }
 
 class ThreadViewModelFactory(
