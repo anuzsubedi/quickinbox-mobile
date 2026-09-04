@@ -1,5 +1,24 @@
 package dev.anuz.quickinbox.ui.thread
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.gestures.stopScroll
+import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import kotlinx.coroutines.launch
+import kotlin.math.abs
+
 import android.content.Intent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
@@ -109,7 +128,7 @@ fun ThreadScreen(
     var menuExpanded by remember { mutableStateOf(false) }
     var confirmPermanentDelete by remember { mutableStateOf(false) }
 
-    fun replyTo(message: ThreadMessage) {
+    fun replyTo(message: ThreadMessage, replyAll: Boolean = false) {
         onCompose(
             ComposeMode.Reply(
                 messageId = message.id,
@@ -118,7 +137,8 @@ fun ThreadScreen(
                 recipientName = message.fromName.takeIf { message.direction == "inbound" },
                 fromAddressHint = if (message.direction == "inbound") message.toAddress else message.fromAddress,
                 originalTo = message.toAddress,
-                originalCc = message.ccAddress
+                originalCc = message.ccAddress,
+                replyAll = replyAll
             )
         )
     }
@@ -173,26 +193,12 @@ fun ThreadScreen(
                     }
                 },
                 actions = {
-                    if (!state.isTrashed) {
-                        IconButton(
-                            enabled = actionsEnabled,
-                            onClick = { onAction(if (state.isArchived) MailAction.Unarchive else MailAction.Archive) }
-                        ) {
-                            Icon(
-                                if (state.isArchived) Icons.Rounded.Unarchive else Icons.Rounded.Archive,
-                                contentDescription = if (state.isArchived) "Move to inbox" else "Archive"
-                            )
-                        }
-                        IconButton(enabled = actionsEnabled, onClick = { onAction(MailAction.Trash) }) {
-                            Icon(Icons.Rounded.Delete, contentDescription = "Move to trash")
-                        }
-                    } else {
-                        IconButton(enabled = actionsEnabled, onClick = { onAction(MailAction.Restore) }) {
-                            Icon(Icons.Rounded.RestoreFromTrash, contentDescription = "Restore")
-                        }
-                    }
                     IconButton(
                         enabled = actionsEnabled,
+                        colors = IconButtonDefaults.iconButtonColors(
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
                         onClick = { onAction(if (state.isRead) MailAction.Unread else MailAction.Read) }
                     ) {
                         Icon(
@@ -225,9 +231,15 @@ fun ThreadScreen(
         },
         bottomBar = {
             if (latest != null) {
-                ThreadReplyBar(
-                    onForwardAll = if (state.isTrashed) null else ::forwardAll,
-                    onReply = { replyTo(latest) }
+                ThreadActionDock(
+                    isArchived = state.isArchived,
+                    isTrashed = state.isTrashed,
+                    enabled = actionsEnabled,
+                    onReply = { replyTo(latest) },
+                    onReplyAll = { replyTo(latest, replyAll = true) },
+                    onForward = ::forwardAll,
+                    onArchive = { onAction(if (state.isArchived) MailAction.Unarchive else MailAction.Archive) },
+                    onTrash = { onAction(if (state.isTrashed) MailAction.Restore else MailAction.Trash) }
                 )
             }
         }
@@ -252,6 +264,7 @@ fun ThreadScreen(
                         else -> "Inbox"
                     },
                     isStarred = state.isStarred,
+                    starEnabled = actionsEnabled,
                     onToggleStar = { onAction(if (state.isStarred) MailAction.Unstar else MailAction.Star) }
                 )
                 state.savedDataMessage?.let { message ->
@@ -322,6 +335,7 @@ private fun ThreadSubjectHeader(
     subject: String,
     mailboxLabel: String,
     isStarred: Boolean,
+    starEnabled: Boolean,
     onToggleStar: () -> Unit
 ) {
     val labelChipId = "mailboxLabel"
@@ -372,52 +386,20 @@ private fun ThreadSubjectHeader(
             maxLines = 4,
             overflow = TextOverflow.Ellipsis
         )
-        IconButton(onClick = onToggleStar) {
+        val starTint = if (isStarred) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+        IconButton(
+            onClick = onToggleStar,
+            enabled = starEnabled,
+            colors = IconButtonDefaults.iconButtonColors(
+                contentColor = starTint,
+                disabledContentColor = starTint
+            )
+        ) {
             Icon(
                 if (isStarred) Icons.Rounded.Star else Icons.Outlined.StarOutline,
                 contentDescription = if (isStarred) "Remove star" else "Add star",
-                tint = if (isStarred) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                tint = starTint
             )
-        }
-    }
-}
-
-@Composable
-private fun ThreadReplyBar(onForwardAll: (() -> Unit)?, onReply: () -> Unit) {
-    Surface(
-        modifier = Modifier.navigationBarsPadding(),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 2.dp
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            if (onForwardAll != null) {
-                FilledTonalButton(
-                    onClick = onForwardAll,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp)
-                        .semantics { contentDescription = "Forward entire conversation" }
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Outlined.ReplyAll,
-                        contentDescription = null,
-                        modifier = Modifier.scale(scaleX = -1f, scaleY = 1f)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Forward")
-                }
-            }
-            Button(
-                onClick = onReply,
-                modifier = Modifier.weight(1f).height(52.dp)
-            ) {
-                Icon(Icons.AutoMirrored.Outlined.Reply, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Reply")
-            }
         }
     }
 }

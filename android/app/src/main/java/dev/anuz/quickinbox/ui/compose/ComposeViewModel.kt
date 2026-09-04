@@ -33,7 +33,8 @@ sealed class ComposeMode {
         val recipientName: String? = null,
         val fromAddressHint: String? = null,
         val originalTo: String = "",
-        val originalCc: String? = null
+        val originalCc: String? = null,
+        val replyAll: Boolean = false
     ) : ComposeMode()
     sealed class Forward : ComposeMode() {
         abstract val subject: String
@@ -117,10 +118,15 @@ class ComposeViewModel(
     private var didLoadAddresses = false
     private var didLoadDraft = false
 
+    private var replyRecipientsEdited = false
+
     val isReply: Boolean get() = mode is ComposeMode.Reply
 
     fun onTo(value: List<String>) = _state.update { it.copy(to = value, errorMessage = null) }
-    fun onCc(value: List<String>) = _state.update { it.copy(cc = value, errorMessage = null) }
+    fun onCc(value: List<String>) {
+        replyRecipientsEdited = true
+        _state.update { it.copy(cc = value, errorMessage = null) }
+    }
     fun onBcc(value: List<String>) = _state.update { it.copy(bcc = value, errorMessage = null) }
     fun onSubject(value: String) = _state.update { it.copy(subject = value, errorMessage = null) }
     fun onBody(value: String) = _state.update { it.copy(body = value, errorMessage = null) }
@@ -256,6 +262,7 @@ class ComposeViewModel(
                 }
                 state.copy(
                     addresses = loaded,
+                    cc = if (mode is ComposeMode.Reply && mode.replyAll && !replyRecipientsEdited) mode.replyAllCc(loaded.map { it.address }) else state.cc,
                     selectedFromAddressId = selected,
                     isLoadingAddresses = false,
                     errorMessage = if (loaded.isEmpty()) {
@@ -389,4 +396,15 @@ class ComposeViewModelFactory(
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
         ComposeViewModel(api, mode, preferences) as T
+}
+
+internal fun ComposeMode.Reply.replyAllCc(ownAddresses: List<String>): List<String> {
+    val self = (ownAddresses + listOfNotNull(fromAddressHint))
+        .map { dev.anuz.quickinbox.domain.EmailAddressPresentation.addressOnly(it).lowercase() }.toSet()
+    val primary = dev.anuz.quickinbox.domain.EmailAddressPresentation.addressOnly(recipient)
+    return (originalTo.split(',') + originalCc.orEmpty().split(','))
+        .map(dev.anuz.quickinbox.domain.EmailAddressPresentation::addressOnly)
+        .map(String::trim)
+        .filter { it.isNotEmpty() && it.lowercase() !in self && !it.equals(primary, true) }
+        .distinctBy(String::lowercase)
 }
