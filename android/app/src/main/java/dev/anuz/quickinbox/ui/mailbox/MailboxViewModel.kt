@@ -35,6 +35,7 @@ data class MailboxUiState(
     val mailbox: MailboxKind = MailboxKind.Inbox,
     val searchText: String = "",
     val unreadOnly: Boolean = false,
+    val starredOnly: Boolean = false,
     val threads: List<ThreadSummary> = emptyList(),
     val total: Int = 0,
     val currentPage: Int = 0,
@@ -98,11 +99,31 @@ class MailboxViewModel(
         }
     }
 
-    fun toggleUnreadOnly() {
+    fun toggleUnreadOnly() = updateFilters(unreadOnly = !_state.value.unreadOnly)
+
+    fun toggleStarredOnly() = updateFilters(starredOnly = !_state.value.starredOnly)
+
+    private fun updateFilters(
+        unreadOnly: Boolean = _state.value.unreadOnly,
+        starredOnly: Boolean = _state.value.starredOnly
+    ) {
         generation += 1
         searchJob?.cancel()
         prefetchJob?.cancel()
-        _state.update { it.copy(unreadOnly = !it.unreadOnly) }
+        _state.update {
+            it.copy(
+                unreadOnly = unreadOnly,
+                starredOnly = starredOnly,
+                threads = emptyList(),
+                total = 0,
+                currentPage = 0,
+                pageCount = 1,
+                isInitialLoading = true,
+                isAppending = false,
+                isShowingCachedData = false,
+                cachedAt = null
+            )
+        }
         viewModelScope.launch { reload(showInitialLoading = true) }
     }
 
@@ -125,7 +146,7 @@ class MailboxViewModel(
                 api.listThreads(
                     mailbox = snapshot.mailbox,
                     page = 1,
-                    filters = MailboxFilters(query = snapshot.searchText, unreadOnly = snapshot.unreadOnly)
+                    filters = MailboxFilters(query = snapshot.searchText, unreadOnly = snapshot.unreadOnly, starredOnly = snapshot.starredOnly)
                 )
             }
             if (current != generation) return
@@ -186,7 +207,7 @@ class MailboxViewModel(
                     api.listThreads(
                         mailbox = snapshot.mailbox,
                         page = snapshot.currentPage + 1,
-                        filters = MailboxFilters(query = snapshot.searchText, unreadOnly = snapshot.unreadOnly)
+                        filters = MailboxFilters(query = snapshot.searchText, unreadOnly = snapshot.unreadOnly, starredOnly = snapshot.starredOnly)
                     )
                 }
                 if (current != generation) return@launch
@@ -258,7 +279,7 @@ class MailboxViewModel(
             )
             when {
                 state.unreadOnly && updated.isRead -> state.without(current)
-                (state.mailbox == MailboxKind.Starred) && !updated.isStarred -> state.without(current)
+                (state.starredOnly || state.mailbox == MailboxKind.Starred) && !updated.isStarred -> state.without(current)
                 state.mailbox == MailboxKind.Inbox && updated.isArchived -> state.without(current)
                 state.mailbox == MailboxKind.Archive && !updated.isArchived -> state.without(current)
                 else -> state.replacing(updated)
@@ -281,7 +302,7 @@ class MailboxViewModel(
     private suspend fun restoreCachedInbox() {
         val snapshot = _state.value
         val current = generation
-        if (snapshot.mailbox != MailboxKind.Inbox || snapshot.searchText.isNotEmpty() || snapshot.unreadOnly) return
+        if (snapshot.mailbox != MailboxKind.Inbox || snapshot.searchText.isNotEmpty() || snapshot.unreadOnly || snapshot.starredOnly) return
         val origin = api.credential?.origin ?: return
         val cached = withContext(ioDispatcher) { cache.load(origin, userId) } ?: return
         if (cached.threads.isEmpty() || current != generation) return
@@ -303,6 +324,7 @@ class MailboxViewModel(
         if (snapshot.mailbox != MailboxKind.Inbox ||
             snapshot.searchText.isNotEmpty() ||
             snapshot.unreadOnly ||
+            snapshot.starredOnly ||
             snapshot.currentPage < 1
         ) return
         try {
@@ -382,7 +404,7 @@ class MailboxViewModel(
                 MailAction.Unread -> state.replacing(current.copy(isRead = false))
                 MailAction.Star -> state.replacing(current.copy(isStarred = true))
                 MailAction.Unstar ->
-                    if (state.mailbox == MailboxKind.Starred) state.without(current)
+                    if (state.starredOnly || state.mailbox == MailboxKind.Starred) state.without(current)
                     else state.replacing(current.copy(isStarred = false))
                 MailAction.Archive ->
                     if (state.mailbox == MailboxKind.Inbox) state.without(current)

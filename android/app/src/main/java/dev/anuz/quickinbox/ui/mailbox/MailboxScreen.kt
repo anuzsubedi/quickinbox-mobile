@@ -18,10 +18,7 @@ import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,8 +26,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -45,7 +40,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.outlined.MarkEmailUnread
 import androidx.compose.material.icons.outlined.StarOutline
@@ -58,32 +52,23 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Drafts
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Inbox
-import androidx.compose.material.icons.rounded.MarkEmailRead
 import androidx.compose.material.icons.rounded.MarkEmailUnread
 import androidx.compose.material.icons.rounded.Menu
-import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.RestoreFromTrash
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Unarchive
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.NavigationDrawerItemDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -94,25 +79,22 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -124,7 +106,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import dev.anuz.quickinbox.R
 import dev.anuz.quickinbox.data.MailboxNavigationStyle
 import dev.anuz.quickinbox.data.MailboxSwipeControls
 import dev.anuz.quickinbox.data.SwipeControl
@@ -151,6 +132,7 @@ fun MailboxScreen(
     onSelectMailbox: (MailboxKind) -> Unit,
     onSearchChange: (String) -> Unit,
     onToggleUnread: () -> Unit,
+    onToggleStarred: () -> Unit,
     onRefresh: () -> Unit,
     onLoadNext: () -> Unit,
     onOpenThread: (ThreadSummary) -> Unit,
@@ -173,7 +155,7 @@ fun MailboxScreen(
     val selectionActive = selectedThreads.isNotEmpty()
 
     BackHandler(enabled = selectionActive) { selectedIds = emptySet() }
-    LaunchedEffect(state.mailbox, state.searchText, state.unreadOnly) {
+    LaunchedEffect(state.mailbox, state.searchText, state.unreadOnly, state.starredOnly) {
         selectedIds = emptySet()
         pendingSelectionDelete = null
         pendingSwipeDelete = null
@@ -292,9 +274,11 @@ fun MailboxScreen(
                             mailbox = state.mailbox,
                             searchText = state.searchText,
                             unreadOnly = state.unreadOnly,
+                            starredOnly = state.starredOnly,
                             showUnreadFilter = state.mailbox == MailboxKind.Inbox,
                             onSearchChange = onSearchChange,
                             onToggleUnread = onToggleUnread,
+                            onToggleStarred = onToggleStarred,
                             showNavigationMenu = !isNativeNavigation,
                             onOpenNavigation = { scope.launch { drawerState.open() } },
                             onOpenSettings = onOpenSettings
@@ -312,7 +296,7 @@ fun MailboxScreen(
                 when {
                     state.isInitialLoading -> LoadingState()
                     state.initialError != null && state.threads.isEmpty() -> ErrorState(state.initialError, onRefresh)
-                    state.threads.isEmpty() -> EmptyState(state.mailbox)
+                    state.threads.isEmpty() -> EmptyState(state.mailbox, filtered = state.starredOnly || state.unreadOnly || state.searchText.isNotBlank())
                     else -> LazyColumn(
                         state = listState,
                         contentPadding = PaddingValues(bottom = 8.dp),
@@ -628,9 +612,11 @@ private fun MailboxControls(
     mailbox: MailboxKind,
     searchText: String,
     unreadOnly: Boolean,
+    starredOnly: Boolean,
     showUnreadFilter: Boolean,
     onSearchChange: (String) -> Unit,
     onToggleUnread: () -> Unit,
+    onToggleStarred: () -> Unit,
     showNavigationMenu: Boolean,
     onOpenNavigation: () -> Unit,
     onOpenSettings: () -> Unit
@@ -695,11 +681,28 @@ private fun MailboxControls(
             )
             Spacer(Modifier.weight(1f))
             if (showUnreadFilter) {
-                UnreadToggle(
+                FilterChip(
                     selected = unreadOnly,
-                    onClick = onToggleUnread
+                    onClick = onToggleUnread,
+                    label = { Text("Unread") },
+                    leadingIcon = {
+                        Icon(Icons.Rounded.MarkEmailUnread, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
                 )
+                Spacer(Modifier.width(8.dp))
             }
+            FilterChip(
+                selected = starredOnly,
+                onClick = onToggleStarred,
+                label = { Text("Starred") },
+                leadingIcon = {
+                    Icon(
+                        if (starredOnly) Icons.Rounded.Star else Icons.Outlined.StarOutline,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            )
         }
     }
 }
@@ -724,42 +727,6 @@ private fun SettingsButton(onClick: () -> Unit) {
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(22.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun UnreadToggle(selected: Boolean, onClick: () -> Unit) {
-    val containerColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-        label = "unread-toggle-container"
-    )
-    val contentColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-        label = "unread-toggle-content"
-    )
-
-    Pressable(
-        onClick = onClick,
-        role = Role.Checkbox,
-        onClickLabel = "Unread only",
-        checkedState = selected,
-        stateDescription = if (selected) "On" else "Off",
-        shape = CircleShape,
-        modifier = Modifier.size(36.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(containerColor),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                if (selected) Icons.Rounded.MarkEmailUnread else Icons.Outlined.MarkEmailUnread,
-                contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier.size(18.dp)
             )
         }
     }
@@ -1097,7 +1064,7 @@ private fun ErrorState(message: String, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun EmptyState(mailbox: MailboxKind) {
+private fun EmptyState(mailbox: MailboxKind, filtered: Boolean = false) {
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
@@ -1109,9 +1076,9 @@ private fun EmptyState(mailbox: MailboxKind) {
                 )
             }
             Spacer(Modifier.height(16.dp))
-            Text(mailbox.emptyTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(if (filtered) "No matching mail" else mailbox.emptyTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
-            Text(mailbox.emptyDescription, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (filtered) "Try changing your search or filters." else mailbox.emptyDescription, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

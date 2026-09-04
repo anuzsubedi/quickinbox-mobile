@@ -224,6 +224,70 @@ class MailStateTest {
         assertEquals(detail.messages.single().id, saved.messages.single().id)
     }
 
+    @Test fun starredFilterStaysWithinEachMailboxIncludingPagination() = runTest(dispatcher) {
+        for (kind in MailboxKind.entries.filterNot { it == MailboxKind.Starred }) {
+            if (kind != mailbox.state.value.mailbox) {
+                enqueue(MailboxPage())
+                mailbox.selectMailbox(kind)
+                advanceUntilIdle()
+                server.takeRequest()
+            }
+            enqueue(MailboxPage(threads = listOf(summary.copy(isStarred = true)), total = 2, pageCount = 2))
+            mailbox.toggleStarredOnly()
+            advanceUntilIdle()
+            val first = server.takeRequest().requestUrl!!
+            assertEquals(kind.apiValue, first.queryParameter("view"))
+            assertEquals("1", first.queryParameter("starred"))
+            assertEquals("1", first.queryParameter("page"))
+
+            enqueue(MailboxPage(threads = listOf(summary.copy(isStarred = true)), total = 2, page = 2, pageCount = 2))
+            mailbox.loadNextPage()
+            advanceUntilIdle()
+            val next = server.takeRequest().requestUrl!!
+            assertEquals(kind.apiValue, next.queryParameter("view"))
+            assertEquals("1", next.queryParameter("starred"))
+            assertEquals("2", next.queryParameter("page"))
+        }
+    }
+
+    @Test fun starredCombinesWithUnreadAndSearch() = runTest(dispatcher) {
+        enqueue(MailboxPage())
+        mailbox.onSearchChange("receipt")
+        advanceUntilIdle()
+        server.takeRequest()
+        enqueue(MailboxPage())
+        mailbox.toggleUnreadOnly()
+        advanceUntilIdle()
+        server.takeRequest()
+        enqueue(MailboxPage())
+        mailbox.toggleStarredOnly()
+        advanceUntilIdle()
+        val request = server.takeRequest().requestUrl!!
+        assertEquals("inbox", request.queryParameter("view"))
+        assertEquals("receipt", request.queryParameter("q"))
+        assertEquals("1", request.queryParameter("unread"))
+        assertEquals("1", request.queryParameter("starred"))
+    }
+
+    @Test fun unstarRemovesConversationFromStarredFilterImmediately() = runTest(dispatcher) {
+        enqueue(MailboxPage(threads = listOf(summary.copy(isStarred = true)), total = 1))
+        mailbox.toggleStarredOnly()
+        advanceUntilIdle()
+        mailbox.onThreadMutation(MailAction.Unstar, summary)
+        assertTrue(mailbox.state.value.threads.isEmpty())
+        assertEquals(0, mailbox.state.value.total)
+        advanceUntilIdle()
+    }
+
+    @Test fun starredResultsDoNotReplaceTheFullOfflineInbox() = runTest(dispatcher) {
+        seed()
+        enqueue(MailboxPage())
+        mailbox.toggleStarredOnly()
+        advanceUntilIdle()
+        assertTrue(mailbox.state.value.threads.isEmpty())
+        assertEquals(listOf(summary), inboxCache.load(origin, "user")!!.threads)
+    }
+
     @Test fun bulkReadActionUsesMajorityWithReadAsTieBreaker() {
         fun action(vararg read: Boolean) = selectionReadAction(read.map { summary.copy(isRead = it) })
         assertEquals(MailAction.Read, action(false, false))

@@ -198,6 +198,7 @@ fun AuthenticatedRoot(
                 onSelectMailbox = mailboxViewModel::selectMailbox,
                 onSearchChange = mailboxViewModel::onSearchChange,
                 onToggleUnread = mailboxViewModel::toggleUnreadOnly,
+                onToggleStarred = mailboxViewModel::toggleStarredOnly,
                 onRefresh = mailboxViewModel::refresh,
                 onLoadNext = mailboxViewModel::loadNextPage,
                 onOpenThread = { destination = AuthDestination.Thread(it) },

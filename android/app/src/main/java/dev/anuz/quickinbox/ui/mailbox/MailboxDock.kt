@@ -36,13 +36,12 @@ import dev.anuz.quickinbox.ui.theme.LocalQuickInboxDarkTheme
 /** Bottom nav shows these directly; everything else lives behind "More". */
 internal val PrimaryMailboxes = listOf(
     MailboxKind.Inbox,
-    MailboxKind.Starred,
     MailboxKind.Sent,
     MailboxKind.Drafts
 )
 
 /** Remaining mailboxes, reachable through the "More" sheet. */
-internal val OverflowMailboxes = MailboxKind.entries.filterNot { it in PrimaryMailboxes }
+internal val OverflowMailboxes = MailboxKind.entries.filterNot { it in PrimaryMailboxes || it == MailboxKind.Starred }
 
 internal val DockHeight = 64.dp
 private val DockShape = RoundedCornerShape(24.dp)
