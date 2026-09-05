@@ -18,6 +18,10 @@ struct AppThemePalette: Sendable {
     let sage: Color
     let sageStrong: Color
     let sageWash: Color
+    let destructive: Color
+    let starred: Color
+    let warning: Color
+    let success: Color
 
     func applying(_ tint: AppTint, for scheme: ColorScheme) -> AppThemePalette {
         AppThemePalette(
@@ -33,7 +37,8 @@ struct AppThemePalette: Sendable {
             onInteractive: tint.onColor(for: scheme),
             sage: sage,
             sageStrong: sageStrong,
-            sageWash: sageWash
+            sageWash: sageWash,
+            destructive: destructive, starred: starred, warning: warning, success: success
         )
     }
 }
@@ -117,9 +122,28 @@ struct AppTheme: Identifiable, Sendable {
 }
 
 enum AppThemeRegistry {
-    static let defaultThemeID = "paper"
+    static let defaultThemeID = "harbor"
 
     static let all: [AppTheme] = [
+        AppTheme(
+            id: "harbor",
+            title: "Harbor",
+            detail: "Adaptive · soft daylight, deep navy, and tidal teal",
+            preferredColorScheme: nil,
+            lightPalette: palette(
+                grouped: color(0xEAF0F2), paper: color(0xF6F9FA), raised: color(0xFFFFFF),
+                primary: color(0x192E38), secondary: color(0x526873),
+                separator: color(0xC9D6DC), fill: color(0xE4EDF0), isDark: false,
+                accent: color(0x17636C), accentForeground: color(0xFFFFFF)
+            ),
+            darkPalette: palette(
+                grouped: color(0x0B151C), paper: color(0x101E27), raised: color(0x1A2B36),
+                primary: color(0xE7F0F4), secondary: color(0xA6BBC5),
+                separator: color(0x354B58), fill: color(0x243B48), isDark: true,
+                accent: color(0x83D2D9), accentForeground: color(0x0C2E35)
+            ),
+            tint: nil
+        ),
         AppTheme(
             id: "paper",
             title: "Paper",
@@ -261,6 +285,12 @@ enum AppThemeRegistry {
         all.first { $0.id == id } ?? all[0]
     }
 
+    private static func color(_ hex: UInt32) -> Color {
+        Color(red: Double((hex >> 16) & 255) / 255,
+              green: Double((hex >> 8) & 255) / 255,
+              blue: Double(hex & 255) / 255)
+    }
+
     private static func palette(
         grouped: Color,
         paper: Color,
@@ -269,7 +299,9 @@ enum AppThemeRegistry {
         secondary: Color,
         separator: Color,
         fill: Color,
-        isDark: Bool
+        isDark: Bool,
+        accent: Color? = nil,
+        accentForeground: Color? = nil
     ) -> AppThemePalette {
         AppThemePalette(
             grouped: grouped,
@@ -279,24 +311,22 @@ enum AppThemeRegistry {
             secondaryText: secondary,
             separator: separator,
             fill: fill,
-            signalInk: isDark
-                ? Color(red: 0.620, green: 0.700, blue: 1.000)
-                : Color(red: 0.080, green: 0.090, blue: 0.300),
-            interactiveTint: isDark
-                ? Color(red: 0.620, green: 0.700, blue: 1.000)
-                : Color(red: 0.080, green: 0.090, blue: 0.300),
-            onInteractive: isDark
-                ? Color(red: 0.055, green: 0.065, blue: 0.075)
-                : .white,
-            sage: isDark
+            signalInk: accent ?? AppTintRegistry.tint(id: AppTintRegistry.defaultTintID).color(for: isDark ? .dark : .light),
+            interactiveTint: accent ?? AppTintRegistry.tint(id: AppTintRegistry.defaultTintID).color(for: isDark ? .dark : .light),
+            onInteractive: accentForeground ?? AppTintRegistry.tint(id: AppTintRegistry.defaultTintID).onColor(for: isDark ? .dark : .light),
+            sage: accent ?? (isDark
                 ? Color(red: 0.490, green: 0.710, blue: 0.596)
-                : Color(red: 0.204, green: 0.400, blue: 0.318),
-            sageStrong: isDark
+                : Color(red: 0.204, green: 0.400, blue: 0.318)),
+            sageStrong: accent ?? (isDark
                 ? Color(red: 0.600, green: 0.800, blue: 0.694)
-                : Color(red: 0.133, green: 0.310, blue: 0.239),
-            sageWash: isDark
+                : Color(red: 0.133, green: 0.310, blue: 0.239)),
+            sageWash: accent != nil ? fill : (isDark
                 ? Color(red: 0.125, green: 0.212, blue: 0.169)
-                : Color(red: 0.855, green: 0.910, blue: 0.875)
+                : Color(red: 0.855, green: 0.910, blue: 0.875)),
+            destructive: isDark ? color(0xFF9292) : color(0xB52E3D),
+            starred: isDark ? color(0xF3C46E) : color(0x946006),
+            warning: isDark ? color(0xF3C46E) : color(0x895800),
+            success: isDark ? color(0x8BD4AF) : color(0x236B49)
         )
     }
 }
@@ -306,9 +336,6 @@ private struct AppThemeKey: EnvironmentKey {
         .theme(
             id: UserDefaults.standard.string(forKey: AppPreferences.appThemeID)
                 ?? AppThemeRegistry.defaultThemeID
-        )
-        .applying(
-            AppTintRegistry.tint(id: AppTintRegistry.defaultTintID)
         )
 }
 
@@ -323,6 +350,7 @@ enum AppThemeColorRole: Sendable {
     case grouped, paper, raised, primaryText, secondaryText, separator, fill
     case interactiveTint, onInteractive
     case signalInk, sage, sageStrong, sageWash
+    case destructive, starred, warning, success
 }
 
 struct AppThemeColorStyle: ShapeStyle, View {
@@ -348,6 +376,10 @@ struct AppThemeColorStyle: ShapeStyle, View {
         case .sage: palette.sage
         case .sageStrong: palette.sageStrong
         case .sageWash: palette.sageWash
+        case .destructive: palette.destructive
+        case .starred: palette.starred
+        case .warning: palette.warning
+        case .success: palette.success
         }
     }
 

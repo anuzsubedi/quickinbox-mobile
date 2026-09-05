@@ -79,6 +79,10 @@ enum QuickInboxDesign {
         static let groupedSurface = paperGrouped
         static let raisedSurface = paperRaised
         static let fill = AppThemeColorStyle(.fill)
+        static let destructive = AppThemeColorStyle(.destructive)
+        static let starred = AppThemeColorStyle(.starred)
+        static let warning = AppThemeColorStyle(.warning)
+        static let success = AppThemeColorStyle(.success)
         static let separator = hairline
         static let primaryText = ink
         static let secondaryText = inkMuted
@@ -110,7 +114,7 @@ private struct QuickInboxPageSurfaceModifier: ViewModifier {
         content.background(QuickInboxDesign.Palette.paper).toolbarBackground(QuickInboxDesign.Palette.paper, for: .navigationBar).toolbarBackground(.visible, for: .navigationBar)
     }
 }
-private struct QuickInboxListRowSurfaceModifier: ViewModifier { func body(content: Content) -> some View { content } }
+private struct QuickInboxListRowSurfaceModifier: ViewModifier { func body(content: Content) -> some View { content.listRowBackground(QuickInboxDesign.Palette.paperRaised) } }
 private struct QuickInboxBarSurfaceModifier: ViewModifier {
     func body(content: Content) -> some View {
         content.background(QuickInboxDesign.Palette.paperRaised).overlay(alignment: .top) { Rectangle().fill(QuickInboxDesign.Palette.separator).frame(height: 1 / UIScreen.main.scale) }
@@ -221,9 +225,9 @@ enum MetadataPillTone: Sendable {
         switch self {
         case .neutral: AnyShapeStyle(QuickInboxDesign.Palette.secondaryText)
         case .info: AnyShapeStyle(QuickInboxDesign.Palette.interactiveTint)
-        case .success: AnyShapeStyle(Color(uiColor: .systemGreen))
-        case .warning: AnyShapeStyle(Color(uiColor: .systemOrange))
-        case .critical: AnyShapeStyle(Color(uiColor: .systemRed))
+        case .success: AnyShapeStyle(QuickInboxDesign.Palette.success)
+        case .warning: AnyShapeStyle(QuickInboxDesign.Palette.warning)
+        case .critical: AnyShapeStyle(QuickInboxDesign.Palette.destructive)
         }
     }
 }

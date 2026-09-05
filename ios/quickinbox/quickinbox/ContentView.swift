@@ -53,7 +53,6 @@ struct ContentView: View {
 
     private var selectedTheme: AppTheme {
         AppThemeRegistry.theme(id: appThemeID)
-            .applying(AppTintRegistry.tint(id: AppTintRegistry.defaultTintID))
     }
 
     @ViewBuilder

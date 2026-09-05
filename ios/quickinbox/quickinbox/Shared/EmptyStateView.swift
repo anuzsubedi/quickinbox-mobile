@@ -27,7 +27,7 @@ enum EmptyStateTone {
     fileprivate var iconStyle: AnyShapeStyle {
         switch self {
         case .accent: AnyShapeStyle(QuickInboxDesign.Palette.interactiveTint)
-        case .warning: AnyShapeStyle(Color(uiColor: .systemOrange))
+        case .warning: AnyShapeStyle(QuickInboxDesign.Palette.warning)
         case .muted: AnyShapeStyle(QuickInboxDesign.Palette.secondaryText)
         }
     }
@@ -37,7 +37,7 @@ enum EmptyStateTone {
         case .accent:
             AnyShapeStyle(QuickInboxDesign.Palette.sageWash)
         case .warning:
-            AnyShapeStyle(Color(uiColor: .systemOrange).opacity(0.12))
+            AnyShapeStyle(QuickInboxDesign.Palette.warning.opacity(0.12))
         case .muted:
             AnyShapeStyle(QuickInboxDesign.Palette.fill)
         }
