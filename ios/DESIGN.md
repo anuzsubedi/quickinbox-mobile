@@ -33,28 +33,28 @@ implied by the interface.
   this release.
 - The active mailbox name is an anchored native menu in the masthead. It changes
   mailboxes in place; mailbox navigation never opens a bottom sheet.
-- Compose and account/settings are explicit masthead actions. Reply remains the
-  only persistent lower-edge action, inside the conversation reader.
+- Compose is an explicit dock action; account/settings stays in the header. The conversation
+  reader has a persistent labeled action bar for replying, forwarding, moving,
+  and deleting mail.
 - Entering and dismissing Settings must preserve mailbox, search, selection,
   scroll, and draft presentation state.
 
 ## Color and material
 
-- **Ink:** the Paper, White, and AMOLED canvases retain the app accent's deep
-  indigo family. It owns primary actions and brand punctuation, never a large
-  navigation background.
-- **Paper:** semantic `systemBackground` for mail and reading content.
-- **Canvas:** semantic grouped backgrounds for Settings and secondary flows.
-- **Sage:** a muted secondary identity accent for account monograms and rare
-  supportive details. It never communicates state by itself.
-- **State:** system orange for starred, red for destructive/error, green for
-  confirmed success, and semantic secondary text for neutral metadata.
-- All light/dark variants use semantic system colors or explicit adaptive
-  assets. Text on ink must retain contrast and Increased Contrast support.
-- Gradients, glows, faux paper, decorative blur, and ornamental shadows are
-  outside the system.
-- Genuine Liquid Glass is reserved for interactive floating controls on iOS 26
-  and later. iOS 17-25 use native bordered styles, never simulated glass.
+- **Harbor** is the default adaptive theme. Existing saved theme choices remain
+  available and retain their selection. Appearance previews use each theme's own accent.
+- Light Harbor uses blue-gray canvas `#F6F9FA`, white raised surfaces, deep ink
+  `#192E38`, secondary slate `#526873`, and tidal teal `#17636C`.
+- Dark Harbor uses navy canvas `#101E27`, raised slate `#1A2B36`, pale text
+  `#E7F0F4`, secondary blue-gray `#A6BBC5`, and teal `#83D2D9`.
+- Theme roles cover canvas, grouped surfaces, raised controls, text, separators,
+  fills, avatars, accent/on-accent, destructive red, amber stars/warnings, and
+  green success. Native system dialogs, camera overlays, and received HTML keep
+  their specialized platform/content rendering.
+- Primary, secondary, and accent text against all three Harbor surfaces, plus
+  on-accent button labels, exceed 4.5:1 in both modes (numeric contrast check).
+- Liquid Glass is reserved for floating controls on supported systems, with
+  opaque themed fallbacks for older versions and Reduce Transparency.
 
 ## Typography
 
@@ -72,22 +72,27 @@ implied by the interface.
 
 ## Mailbox index
 
-- A compact semantic masthead contains the visible mailbox menu, concise status,
-  44-point search field, Compose, and account access. It replaces the fragile
-  system large-title/search-drawer combination.
-- Conversations form one flat chronological stream with Today, Yesterday,
-  Previous 7 Days, month, and year sections as needed.
-- Rows do not use cards. Standard hierarchy is sender and time, subject and
-  state symbols, then a one-line preview.
-- A 38-point neutral sender monogram with a partial sage postmark arc identifies
-  unread mail. Read mail keeps a quiet complete hairline ring. Weight and spoken
-  state remain redundant with color.
-- Swipe actions, context menus, pull to refresh, pagination, search, loading,
-  offline, error, and empty states remain native and fully accessible.
-- Cache status is concise and actionable. It states whether saved mail is shown
-  and offers Retry only when a refresh failed.
-- Compose is a labeled masthead action with a 44-point minimum target. The
-  mailbox has no persistent bottom control or reserved bottom inset.
+- The inbox uses a type-led header with a mailbox menu, summary, and Settings gear.
+  On iOS 18+, scrolling collapses the title and summary with separated thresholds
+  to avoid flicker. The compact mailbox floats in a glass capsule; the reserved
+  expanded inset stays fixed so rows do not jump. Short lists and iOS 17 retain expanded headers. Selection
+  starts from a conversation context menu.
+- Glass Search and Filter controls sit beside a separate Compose button.
+  Search defaults to a compact button and expands when tapped; submitting or
+  dismissing focus collapses it again without clearing the query. Bulk Undo temporarily replaces the full capsule.
+- Date labels scroll with their rows rather than pinning. The slim scrollbar
+  matches main: it follows scroll progress and fades after 750 ms of inactivity.
+- Sender-first rows use a native plain iOS list with separators and no cards. They
+  use restrained circular initials, a separate unread
+  dot, subject, and two-line preview. Dates and state icons stay subordinate.
+  Selected rows receive an accent wash and a checkmark in place of initials.
+- Selection is an explicit mode, including when no rows are selected. The header
+  shows count, Done/clear, and Select All loaded conversations. Bulk actions use
+  labeled tiles in a grid that reflows with Dynamic Type.
+- Keep all mailbox, filter, swipe, selection, pagination, refresh, and Undo
+  behavior intact. Individual Undo placeholders retain the affected row's place.
+- Colors follow the active semantic theme; no decorative shadows or simulated
+  glass. Respect Dynamic Type, VoiceOver, Reduce Motion, and dark appearance.
 
 ## Mailbox menu
 
@@ -102,15 +107,34 @@ implied by the interface.
 
 - The conversation is a document surface. Subject comes first, followed by
   correspondent and message count.
-- The newest message is expanded. Older messages use native disclosure and
-  expand in place with system motion.
-- Messages are separated by hairlines and vertical rhythm, never nested cards.
+- The newest message starts expanded. In multi-email conversations, messages expand or collapse
+  independently; the conversation menu also offers Expand/Collapse All.
+- Messages use quiet rounded cards with stable sender and timestamp placement.
+  Long-press lifts the whole card using the native context-menu preview and
+  system background treatment. Keep HTML rendering unchanged. Collapsed cards
+  show a preview; expanded cards show recipient details and the full-width body.
+  Disclosure respects Reduce Motion.
 - Plain text, formatted HTML, selection, quoted history, links, attachments,
   Quick Look, and share behavior remain accessible.
-- Use a compact, type-led reader masthead instead of the oversized system glass
-  toolbar. Star, archive, read state, restore, trash, and permanent deletion
-  live in one anchored native menu. Reply remains the sole floating primary
-  action.
+- Use a title2 subject with quiet conversation metadata and expandable sender
+  address details. Star has a direct navigation-bar control. The top-right
+  conversation menu contains Reply All, read state, and Expand/Collapse All.
+  Keep Star in the navigation bar and Reply, Forward All, move, and trash in
+  the bottom controls; do not duplicate them in the overflow menu. Single-email conversations stay open. In longer threads, individual email
+  headers offer disclosure without an ellipsis button. Card long-press actions
+  are Forward, Copy Sender Address, and Expand/Collapse, also exposed to
+  VoiceOver. Per-email forwarding preserves its quoted context. The bottom
+  Forward All action forwards the conversation; the top-right menu retains
+  conversation actions.
+- A labeled bottom action bar exposes Reply, Forward, Archive/Inbox/Restore,
+  and Trash/Delete. The bottom bar uses plain labeled controls on a solid
+  background with restrained Reply emphasis. Forward uses a single arrow;
+  Forward All uses double arrows. Recipient addresses stay inside the expandable
+  Recipients & details section, with separate labels and values.
+  Actions reflow on narrow layouts and large text sizes; destructive actions
+  retain confirmation. Single-email readers omit redundant message-count metadata
+  and use a wider reading inset; long threads distinguish quiet collapsed cards
+  from expanded reading surfaces.
 
 ## Composer
 
@@ -147,9 +171,14 @@ implied by the interface.
 
 ## Settings
 
-- Settings is an inset-grouped native form presented from the account control.
-- Information order is account, default sending address, signature, privacy,
-  connected devices, and connection controls.
+- Settings opens from the gear into a native inset-grouped list: account,
+  Preferences, Account & Access, and Help & About. Destination subtitles explain
+  what each page contains, inspired by Android without importing Material UI.
+- Subpages use native Forms, section headers/footers, and system disclosure.
+  Appearance is a checkmarked theme list; default sender uses a navigation-link
+  picker. Signature editing retains its character limit and explicit Save action.
+- Privacy toggles, devices, server details, and support links use the same
+  themed native sections. Destructive actions are red rows with confirmations.
 - Identity is shown once. Saved, current-device, loading, and error states use
   concise inline text and symbols rather than pills.
 - Disconnect, revoke access, and local data removal remain explicit native
@@ -188,9 +217,24 @@ implied by the interface.
   as navigation.
 - Desktop account rails or three-column shells imposed on iPhone.
 - Per-row cards, card stacks, chip gardens, decorative avatar palettes, or
-  rounded containers around ordinary mail.
+  individual rounded containers around every mail row.
 - Fake Liquid Glass, decorative blur, gradients, glows, faux paper, or repeated
   shadows.
 - Unsupported mail capabilities presented as actions or status.
 - Duplicate titles/actions, gesture-only essential controls, irreversible
   destructive action without confirmation, or color-only state.
+
+## Mailbox state and selection
+
+- Mailbox actions update loaded rows immediately. All selected bulk actions and
+  individual archive/trash/delete actions wait five seconds for Undo. Individual
+  read/star/restore/unarchive actions commit immediately without an Undo notice. Failures restore affected rows without replacing unrelated rows.
+- Reader loads and successful actions update the shared mailbox model directly.
+  Revision checks reject list and reader responses superseded by mutations.
+- The dock filter menu combines Unread and Starred within the selected mailbox.
+  Starred is a filter, not a separate navigation destination. Swipes remain fixed.
+- Selection shows its count and Select/Deselect All loaded conversations. Labeled
+  bottom bulk controls remain accessible at large text sizes. Individual actions
+  leave a lightweight Undo placeholder in the original list position, including
+  the last email. Bulk Undo temporarily replaces the entire dock, including Filter and Compose. If an inline action's mailbox is no longer
+  visible, its Undo moves to the dock until resolved.
