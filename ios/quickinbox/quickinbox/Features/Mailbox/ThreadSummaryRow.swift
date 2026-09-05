@@ -29,12 +29,30 @@ struct ThreadSummaryRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             if dynamicTypeSize < .xxxLarge || isSelectionActive {
-                MailboxAvatar(
-                    name: people,
-                    isUnread: !thread.isRead,
-                    isSelectionActive: isSelectionActive,
-                    isSelected: isSelected
-                )
+                ZStack {
+                    Circle()
+                        .fill(isSelected ? AnyShapeStyle(QuickInboxDesign.Palette.interactiveTint) : (!thread.isRead ? AnyShapeStyle(QuickInboxDesign.Palette.interactiveTint.opacity(0.12)) : AnyShapeStyle(QuickInboxDesign.Palette.fill)))
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(isSelected ? QuickInboxDesign.Palette.onInteractive : QuickInboxDesign.Palette.secondaryText)
+                    } else {
+                        Text(people.split(whereSeparator: { $0.isWhitespace }).prefix(2).compactMap { $0.first }.map(String.init).joined().uppercased())
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                    }
+                }
+                .frame(width: 38, height: 38)
+                .overlay(alignment: .bottomTrailing) {
+                    if !thread.isRead && !isSelected {
+                        Circle().fill(QuickInboxDesign.Palette.interactiveTint)
+                            .frame(width: 10, height: 10)
+                            .overlay { Circle().strokeBorder(QuickInboxDesign.Palette.paper, lineWidth: 2) }
+                            .offset(x: 2, y: 2)
+                    }
+                }
+                .padding(.top, 2)
+                .accessibilityHidden(true)
             }
 
             if dynamicTypeSize >= .xxxLarge {
@@ -43,8 +61,13 @@ struct ThreadSummaryRow: View {
                 compactContent
             }
         }
-        .padding(.vertical, 13)
-        .frame(maxWidth: .infinity, minHeight: 90, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 17)
+        .frame(maxWidth: .infinity, minHeight: 106, alignment: .leading)
+        .background {
+            Rectangle()
+                .fill(QuickInboxDesign.Palette.interactiveTint.opacity(isSelected ? 0.09 : (thread.isRead ? 0 : 0.025)))
+        }
         .foregroundStyle(QuickInboxDesign.Palette.primaryText)
         .contentShape(Rectangle())
         .animation(
@@ -57,7 +80,7 @@ struct ThreadSummaryRow: View {
     }
 
     private var compactContent: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(correspondent)
                     .font(thread.isRead
@@ -67,7 +90,7 @@ struct ThreadSummaryRow: View {
                     .layoutPriority(1)
 
                 if thread.messageCount > 1 {
-                    Text("· \(thread.messageCount)")
+                    Text("\(thread.messageCount)")
                         .font(rowMetadataFont)
                         .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
                         .monospacedDigit()
@@ -76,7 +99,7 @@ struct ThreadSummaryRow: View {
                 Spacer(minLength: 8)
 
                 HStack(spacing: 7) {
-                    metadataIcons
+                    metadataIcons.font(.caption)
 
                     Text(relativeDate)
                         .font(rowDateFont)
@@ -93,7 +116,7 @@ struct ThreadSummaryRow: View {
                 if thread.isDraft {
                     Text("Draft")
                         .fontWeight(.semibold)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(QuickInboxDesign.Palette.destructive)
                 }
 
                 Text(subject)
@@ -104,17 +127,17 @@ struct ThreadSummaryRow: View {
                     .layoutPriority(1)
             }
 
-            if !thread.preview.isEmpty {
-                Text(thread.preview)
-                    .font(rowPreviewFont)
-                    .foregroundStyle(
-                        thread.isRead
-                            ? AnyShapeStyle(QuickInboxDesign.Palette.secondaryText.opacity(0.72))
-                            : AnyShapeStyle(QuickInboxDesign.Palette.secondaryText)
-                    )
-                    .lineLimit(1)
-                    .padding(.top, 1)
+            HStack(alignment: .bottom, spacing: 10) {
+                if !thread.preview.isEmpty {
+                    Text(thread.preview)
+                        .font(rowPreviewFont)
+                        .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 0)
+                starMark
             }
+            .padding(.top, 1)
         }
         .overlay(alignment: .trailing) {
             if isWorking {
@@ -150,7 +173,7 @@ struct ThreadSummaryRow: View {
                 if thread.isDraft {
                     Text("Draft")
                         .fontWeight(.semibold)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(QuickInboxDesign.Palette.destructive)
                 }
                 Text(subject)
                     .font(thread.isRead
@@ -167,6 +190,7 @@ struct ThreadSummaryRow: View {
 
             HStack(spacing: 10) {
                 metadataIcons
+                starMark
                 if isWorking {
                     ProgressView()
                         .controlSize(.small)
@@ -188,12 +212,6 @@ struct ThreadSummaryRow: View {
 
     @ViewBuilder
     private var metadataIcons: some View {
-        if thread.isStarred {
-            Image(systemName: "star.fill")
-                .foregroundStyle(.orange)
-                .accessibilityLabel("Starred")
-        }
-
         if thread.hasAttachments {
             Image(systemName: "paperclip")
                 .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
@@ -207,10 +225,20 @@ struct ThreadSummaryRow: View {
         }
     }
 
+    @ViewBuilder
+    private var starMark: some View {
+        if thread.isStarred {
+            Image(systemName: "star.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(QuickInboxDesign.Palette.starred)
+                .accessibilityHidden(true)
+        }
+    }
+
     private func rowSenderFont(isUnread: Bool) -> Font {
         return isUnread
-            ? .body.bold()
-            : .body
+            ? .subheadline.weight(.bold)
+            : .subheadline.weight(.medium)
     }
 
     private func rowSubjectFont(isUnread: Bool) -> Font {
@@ -220,7 +248,7 @@ struct ThreadSummaryRow: View {
     }
 
     private var rowPreviewFont: Font {
-        .subheadline
+        .footnote
     }
 
     private var rowMetadataFont: Font {
@@ -228,7 +256,7 @@ struct ThreadSummaryRow: View {
     }
 
     private var rowDateFont: Font {
-        .caption2
+        .caption
     }
 
     private var subject: String {
