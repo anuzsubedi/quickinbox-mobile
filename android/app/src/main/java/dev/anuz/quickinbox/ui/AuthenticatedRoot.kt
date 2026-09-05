@@ -12,6 +12,14 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
+import dev.anuz.quickinbox.ui.mailbox.supportsUndo
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -176,6 +184,17 @@ fun AuthenticatedRoot(
         )
     )
     val mailboxState by mailboxViewModel.state.collectAsStateWithLifecycle()
+    val undoOffer by mailboxViewModel.undoOffer.collectAsStateWithLifecycle()
+    val undoSnackbar = remember { SnackbarHostState() }
+    LaunchedEffect(undoOffer?.id) {
+        val offer = undoOffer ?: return@LaunchedEffect
+        try {
+            val result = undoSnackbar.showSnackbar(offer.message, "Undo", withDismissAction = true, duration = SnackbarDuration.Long)
+            mailboxViewModel.resolveUndo(offer.id, result == SnackbarResult.ActionPerformed)
+        } finally {
+            mailboxViewModel.resolveUndo(offer.id, false)
+        }
+    }
     val mailboxNavigationStyle by container.preferences.mailboxNavigationStyle.collectAsStateWithLifecycle()
     val mailboxSwipeControls by container.preferences.mailboxSwipeControls.collectAsStateWithLifecycle()
     val navigationPromptPending by container.preferences.navigationPromptPending.collectAsStateWithLifecycle()
@@ -185,126 +204,134 @@ fun AuthenticatedRoot(
         if (mailboxRefresh > 0) mailboxViewModel.reload(showInitialLoading = false)
     }
 
-    AnimatedContent(
-        targetState = destination,
-        transitionSpec = { authDestinationTransitionSpec(initialState, targetState) },
-        label = "auth-destination"
-    ) { current ->
-        when (current) {
-            AuthDestination.Mailbox -> MailboxScreen(
-                state = mailboxState,
-                navigationStyle = mailboxNavigationStyle,
-                swipeControls = mailboxSwipeControls,
-                onSelectMailbox = mailboxViewModel::selectMailbox,
-                onSearchChange = mailboxViewModel::onSearchChange,
-                onToggleUnread = mailboxViewModel::toggleUnreadOnly,
-                onToggleStarred = mailboxViewModel::toggleStarredOnly,
-                onRefresh = mailboxViewModel::refresh,
-                onLoadNext = mailboxViewModel::loadNextPage,
-                onOpenThread = { destination = AuthDestination.Thread(it) },
-                onCompose = {
-                    composeSession += 1
-                    destination = AuthDestination.Compose(
-                        mode = it?.let(ComposeMode::Draft) ?: ComposeMode.NewMessage,
-                        sessionKey = composeSession
-                    )
-                },
-                onOpenSettings = { destination = AuthDestination.Settings },
-                onAction = mailboxViewModel::perform,
-                onDismissError = mailboxViewModel::dismissErrors
-            )
-            is AuthDestination.Thread -> {
-                BackHandler { destination = AuthDestination.Mailbox }
-                val context = LocalContext.current
-                val threadViewModel: ThreadViewModel = viewModel(
-                    key = current.summary.id,
-                    factory = ThreadViewModelFactory(
-                        container.api,
-                        current.summary.threadId,
-                        current.summary,
-                        context.cacheDir,
-                        user.id,
-                        container.threadCache
-                    )
-                )
-                val threadState by threadViewModel.state.collectAsStateWithLifecycle()
-                LaunchedEffect(current.summary.id) {
-                    threadViewModel.load { detail -> mailboxViewModel.onThreadLoaded(current.summary, detail) }
-                }
-                ThreadScreen(
-                    state = threadState,
-                    summary = current.summary,
-                    preferences = container.preferences,
-                    onBack = { destination = AuthDestination.Mailbox },
+    Box(Modifier.fillMaxSize()) {
+        AnimatedContent(
+            targetState = destination,
+            transitionSpec = { authDestinationTransitionSpec(initialState, targetState) },
+            label = "auth-destination"
+        ) { current ->
+            when (current) {
+                AuthDestination.Mailbox -> MailboxScreen(
+                    state = mailboxState,
+                    navigationStyle = mailboxNavigationStyle,
+                    swipeControls = mailboxSwipeControls,
+                    onSelectMailbox = mailboxViewModel::selectMailbox,
+                    onSearchChange = mailboxViewModel::onSearchChange,
+                    onToggleUnread = mailboxViewModel::toggleUnreadOnly,
+                    onToggleStarred = mailboxViewModel::toggleStarredOnly,
+                    onRefresh = mailboxViewModel::refresh,
+                    onLoadNext = mailboxViewModel::loadNextPage,
+                    onOpenThread = { destination = AuthDestination.Thread(it) },
                     onCompose = {
                         composeSession += 1
                         destination = AuthDestination.Compose(
-                            mode = it,
-                            returnTo = current.summary,
+                            mode = it?.let(ComposeMode::Draft) ?: ComposeMode.NewMessage,
                             sessionKey = composeSession
                         )
                     },
-                    onAction = { action ->
-                        threadViewModel.perform(action, onMailboxMutation = {
-                            mailboxViewModel.onThreadMutation(action, current.summary)
-                            mailboxViewModel.refresh()
-                        }, onExit = {
-                            destination = AuthDestination.Mailbox
-                        })
-                    },
-                    onDownload = threadViewModel::download,
-                    onOpenedAttachmentConsumed = threadViewModel::consumeOpenedAttachment
+                    onOpenSettings = { destination = AuthDestination.Settings },
+                    onAction = mailboxViewModel::perform,
+                    onDismissError = mailboxViewModel::dismissErrors
                 )
-            }
-            is AuthDestination.Compose -> {
-                val returnDestination = current.returnTo?.let(AuthDestination::Thread) ?: AuthDestination.Mailbox
-                BackHandler { destination = returnDestination }
-                val composeViewModel: ComposeViewModel = viewModel(
-                    key = "${current.mode}:${current.sessionKey}",
-                    factory = ComposeViewModelFactory(container.api, current.mode, container.preferences)
-                )
-                val composeState by composeViewModel.state.collectAsStateWithLifecycle()
-                LaunchedEffect(current.mode) { composeViewModel.load() }
-                val context = LocalContext.current
-                ComposeScreen(
-                    mode = current.mode,
-                    state = composeState,
-                    onBack = { destination = returnDestination },
-                    onTo = composeViewModel::onTo,
-                    onCc = composeViewModel::onCc,
-                    onBcc = composeViewModel::onBcc,
-                    onSubject = composeViewModel::onSubject,
-                    onBody = composeViewModel::onBody,
-                    onFrom = composeViewModel::onFrom,
-                    onIncludeOriginalAttachments = composeViewModel::onIncludeOriginalAttachments,
-                    onSend = {
-                        composeViewModel.send {
-                            val affectedThreadId = current.returnTo?.threadId
-                                ?: (current.mode as? ComposeMode.Forward.Thread)?.threadId
-                            val origin = container.api.credential?.origin
-                            if (affectedThreadId != null && origin != null) {
-                                runCatching {
-                                    container.threadCache.remove(origin, user.id, affectedThreadId)
+                is AuthDestination.Thread -> {
+                    BackHandler { destination = AuthDestination.Mailbox }
+                    val context = LocalContext.current
+                    val threadViewModel: ThreadViewModel = viewModel(
+                        key = current.summary.id,
+                        factory = ThreadViewModelFactory(
+                            container.api,
+                            current.summary.threadId,
+                            current.summary,
+                            context.cacheDir,
+                            user.id,
+                            container.threadCache
+                        )
+                    )
+                    val threadState by threadViewModel.state.collectAsStateWithLifecycle()
+                    LaunchedEffect(current.summary.id) {
+                        threadViewModel.load { detail -> mailboxViewModel.onThreadLoaded(current.summary, detail) }
+                    }
+                    ThreadScreen(
+                        state = threadState,
+                        summary = current.summary,
+                        preferences = container.preferences,
+                        onBack = { destination = AuthDestination.Mailbox },
+                        onCompose = {
+                            composeSession += 1
+                            destination = AuthDestination.Compose(
+                                mode = it,
+                                returnTo = current.summary,
+                                sessionKey = composeSession
+                            )
+                        },
+                        onAction = { action ->
+                            if (action.supportsUndo()) {
+                                val updated = current.summary.copy(isRead = threadState.isRead, isStarred = threadState.isStarred, isArchived = threadState.isArchived)
+                                mailboxViewModel.perform(action, listOf(updated))
+                                destination = AuthDestination.Mailbox
+                            } else threadViewModel.perform(action, onMailboxMutation = {
+                                mailboxViewModel.onThreadMutation(action, current.summary)
+                                mailboxViewModel.refresh()
+                            }, onExit = {
+                                destination = AuthDestination.Mailbox
+                            })
+                        },
+                        onDownload = threadViewModel::download,
+                        onOpenedAttachmentConsumed = threadViewModel::consumeOpenedAttachment
+                    )
+                }
+                is AuthDestination.Compose -> {
+                    val returnDestination = current.returnTo?.let(AuthDestination::Thread) ?: AuthDestination.Mailbox
+                    BackHandler { destination = returnDestination }
+                    val composeViewModel: ComposeViewModel = viewModel(
+                        key = "${current.mode}:${current.sessionKey}",
+                        factory = ComposeViewModelFactory(container.api, current.mode, container.preferences)
+                    )
+                    val composeState by composeViewModel.state.collectAsStateWithLifecycle()
+                    LaunchedEffect(current.mode) { composeViewModel.load() }
+                    val context = LocalContext.current
+                    ComposeScreen(
+                        mode = current.mode,
+                        state = composeState,
+                        onBack = { destination = returnDestination },
+                        onTo = composeViewModel::onTo,
+                        onCc = composeViewModel::onCc,
+                        onBcc = composeViewModel::onBcc,
+                        onSubject = composeViewModel::onSubject,
+                        onBody = composeViewModel::onBody,
+                        onFrom = composeViewModel::onFrom,
+                        onIncludeOriginalAttachments = composeViewModel::onIncludeOriginalAttachments,
+                        onSend = {
+                            composeViewModel.send {
+                                val affectedThreadId = current.returnTo?.threadId
+                                    ?: (current.mode as? ComposeMode.Forward.Thread)?.threadId
+                                val origin = container.api.credential?.origin
+                                if (affectedThreadId != null && origin != null) {
+                                    runCatching {
+                                        container.threadCache.remove(origin, user.id, affectedThreadId)
+                                    }
                                 }
+                                mailboxRefresh += 1
+                                destination = AuthDestination.Mailbox
                             }
-                            mailboxRefresh += 1
-                            destination = AuthDestination.Mailbox
-                        }
-                    },
-                    onImport = { uris -> composeViewModel.importUris(context, uris) },
-                    onRemoveAttachment = composeViewModel::removeAttachment
-                )
-            }
-            AuthDestination.Settings -> {
-                BackHandler { destination = AuthDestination.Mailbox }
-                SettingsScreen(
-                    container = container,
-                    user = user,
-                    onBack = { destination = AuthDestination.Mailbox },
-                    onDisconnected = onDisconnected
-                )
+                        },
+                        onImport = { uris -> composeViewModel.importUris(context, uris) },
+                        onRemoveAttachment = composeViewModel::removeAttachment
+                    )
+                }
+                AuthDestination.Settings -> {
+                    BackHandler { destination = AuthDestination.Mailbox }
+                    SettingsScreen(
+                        container = container,
+                        user = user,
+                        onBack = { destination = AuthDestination.Mailbox },
+                        onDisconnected = onDisconnected
+                    )
+                }
             }
         }
+
+        SnackbarHost(undoSnackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 88.dp))
     }
 
     if (navigationPromptPending) {
