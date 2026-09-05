@@ -16,7 +16,7 @@ import dev.anuz.quickinbox.ui.theme.BricolageGrotesque
 
 /**
  * The QuickInbox wordmark. This is the only place Bricolage Grotesque should be used.
- * Functional text must use the app typography (which is pinned to the Android system font)
+ * Functional text must use the app typography (Google Sans)
  * and should not pass through this component.
  *
  * The wordmark is an ordinary [Text], so the brand name itself remains readable by screen

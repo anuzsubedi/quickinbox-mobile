@@ -30,14 +30,14 @@ enum class AppThemeOption(
     }
 }
 
-internal fun AppThemeOption.materialScheme(dark: Boolean): ColorScheme = when (this) {
+internal fun AppThemeOption.materialScheme(dark: Boolean): ColorScheme = (when (this) {
     AppThemeOption.Monet -> if (dark) FallbackDark else FallbackLight
     AppThemeOption.FoldedSignal -> if (dark) foldedSignalDark else foldedSignalLight
     AppThemeOption.Porcelain -> porcelain
     AppThemeOption.Midnight -> midnight
     AppThemeOption.SilverMist -> if (dark) mistDark else mistLight
     AppThemeOption.SoftClay -> if (dark) clayDark else clayLight
-}
+}).withBalancedSurfaces(forcedDark ?: dark)
 
 // ---------------------------------------------------------------------------
 // Paper - the authored signature scheme.
@@ -127,8 +127,7 @@ private val foldedSignalDark = darkColorScheme(
 )
 
 // ---------------------------------------------------------------------------
-// Legacy authored schemes. These remain available so stored theme ids keep
-// compiling and resolving; only "paper" is authored above.
+// Additional palettes retain their stored ids and use the same surface hierarchy.
 // ---------------------------------------------------------------------------
 
 private data class Palette(
@@ -138,20 +137,23 @@ private data class Palette(
     val primaryText: Color,
     val secondaryText: Color,
     val separator: Color,
-    val dark: Boolean
+    val dark: Boolean,
+    val accent: Color? = null,
+    val secondaryAccent: Color? = null,
+    val tertiaryAccent: Color? = null
 )
 
 private val indigoLight = Color(0.25f, 0.28f, 0.72f)
 private val indigoDark = Color(0.68f, 0.72f, 1f)
 
 private fun Palette.toMaterialScheme(): ColorScheme {
-    val primary = if (dark) indigoDark else indigoLight
+    val primary = accent ?: if (dark) indigoDark else indigoLight
     val onPrimary = if (dark) Color(0.04f, 0.05f, 0.06f) else Color.White
     val primaryContainer = lerp(paper, primary, if (dark) 0.24f else 0.14f)
     val onPrimaryContainer = if (dark) lerp(primaryText, primary, 0.24f) else lerp(primaryText, primary, 0.42f)
-    val secondary = if (dark) Color(0.50f, 0.82f, 0.65f) else Color(0.12f, 0.38f, 0.27f)
+    val secondary = secondaryAccent ?: if (dark) Color(0.50f, 0.82f, 0.65f) else Color(0.12f, 0.38f, 0.27f)
     val secondaryContainer = lerp(paper, secondary, if (dark) 0.22f else 0.12f)
-    val tertiary = if (dark) Color(0.85f, 0.60f, 0.90f) else Color(0.48f, 0.20f, 0.52f)
+    val tertiary = tertiaryAccent ?: if (dark) Color(0.85f, 0.60f, 0.90f) else Color(0.48f, 0.20f, 0.52f)
     val tertiaryContainer = lerp(paper, tertiary, if (dark) 0.22f else 0.12f)
     val high = lerp(raised, primary, if (dark) 0.08f else 0.035f)
     val highest = lerp(raised, primary, if (dark) 0.14f else 0.065f)
@@ -236,32 +238,38 @@ private fun darkSeparator(grouped: Color, opacity: Float = 0.16f) = lerp(grouped
 private val porcelainPalette = Palette(
     grouped = Color.White, paper = Color.White, raised = Color(0.975f, 0.975f, 0.980f),
     primaryText = Color(0.055f, 0.065f, 0.075f), secondaryText = Color(0.34f, 0.36f, 0.39f),
-    separator = lerp(Color.White, Color.Black, 0.14f), dark = false
+    separator = lerp(Color.White, Color.Black, 0.14f), dark = false,
+    accent = Color(0xFF365DA8), secondaryAccent = Color(0xFF56627A), tertiaryAccent = Color(0xFF765477)
 )
 private val midnightPalette = Palette(
     grouped = Color.Black, paper = Color.Black, raised = Color(0.055f, 0.055f, 0.060f),
     primaryText = Color(0.96f, 0.96f, 0.97f), secondaryText = Color(0.68f, 0.70f, 0.73f),
-    separator = lerp(Color.Black, Color.White, 0.18f), dark = true
+    separator = lerp(Color.Black, Color.White, 0.18f), dark = true,
+    accent = Color(0xFFADC8FF), secondaryAccent = Color(0xFFA1CEC2), tertiaryAccent = Color(0xFFD7B9E8)
 )
 private val mistLightPalette = Palette(
     grouped = Color(0.935f, 0.950f, 0.965f), paper = Color(0.975f, 0.982f, 0.990f), raised = Color.White,
     primaryText = Color(0.075f, 0.095f, 0.120f), secondaryText = Color(0.34f, 0.39f, 0.44f),
-    separator = lightSeparator(Color(0.935f, 0.950f, 0.965f)), dark = false
+    separator = lightSeparator(Color(0.935f, 0.950f, 0.965f)), dark = false,
+    accent = Color(0xFF365F83), secondaryAccent = Color(0xFF476769), tertiaryAccent = Color(0xFF6D5D82)
 )
 private val mistDarkPalette = Palette(
     grouped = Color(0.055f, 0.070f, 0.085f), paper = Color(0.075f, 0.092f, 0.108f), raised = Color(0.105f, 0.125f, 0.145f),
     primaryText = Color(0.925f, 0.945f, 0.965f), secondaryText = Color(0.65f, 0.70f, 0.75f),
-    separator = darkSeparator(Color(0.055f, 0.070f, 0.085f)), dark = true
+    separator = darkSeparator(Color(0.055f, 0.070f, 0.085f)), dark = true,
+    accent = Color(0xFFA3C9EF), secondaryAccent = Color(0xFFA8CFD0), tertiaryAccent = Color(0xFFD0BCE6)
 )
 private val clayLightPalette = Palette(
     grouped = Color(0.948f, 0.925f, 0.905f), paper = Color(0.985f, 0.968f, 0.950f), raised = Color(1f, 0.987f, 0.973f),
     primaryText = Color(0.145f, 0.115f, 0.105f), secondaryText = Color(0.40f, 0.34f, 0.31f),
-    separator = lightSeparator(Color(0.948f, 0.925f, 0.905f), 0.13f), dark = false
+    separator = lightSeparator(Color(0.948f, 0.925f, 0.905f), 0.13f), dark = false,
+    accent = Color(0xFF8D4B35), secondaryAccent = Color(0xFF59633E), tertiaryAccent = Color(0xFF825620)
 )
 private val clayDarkPalette = Palette(
     grouped = Color(0.090f, 0.072f, 0.066f), paper = Color(0.115f, 0.092f, 0.083f), raised = Color(0.155f, 0.125f, 0.112f),
     primaryText = Color(0.955f, 0.925f, 0.900f), secondaryText = Color(0.72f, 0.65f, 0.61f),
-    separator = darkSeparator(Color(0.090f, 0.072f, 0.066f)), dark = true
+    separator = darkSeparator(Color(0.090f, 0.072f, 0.066f)), dark = true,
+    accent = Color(0xFFF2B49C), secondaryAccent = Color(0xFFBFCCA0), tertiaryAccent = Color(0xFFE8C18F)
 )
 
 private val porcelain = porcelainPalette.toMaterialScheme()
@@ -270,3 +278,36 @@ private val mistLight = mistLightPalette.toMaterialScheme()
 private val mistDark = mistDarkPalette.toMaterialScheme()
 private val clayLight = clayLightPalette.toMaterialScheme()
 private val clayDark = clayDarkPalette.toMaterialScheme()
+
+/**
+ * One ordered surface ladder for authored and wallpaper-derived themes. Keeping
+ * these roles relative to the canvas avoids identical light cards and inverted
+ * dark surfaces. Accent roles remain untouched, including Monet's wallpaper hue.
+ */
+internal fun ColorScheme.withBalancedSurfaces(dark: Boolean): ColorScheme {
+    val canvas = surface
+    // Interpolate encoded RGB channels: perceptual-space interpolation quantizes
+    // tiny lifts from true black back to black, erasing Midnight's card boundary.
+    fun tone(light: Float, night: Float): Color {
+        val amount = if (dark) night else light
+        return Color(
+            red = canvas.red + (onSurface.red - canvas.red) * amount,
+            green = canvas.green + (onSurface.green - canvas.green) * amount,
+            blue = canvas.blue + (onSurface.blue - canvas.blue) * amount
+        )
+    }
+    return copy(
+        background = canvas,
+        surface = canvas,
+        onSurfaceVariant = if (dark) onSurfaceVariant else lerp(onSurfaceVariant, onSurface, 0.16f),
+        surfaceContainerLowest = if (dark) lerp(canvas, Color.Black, 0.25f) else Color.White,
+        surfaceContainerLow = tone(0.065f, 0.04f),
+        surfaceContainer = tone(0.085f, 0.06f),
+        surfaceContainerHigh = tone(0.11f, 0.085f),
+        surfaceContainerHighest = tone(0.145f, 0.12f),
+        surfaceVariant = tone(0.145f, 0.12f),
+        surfaceBright = if (dark) tone(0f, 0.16f) else canvas,
+        surfaceDim = if (dark) canvas else tone(0.16f, 0f),
+        outlineVariant = tone(0.20f, 0.19f)
+    )
+}
