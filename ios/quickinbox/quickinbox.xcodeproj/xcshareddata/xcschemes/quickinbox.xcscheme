@@ -29,6 +29,27 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES"
       shouldAutocreateTestPlan = "YES">
+      <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "CAC00006303B67EE0045BCB5"
+               BuildableName = "quickinboxTests.xctest"
+               BlueprintName = "quickinboxTests"
+               ReferencedContainer = "container:quickinbox.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+      </Testables>
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "7DD387A8303B67EE0045BCB5"
+            BuildableName = "quickinbox.app"
+            BlueprintName = "quickinbox"
+            ReferencedContainer = "container:quickinbox.xcodeproj">
+         </BuildableReference>
+      </MacroExpansion>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
