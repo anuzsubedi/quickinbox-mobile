@@ -69,6 +69,17 @@ class MailboxViewModel(
     private var searchJob: Job? = null
     private var prefetchJob: Job? = null
     private var bootstrapped = false
+    private val _undoOffer = MutableStateFlow<MailboxUndoOffer?>(null)
+    val undoOffer = _undoOffer.asStateFlow()
+    private var nextUndoId = 0L
+    private val undoDecisions = mutableMapOf<Long, UndoDecision>()
+
+    fun resolveUndo(id: Long, undo: Boolean) {
+        undoDecisions[id]?.finish(undo)
+        if (_undoOffer.value?.id == id) _undoOffer.value = null
+    }
+
+    private val pendingMutations = mutableListOf<OptimisticMailboxMutation>()
 
     fun bootstrap() {
         if (bootstrapped) return
@@ -165,6 +176,7 @@ class MailboxViewModel(
                     isInitialLoading = false
                 )
             }
+            reapplyPendingMutations()
             saveInboxCacheIfNeeded()
             prefetchThreadDetails(_state.value.threads)
         } catch (error: CancellationException) {
@@ -223,6 +235,7 @@ class MailboxViewModel(
                         pageCount = maxOf(page.pageCount, 1)
                     )
                 }
+                reapplyPendingMutations()
                 saveInboxCacheIfNeeded()
                 prefetchThreadDetails(_state.value.threads)
             } catch (error: CancellationException) {
@@ -244,30 +257,58 @@ class MailboxViewModel(
         val unique = threads.distinctBy { it.id }
         if (unique.isEmpty()) return
         val ids = unique.map { it.id }.toSet()
-        if (_state.value.mutatingIds.any { it in ids }) return
+        if (pendingMutations.any { pending -> pending.ids.any { it in ids } }) return
+        val pending = OptimisticMailboxMutation(action, _state.value, ids)
+        pendingMutations += pending
+        mutationRevision += 1
         prefetchJob?.cancel()
-        _state.update { it.copy(mutatingIds = it.mutatingIds + ids) }
+        _state.update { it.copy(mutatingIds = it.mutatingIds + ids, actionError = null) }
+        unique.forEach { apply(action, it) }
+        val offer = if (action.supportsUndo()) {
+            _undoOffer.value?.let { resolveUndo(it.id, false) }
+            MailboxUndoOffer(++nextUndoId, action, unique.size).also {
+                undoDecisions[it.id] = UndoDecision()
+                _undoOffer.value = it
+            }
+        } else null
         viewModelScope.launch {
             try {
+                if (offer != null && undoDecisions.getValue(offer.id).isUndone()) {
+                    pendingMutations.remove(pending)
+                    mutationRevision += 1
+                    _state.update { pending.rollback(it) }
+                    saveInboxCacheIfNeeded()
+                    return@launch
+                }
                 val response = withContext(ioDispatcher) {
                     api.perform(action, unique.map { it.latestId })
                 }
                 if (!response.ok) throw IllegalStateException("The server could not update this conversation.")
+                pendingMutations.remove(pending)
                 mutationRevision += 1
-                unique.forEach { apply(action, it) }
-                updateThreadCache(action, unique)
-                saveInboxCacheIfNeeded()
+                // The list already reflects this action. Cache failures must not undo a server success.
+                try {
+                    updateThreadCache(action, unique)
+                    saveInboxCacheIfNeeded()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) { /* Cache will be refreshed by the next load. */ }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                _state.update { it.copy(actionError = error.message) }
+                pendingMutations.remove(pending)
+                mutationRevision += 1
+                _state.update { pending.rollback(it).copy(actionError = error.message) }
             } finally {
+                offer?.let { undoDecisions.remove(it.id) }
+                pendingMutations.remove(pending)
                 _state.update { it.copy(mutatingIds = it.mutatingIds - ids) }
             }
         }
     }
 
     fun onThreadLoaded(thread: ThreadSummary, detail: ThreadDetail) {
+        if (pendingMutations.any { thread.id in it.ids }) return
         mutationRevision += 1
         _state.update { state ->
             val current = state.threads.firstOrNull { it.id == thread.id } ?: return@update state
@@ -319,6 +360,7 @@ class MailboxViewModel(
     }
 
     private suspend fun saveInboxCacheIfNeeded() {
+        if (pendingMutations.isNotEmpty()) return
         val snapshot = _state.value
         val origin = api.credential?.origin ?: return
         if (snapshot.mailbox != MailboxKind.Inbox ||
@@ -394,39 +436,17 @@ class MailboxViewModel(
         }
     }
 
-    private fun apply(action: MailAction, thread: ThreadSummary) {
-        _state.update { state ->
-            val current = state.threads.firstOrNull { it.id == thread.id } ?: return@update state
-            val updated = when (action) {
-                MailAction.Read ->
-                    if (state.unreadOnly) state.without(current)
-                    else state.replacing(current.copy(isRead = true))
-                MailAction.Unread -> state.replacing(current.copy(isRead = false))
-                MailAction.Star -> state.replacing(current.copy(isStarred = true))
-                MailAction.Unstar ->
-                    if (state.starredOnly || state.mailbox == MailboxKind.Starred) state.without(current)
-                    else state.replacing(current.copy(isStarred = false))
-                MailAction.Archive ->
-                    if (state.mailbox == MailboxKind.Inbox) state.without(current)
-                    else state.replacing(current.copy(isArchived = true))
-                MailAction.Unarchive ->
-                    if (state.mailbox == MailboxKind.Archive) state.without(current)
-                    else state.replacing(current.copy(isArchived = false))
-                MailAction.Trash, MailAction.Restore, MailAction.Delete -> state.without(current)
-                MailAction.ReadAll, MailAction.EmptyTrash -> state
-            }
-            updated
+    private fun reapplyPendingMutations() {
+        pendingMutations.filter { it.before.sameMailboxView(_state.value) }.forEach { pending ->
+            _state.update { it.copy(mutatingIds = it.mutatingIds + pending.ids) }
+            pending.before.threads.filter { it.id in pending.ids }.forEach { apply(pending.action, it) }
         }
     }
 
-    private fun MailboxUiState.replacing(thread: ThreadSummary) = copy(
-        threads = threads.map { if (it.id == thread.id) thread else it }
-    )
+    private fun apply(action: MailAction, thread: ThreadSummary) {
+        _state.update { it.applyingMailboxAction(action, thread) }
+    }
 
-    private fun MailboxUiState.without(thread: ThreadSummary) = copy(
-        threads = threads.filterNot { it.id == thread.id },
-        total = maxOf(0, total - threads.count { it.id == thread.id })
-    )
 }
 
 private fun List<ThreadSummary>.deduplicated() = emptyList<ThreadSummary>().merging(this)

@@ -15,6 +15,7 @@ QuickInbox for Android is a Kotlin and Jetpack Compose client for a self-hosted 
 - Signatures, connected devices, privacy information, and appearance settings.
 - Light/dark theme support, expressive motion, and accessibility-conscious controls.
 - Mailbox caching for a more resilient return to the app.
+- Optional navigation dock: enable **Show navigation dock** in Appearance for Inbox, Archive, Sent, Drafts, and Trash; turn it off to use the side drawer. The dock stays visible in every mailbox, and Back returns to Inbox.
 
 ## Requirements
 
@@ -53,6 +54,16 @@ For a local debug build:
 ```
 
 Use a configured JDK 11 installation if Gradle cannot find Java. Generated `build/` output is intentionally ignored.
+
+## UI dependencies
+
+The app uses the stable Compose BOM `2026.08.00` with Material 3 explicitly pinned to
+`1.5.0-alpha27` for Google's native expressive pull-to-refresh loading indicator.
+The Compose compiler plugin is `2.3.21`. Material 3 is a prerelease dependency;
+review its release notes and rerun UI compatibility checks when upgrading it.
+The app uses `MaterialExpressiveTheme` globally for expressive component defaults
+and motion, retaining its custom color palettes and Google Sans typography. Android support remains API 24 and newer,
+with compile/target SDK 37.
 
 ## Project structure
 

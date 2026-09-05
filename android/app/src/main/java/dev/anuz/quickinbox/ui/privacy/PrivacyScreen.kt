@@ -12,6 +12,9 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -81,23 +84,25 @@ fun PrivacyScreen(onBack: () -> Unit) {
     }
 
     Scaffold(
-        containerColor = colors.background,
+        containerColor = colors.surface,
         topBar = {
             TopAppBar(
                 title = {
                     Text(
                         "Privacy policy",
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.semantics { heading() }
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = onBack, modifier = Modifier.padding(start = 8.dp)
+                        .background(colors.surfaceContainerLow, MaterialTheme.shapes.large)) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = colors.background,
+                    containerColor = colors.surface,
                     titleContentColor = colors.onSurface,
                     navigationIconContentColor = colors.onSurface
                 )
@@ -156,17 +161,17 @@ fun PrivacyScreen(onBack: () -> Unit) {
             loadError?.let { message ->
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = colors.background
+                    color = colors.surface
                 ) {
                     Box(
                         modifier = Modifier.fillMaxSize().padding(24.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(24.dp),
+                            modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth(),
+                            shape = MaterialTheme.shapes.extraLarge,
                             color = colors.surfaceContainerLow,
-                            tonalElevation = 1.dp
+                            tonalElevation = 0.dp
                         ) {
                             Column(
                                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
@@ -188,8 +193,8 @@ fun PrivacyScreen(onBack: () -> Unit) {
                                 )
                                 Button(
                                     onClick = retry,
-                                    modifier = Modifier.padding(top = 24.dp).height(52.dp),
-                                    shape = RoundedCornerShape(18.dp)
+                                    modifier = Modifier.padding(top = 24.dp).heightIn(min = 52.dp),
+                                    shape = MaterialTheme.shapes.large
                                 ) {
                                     Text("Try again", fontWeight = FontWeight.SemiBold)
                                 }
