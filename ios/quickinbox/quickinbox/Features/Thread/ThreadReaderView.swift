@@ -9,9 +9,10 @@ struct ThreadReaderView: View {
     private let api: QuickInboxAPI
     private let refreshToken: UUID
     private let needsSignOut: Bool
-    private let onReply: (String) -> Void
+    private let onReply: (ThreadMessage, Bool) -> Void
     private let onForward: ([ThreadMessage]) -> Void
     private let onMailboxMutation: () -> Void
+    private let onReaderMutation: (MailAction, String) -> Void
     private let onExit: () -> Void
 
     @State private var downloadingAttachmentID: String?
@@ -19,8 +20,7 @@ struct ThreadReaderView: View {
     @State private var previewItem: AttachmentPreviewItem?
     @State private var previewDirectory: URL?
     @State private var pendingDestructiveAction: MailAction?
-    @State private var expandedMessageID: String?
-    @State private var hiddenPreviewMessageIDs: Set<String> = []
+    @State private var messageExpansion: [String: Bool] = [:]
 
     init(
         api: QuickInboxAPI,
@@ -30,9 +30,11 @@ struct ThreadReaderView: View {
         cache: ThreadDetailCache,
         refreshToken: UUID = UUID(),
         needsSignOut: Bool = false,
-        onReply: @escaping (String) -> Void,
+        onReply: @escaping (ThreadMessage, Bool) -> Void,
         onForward: @escaping ([ThreadMessage]) -> Void,
         onMailboxMutation: @escaping () -> Void = {},
+        onReaderMutation: @escaping (MailAction, String) -> Void = { _, _ in },
+        onReaderLoaded: @escaping (ThreadDetail) -> Void = { _ in },
         onExit: @escaping () -> Void = {}
     ) {
         self.api = api
@@ -41,6 +43,7 @@ struct ThreadReaderView: View {
         self.onReply = onReply
         self.onForward = onForward
         self.onMailboxMutation = onMailboxMutation
+        self.onReaderMutation = onReaderMutation
         self.onExit = onExit
         _model = StateObject(
             wrappedValue: ThreadReaderViewModel(
@@ -48,7 +51,8 @@ struct ThreadReaderView: View {
                 userID: userID,
                 threadID: threadID,
                 summary: summary,
-                cache: cache
+                cache: cache,
+                onLoaded: onReaderLoaded
             )
         )
     }
@@ -57,7 +61,7 @@ struct ThreadReaderView: View {
         Group {
             if let detail = model.detail {
                 VStack(spacing: 0) {
-                    if model.isShowingCachedData || model.refreshError != nil {
+                    if model.refreshError != nil {
                         savedDataBanner
                     }
                     threadContent(detail)
@@ -77,7 +81,7 @@ struct ThreadReaderView: View {
             QuickInboxDesign.Motion.resolved(.easeOut(duration: 0.18), reduceMotion: reduceMotion),
             value: model.detail != nil
         )
-        .navigationTitle(model.chronologicalMessages.count == 1 ? "Message" : "Conversation")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(horizontalSizeClass == .regular)
         .toolbar {
@@ -90,7 +94,16 @@ struct ThreadReaderView: View {
                 }
             }
 
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    Task { await perform(model.isStarred ? .unstar : .star) }
+                } label: {
+                    Image(systemName: model.isStarred ? "star.fill" : "star")
+                        .foregroundStyle(model.isStarred ? AnyShapeStyle(QuickInboxDesign.Palette.starred) : AnyShapeStyle(QuickInboxDesign.Palette.primaryText))
+                }
+                .accessibilityLabel(model.isStarred ? "Unstar conversation" : "Star conversation")
+                .disabled(model.detail == nil || model.chronologicalMessages.isEmpty || model.actionInProgress != nil)
+
                 readerActionsMenu
             }
         }
@@ -169,53 +182,12 @@ struct ThreadReaderView: View {
                     )
                 } else {
                     ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
-                        if index > 0 {
-                            messageSeparator
-                        }
-
-                        if index == messages.count - 1 {
-                            ThreadMessageView(
-                                message: message,
-                                isNewest: true,
-                                downloadingAttachmentID: downloadingAttachmentID,
-                                openAttachment: download
-                            )
-                            .padding(.top, messages.count == 1 ? 4 : 12)
-                            .padding(.bottom, 28)
-                        } else {
-                            let isExpanded = expandedMessageID == message.id
-
-                            DisclosureGroup(
-                                isExpanded: Binding(
-                                    get: { expandedMessageID == message.id },
-                                    set: { expands in
-                                        setMessageExpansion(expands, messageID: message.id)
-                                    }
-                                )
-                            ) {
-                                ThreadMessageView(
-                                    message: message,
-                                    isNewest: false,
-                                    showsHeader: false,
-                                    downloadingAttachmentID: downloadingAttachmentID,
-                                    openAttachment: download
-                                )
-                                .padding(.top, 2)
-                                .padding(.leading, 44)
-                                .padding(.bottom, 12)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    collapsedMessageLabel(message, isExpanded: isExpanded)
-                                }
-                            }
-                            .tint(QuickInboxDesign.Palette.secondaryText)
-                            .padding(.vertical, 10)
-                        }
+                        messageRow(message, isNewest: index == messages.count - 1)
                     }
                 }
             }
-            .padding(.horizontal, 22)
-            .padding(.bottom, 40)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 24)
             .frame(maxWidth: QuickInboxDesign.contentMaxWidth)
             .frame(maxWidth: .infinity)
             .background(QuickInboxDesign.Palette.paper)
@@ -232,11 +204,94 @@ struct ThreadReaderView: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.isArchived)
     }
 
-    private var messageSeparator: some View {
-        QuickInboxRule()
-            .padding(.leading, 44)
-            .padding(.vertical, 2)
-            .accessibilityHidden(true)
+    private func isExpanded(_ message: ThreadMessage) -> Bool {
+        model.chronologicalMessages.count == 1 || (messageExpansion[message.id] ?? (message.id == model.chronologicalMessages.last?.id))
+    }
+
+    private func setMessageExpansion(_ expands: Bool, messageID: String) {
+        guard model.chronologicalMessages.count > 1 else { return }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.24)) {
+            messageExpansion[messageID] = expands
+        }
+    }
+
+    private func messageRow(_ message: ThreadMessage, isNewest: Bool) -> some View {
+        let expanded = isExpanded(message)
+        return VStack(alignment: .leading, spacing: 0) {
+            if model.chronologicalMessages.count > 1 {
+                HStack(alignment: .top, spacing: 0) {
+                    Button {
+                        setMessageExpansion(!expanded, messageID: message.id)
+                    } label: {
+                        HStack(alignment: .top, spacing: 8) {
+                            collapsedMessageLabel(message, isExpanded: expanded)
+                            Image(systemName: "chevron.down")
+                                .font(.caption.weight(.semibold))
+                                .rotationEffect(.degrees(expanded ? 180 : 0))
+                                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                                .frame(width: 20, height: 40)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+                }
+            } else {
+                collapsedMessageLabel(message, isExpanded: true)
+            }
+
+            if expanded {
+                ThreadMessageView(
+                    message: message,
+                    isNewest: isNewest,
+                    showsHeader: false,
+                    downloadingAttachmentID: downloadingAttachmentID,
+                    openAttachment: download
+                )
+                .padding(.top, 2)
+                .transition(.opacity)
+            }
+        }
+        .padding(model.chronologicalMessages.count == 1 ? 12 : 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(expanded ? QuickInboxDesign.Palette.paper : QuickInboxDesign.Palette.paperRaised,
+                    in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .strokeBorder(QuickInboxDesign.Palette.separator.opacity(expanded ? 0.45 : 0.15), lineWidth: 0.5)
+                .allowsHitTesting(false)
+        }
+        .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 18))
+        .contextMenu { individualMessageActions(message) }
+        .accessibilityActions { individualMessageActions(message) }
+        .padding(.vertical, 6)
+    }
+
+    @ViewBuilder
+    private func individualMessageActions(_ message: ThreadMessage) -> some View {
+        Button { onForward([message]) } label: {
+            Label("Forward", systemImage: "arrowshape.turn.up.right")
+        }
+        Divider()
+        Button {
+            UIPasteboard.general.string = EmailAddressPresentation.addressOnly(from: message.fromAddress)
+        } label: {
+            Label("Copy Sender Address", systemImage: "doc.on.doc")
+        }
+        if model.chronologicalMessages.count > 1 {
+            Button {
+                setMessageExpansion(!isExpanded(message), messageID: message.id)
+            } label: {
+                Label(isExpanded(message) ? "Collapse Email" : "Expand Email", systemImage: isExpanded(message) ? "chevron.up" : "chevron.down")
+            }
+        }
+    }
+
+    // SF Symbols has a double reply arrow; mirror it for double-arrow forwarding.
+    private var forwardSymbol: some View {
+        Image(systemName: "arrowshape.turn.up.left.2")
+            .scaleEffect(x: -1, y: 1)
     }
 
     private var readerLoadingState: some View {
@@ -253,14 +308,14 @@ struct ThreadReaderView: View {
 
     private var savedDataBanner: some View {
         HStack(spacing: 10) {
-            Image(systemName: model.refreshError == nil ? "arrow.triangle.2.circlepath" : "wifi.slash")
+            Image(systemName: "arrow.triangle.2.circlepath")
                 .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(model.refreshError == nil ? "Saved conversation" : "Showing saved conversation")
+                Text("Couldn’t refresh conversation")
                     .font(.subheadline.weight(.semibold))
-                Text(model.refreshError ?? "Checking for updates…")
+                Text(model.isRefreshing ? "Trying again…" : "Showing the last available version. " + (model.refreshError ?? ""))
                     .font(.caption)
                     .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
                     .lineLimit(2)
@@ -268,13 +323,13 @@ struct ThreadReaderView: View {
 
             Spacer()
 
-            if model.refreshError != nil {
+            if !model.isRefreshing {
                 Button("Retry") {
                     Task { await model.load() }
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-            } else if model.isRefreshing {
+            } else {
                 ProgressView()
                     .controlSize(.small)
             }
@@ -288,24 +343,111 @@ struct ThreadReaderView: View {
     }
 
     private var replyDock: some View {
-        HStack {
-            Spacer()
-
-            FloatingControlGroup {
-                FloatingActionButton(
-                    "Reply",
-                    systemImage: "arrowshape.turn.up.left"
-                ) {
-                    onReply(model.actionTargetID)
+        VStack(spacing: 0) {
+            Divider()
+                .padding(.bottom, 8)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    replyButton
+                    forwardButton
+                    moveButton
+                    trashButton
                 }
-
-                .controlSize(.large)
-                .accessibilityHint("Opens a reply to the newest message")
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        replyButton
+                        forwardButton
+                    }
+                    HStack(spacing: 8) {
+                        moveButton
+                        trashButton
+                    }
+                }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 8)
-        .padding(.bottom, 6)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
+        .frame(maxWidth: QuickInboxDesign.contentMaxWidth)
+        .frame(maxWidth: .infinity)
+        .background(QuickInboxDesign.Palette.paper)
+        .disabled(model.actionInProgress != nil)
+    }
+
+    private var replyButton: some View {
+        readerDockButton("Reply", symbol: "arrowshape.turn.up.left", emphasized: true) {
+            if let latest = model.chronologicalMessages.last { onReply(latest, false) }
+        }
+    }
+
+    private var forwardButton: some View {
+        readerDockButton(model.chronologicalMessages.count > 1 ? "Forward All" : "Forward", symbol: model.chronologicalMessages.count > 1 ? "forward" : "arrowshape.turn.up.right") {
+            onForward(model.chronologicalMessages)
+        }
+        .accessibilityHint("Forwards every email in this conversation")
+    }
+
+    private var moveAction: MailAction {
+        model.isTrashed ? .restore : (model.isArchived ? .unarchive : .archive)
+    }
+
+    private var moveButton: some View {
+        readerDockButton(
+            model.isTrashed ? "Restore" : (model.isArchived ? "Inbox" : "Archive"),
+            symbol: model.isTrashed ? "arrow.uturn.backward" : (model.isArchived ? "tray.and.arrow.down" : "archivebox"),
+            pendingAction: moveAction
+        ) {
+            Task { await perform(moveAction, exitsReader: true) }
+        }
+        .accessibilityLabel(model.isTrashed ? "Restore conversation" : (model.isArchived ? "Move to Inbox" : "Archive conversation"))
+    }
+
+    private var trashButton: some View {
+        readerDockButton(
+            model.isTrashed ? "Delete" : "Trash",
+            symbol: model.isTrashed ? "trash.slash" : "trash",
+            pendingAction: model.isTrashed ? .delete : .trash
+        ) {
+            pendingDestructiveAction = model.isTrashed ? .delete : .trash
+        }
+        .accessibilityLabel(model.isTrashed ? "Delete permanently" : "Move to Trash")
+    }
+
+    private func readerDockButton(
+        _ title: String,
+        symbol: String,
+        emphasized: Bool = false,
+        pendingAction: MailAction? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                if let pendingAction, model.actionInProgress == pendingAction {
+                    ProgressView()
+                        .frame(height: 22)
+                } else {
+                    Group {
+                        if symbol == "forward" { forwardSymbol }
+                        else { Image(systemName: symbol) }
+                    }
+                    .font(.title3)
+                    .frame(height: 22)
+                }
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .padding(.horizontal, 4)
+            .frame(maxWidth: .infinity, minHeight: 58)
+            .foregroundStyle(pendingAction == .trash || pendingAction == .delete ? AnyShapeStyle(QuickInboxDesign.Palette.destructive) : AnyShapeStyle(emphasized ? QuickInboxDesign.Palette.interactiveTint : QuickInboxDesign.Palette.primaryText))
+            .background {
+                if emphasized {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(QuickInboxDesign.Palette.interactiveTint.opacity(0.08))
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func conversationHeader(
@@ -314,20 +456,19 @@ struct ThreadReaderView: View {
     ) -> some View {
         return VStack(alignment: .leading, spacing: 9) {
             Text(detail.subject.isEmpty ? "(No Subject)" : detail.subject)
-                .font(.title.weight(.bold))
-                .tracking(-0.35)
+                .font(.title2.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
                 .accessibilityAddTraits(.isHeader)
 
-            if !messages.isEmpty {
+            if messages.count > 1 {
                 HStack(spacing: 6) {
-                    Text(messages.count == 1 ? "1 message" : "\(messages.count) messages")
+                    Text("\(messages.count) messages")
 
                     if let latest = messages.last {
                         Text("·")
                             .accessibilityHidden(true)
-                        Text("Updated \(latest.createdAt, format: .relative(presentation: .named))")
+                        Text(latest.createdAt, format: .dateTime.month(.abbreviated).day())
                     }
                 }
                 .font(.subheadline)
@@ -335,8 +476,8 @@ struct ThreadReaderView: View {
                 .accessibilityElement(children: .combine)
             }
         }
-        .padding(.top, 18)
-        .padding(.bottom, 4)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
     }
 
     private func collapsedMessageLabel(
@@ -344,107 +485,48 @@ struct ThreadReaderView: View {
         isExpanded: Bool
     ) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            ParticipantMonogram(
-                name: collapsedSenderTitle(message),
-                size: 32
-            )
+            ParticipantMonogram(name: collapsedSenderTitle(message), size: 32)
+                .padding(.top, 3)
 
             VStack(alignment: .leading, spacing: 4) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(collapsedSenderTitle(message))
-                            .font(collapsedSenderFont)
-                            .lineLimit(1)
-                        Spacer(minLength: 4)
-                        Text(compactMessageDate(message.createdAt))
-                            .font(collapsedMetadataFont)
-                            .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                    }
+                Text(collapsedSenderTitle(message))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+                    .lineLimit(2)
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(collapsedSenderTitle(message))
-                            .font(collapsedSenderFont)
-                        Text(compactMessageDate(message.createdAt))
-                            .font(collapsedMetadataFont)
-                            .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                    }
-                }
-
-                Text(messagePreview(message))
-                    .font(collapsedPreviewFont)
+                Text(compactMessageDate(message.createdAt))
+                    .font(.caption)
                     .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                    .lineLimit(1)
-                    .opacity(hiddenPreviewMessageIDs.contains(message.id) ? 0 : 1)
-                    .accessibilityHidden(hiddenPreviewMessageIDs.contains(message.id))
-                    .transaction { transaction in
-                        transaction.animation = nil
-                        transaction.disablesAnimations = true
-                    }
+
+                if !isExpanded {
+                    Text(messagePreview(message))
+                        .font(.subheadline)
+                        .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                        .lineLimit(2)
+                        .padding(.top, 3)
+                        .transition(.opacity)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .multilineTextAlignment(.leading)
 
             if !message.attachments.isEmpty {
                 Image(systemName: "paperclip")
                     .font(.caption)
                     .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                    .padding(.top, 4)
                     .accessibilityLabel("Has attachments")
             }
-
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityHint(isExpanded ? "Double-tap to collapse this message" : "Double-tap to expand this message")
     }
 
     private func collapsedSenderTitle(_ message: ThreadMessage) -> String {
         message.direction == .outbound
             ? "Me"
             : message.senderDisplayName
-    }
-
-    private var collapsedSenderFont: Font {
-        .subheadline.weight(.semibold)
-    }
-
-    private var collapsedMetadataFont: Font {
-        .caption
-    }
-
-    private var collapsedPreviewFont: Font {
-        .subheadline
-    }
-
-    private func setMessageExpansion(_ expands: Bool, messageID: String) {
-        let previouslyExpandedID = expandedMessageID
-
-        if expands {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                _ = hiddenPreviewMessageIDs.insert(messageID)
-            }
-            expandedMessageID = messageID
-
-            if let previouslyExpandedID, previouslyExpandedID != messageID {
-                schedulePreviewShown(for: previouslyExpandedID)
-            }
-        } else {
-            expandedMessageID = nil
-            schedulePreviewShown(for: messageID)
-        }
-    }
-
-    private func schedulePreviewShown(for messageID: String) {
-        Task { @MainActor in
-            if !reduceMotion {
-                try? await Task.sleep(for: .milliseconds(350))
-            }
-            guard expandedMessageID != messageID else { return }
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            _ = withTransaction(transaction) {
-                hiddenPreviewMessageIDs.remove(messageID)
-            }
-        }
     }
 
     private func messagePreview(_ message: ThreadMessage) -> String {
@@ -472,74 +554,25 @@ struct ThreadReaderView: View {
 
     private var readerActionsMenu: some View {
         Menu {
-            if !model.chronologicalMessages.isEmpty {
-                Button {
-                    if let latestMessage = model.chronologicalMessages.last {
-                        onForward([latestMessage])
-                    }
-                } label: {
-                    Label("Forward", systemImage: "arrowshape.turn.up.right")
-                }
-
-                if model.chronologicalMessages.count > 1 {
-                    Button {
-                        onForward(model.chronologicalMessages)
-                    } label: {
-                        Label("Forward All", systemImage: "arrowshape.turn.up.right")
-                    }
+            if let latest = model.chronologicalMessages.last {
+                Button { onReply(latest, true) } label: {
+                    Label("Reply All", systemImage: "arrowshape.turn.up.left.2")
                 }
             }
-
-            Button {
-                Task { await perform(model.isStarred ? .unstar : .star) }
-            } label: {
-                Label(
-                    model.isStarred ? "Unstar" : "Star",
-                    systemImage: model.isStarred ? "star.slash" : "star"
-                )
-            }
-
-            if !model.isTrashed {
-                Button {
-                    Task {
-                        await perform(
-                            model.isArchived ? .unarchive : .archive,
-                            exitsReader: !model.isArchived
-                        )
-                    }
-                } label: {
-                    Label(
-                        model.isArchived ? "Move to Inbox" : "Archive",
-                        systemImage: model.isArchived ? "tray.and.arrow.down" : "archivebox"
-                    )
-                }
-            }
-
             Button {
                 Task { await perform(model.isRead ? .unread : .read) }
             } label: {
-                Label(
-                    model.isRead ? "Mark as Unread" : "Mark as Read",
-                    systemImage: model.isRead ? "envelope.badge" : "envelope.open"
-                )
+                Label(model.isRead ? "Mark as Unread" : "Mark as Read", systemImage: model.isRead ? "envelope.badge" : "envelope.open")
             }
-
-            if model.isTrashed {
+            if model.chronologicalMessages.count > 1 {
+                Divider()
                 Button {
-                    Task { await perform(.restore, exitsReader: true) }
+                    let expand = !model.chronologicalMessages.allSatisfy { isExpanded($0) }
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.24)) {
+                        for message in model.chronologicalMessages { messageExpansion[message.id] = expand }
+                    }
                 } label: {
-                    Label("Restore", systemImage: "arrow.uturn.backward")
-                }
-                Button(role: .destructive) {
-                    pendingDestructiveAction = .delete
-                } label: {
-                    Label("Delete Permanently", systemImage: "trash.slash")
-                }
-            } else {
-                Button(role: .destructive) {
-                    pendingDestructiveAction = .trash
-                } label: {
-                    Label("Move to Trash", systemImage: "trash")
+                    Label(model.chronologicalMessages.allSatisfy { isExpanded($0) } ? "Collapse All Messages" : "Expand All Messages", systemImage: "arrow.up.arrow.down")
                 }
             }
         } label: {
@@ -561,12 +594,13 @@ struct ThreadReaderView: View {
                 ? "More conversation actions"
                 : "Updating conversation"
         )
-        .disabled(model.actionInProgress != nil)
+        .disabled(model.detail == nil || model.chronologicalMessages.isEmpty || model.actionInProgress != nil)
     }
 
     private func perform(_ action: MailAction, exitsReader: Bool = false) async {
         pendingDestructiveAction = nil
         if await model.perform(action) {
+            onReaderMutation(action, model.threadID)
             onMailboxMutation()
             if exitsReader {
                 exitReader()

@@ -1,6 +1,12 @@
 import SwiftUI
 
 struct ThreadMessageView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .footnote) private var detailLabelWidth = 46
+    @State private var showsAddressDetails = false
+    @State private var copiedDetail: String?
+
     let message: ThreadMessage
     let isNewest: Bool
     var showsHeader = true
@@ -8,9 +14,11 @@ struct ThreadMessageView: View {
     let openAttachment: (ThreadMessage, EmailAttachment) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             if showsHeader {
                 header
+            } else {
+                addressDetails
             }
             if let status = deliveryIssue {
                 Label(deliveryLabel(status), systemImage: deliverySymbol(status))
@@ -55,21 +63,110 @@ struct ThreadMessageView: View {
                     }
                 }
 
-                Text("To: \(message.toAddress)")
-                    .font(messageRecipientFont)
-                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                    .textSelection(.enabled)
-
-                if let cc = message.ccAddress, !cc.isEmpty {
-                    Text("Cc: \(cc)")
-                        .font(messageRecipientFont)
-                        .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                        .textSelection(.enabled)
-                }
+                addressDetails
 
             }
         }
     }
+
+    private var addressDetails: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) {
+                    showsAddressDetails.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text("Message details")
+                    Image(systemName: "chevron.down")
+                        .rotationEffect(.degrees(showsAddressDetails ? 180 : 0))
+                        .font(.caption2.weight(.semibold))
+                }
+                .font(messageRecipientFont)
+                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                .frame(minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, showsHeader ? 0 : 44)
+            .accessibilityLabel("Message details")
+            .accessibilityValue(showsAddressDetails ? "Expanded" : "Collapsed")
+
+            if showsAddressDetails {
+                VStack(alignment: .leading, spacing: 12) {
+                    QuickInboxRule()
+                    addressDetail("From", value: message.fromAddress, name: message.fromName)
+                    addressDetail("To", value: message.toAddress)
+                    if let cc = message.ccAddress, !cc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        addressDetail("Cc", value: cc)
+                    }
+                    addressDetail(
+                        "Date",
+                        value: message.createdAt.formatted(date: .long, time: .omitted)
+                            + "\n" + message.createdAt.formatted(date: .omitted, time: .shortened)
+                            + " " + (TimeZone.current.abbreviation(for: message.createdAt) ?? ""),
+                        canCopy: false
+                    )
+                    QuickInboxRule()
+                }
+                .padding(.bottom, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .transition(.opacity)
+            }
+        }
+    }
+
+    private func addressDetail(
+        _ title: String,
+        value: String,
+        name: String? = nil,
+        canCopy: Bool = true
+    ) -> some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 12))
+        return layout {
+            Text(title)
+                .font(.footnote)
+                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                .frame(width: dynamicTypeSize.isAccessibilitySize ? nil : detailLabelWidth, alignment: .leading)
+
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    if let name = name?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !name.isEmpty, name.caseInsensitiveCompare(value) != .orderedSame {
+                        Text(name)
+                            .font(.footnote.weight(.semibold))
+                    }
+                    Text(value)
+                        .font(.footnote)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if canCopy {
+                    Button {
+                        UIPasteboard.general.string = value
+                        copiedDetail = title
+                        AppFeedback.selection()
+                    } label: {
+                        Image(systemName: copiedDetail == title ? "checkmark" : "doc.on.doc")
+                            .font(.footnote)
+                            .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
+                            .frame(width: 44, height: 44, alignment: .top)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Copy \(title) Address")
+                    .accessibilityValue(copiedDetail == title ? "Copied" : "")
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
 
     @ViewBuilder
     private var messageBody: some View {
@@ -204,11 +301,11 @@ struct ThreadMessageView: View {
         }
     }
 
-    private func deliveryColor(_ status: DeliveryStatus) -> Color {
+    private func deliveryColor(_ status: DeliveryStatus) -> AppThemeColorStyle {
         switch status {
-        case .bounced, .complained, .failed: .red
-        case .delayed: .orange
-        default: .secondary
+        case .bounced, .complained, .failed: QuickInboxDesign.Palette.destructive
+        case .delayed: QuickInboxDesign.Palette.warning
+        default: QuickInboxDesign.Palette.secondaryText
         }
     }
 
@@ -292,6 +389,7 @@ private struct PlainMessageBody: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(parts.message)
                 .font(.body)
+                .lineSpacing(3)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
