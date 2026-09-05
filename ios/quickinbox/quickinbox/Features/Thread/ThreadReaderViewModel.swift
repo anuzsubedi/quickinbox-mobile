@@ -22,18 +22,23 @@ final class ThreadReaderViewModel: ObservableObject {
     private let userID: String
     private let cache: ThreadDetailCache
     private var didRestoreCache = false
+    private var mutationRevision = 0
+    private var sessionGeneration = 0
+    private let onLoaded: (ThreadDetail) -> Void
 
     init(
         api: QuickInboxAPI,
         userID: String,
         threadID: String,
         summary: ThreadSummary? = nil,
-        cache: ThreadDetailCache
+        cache: ThreadDetailCache,
+        onLoaded: @escaping (ThreadDetail) -> Void = { _ in }
     ) {
         self.api = api
         self.userID = userID
         self.threadID = threadID
         self.cache = cache
+        self.onLoaded = onLoaded
         isRead = summary?.isRead ?? true
         isStarred = summary?.isStarred ?? false
         isArchived = summary?.isArchived ?? false
@@ -52,16 +57,21 @@ final class ThreadReaderViewModel: ObservableObject {
     }
 
     func load() async {
-        guard !isLoading, !isRefreshing else { return }
+        guard !isLoading, !isRefreshing, actionInProgress == nil else { return }
+        let session = sessionGeneration
+        let revision = mutationRevision
+        isLoading = detail == nil
+        isRefreshing = detail != nil
         if !didRestoreCache {
             didRestoreCache = true
             await restoreCachedDetail()
         }
+        guard session == sessionGeneration else { return }
 
         isLoading = detail == nil
         isRefreshing = detail != nil
         errorMessage = nil
-        refreshError = nil
+        // Keep an existing failure visible during Retry; cached content alone is not a failure.
         defer {
             isLoading = false
             isRefreshing = false
@@ -69,16 +79,21 @@ final class ThreadReaderViewModel: ObservableObject {
 
         do {
             let value = try await api.thread(id: threadID)
+            guard session == sessionGeneration, revision == mutationRevision else { return }
             apply(value)
+            refreshError = nil
             isShowingCachedData = false
             cachedAt = nil
             if let origin = await api.currentCredential?.origin {
+                guard session == sessionGeneration, revision == mutationRevision else { return }
                 cache.save(value, origin: origin, userID: userID)
             }
+            guard session == sessionGeneration, revision == mutationRevision else { return }
+            onLoaded(value)
         } catch is CancellationError {
             return
         } catch {
-            guard !Self.isUnauthorized(error) else { return }
+            guard session == sessionGeneration, revision == mutationRevision, !Self.isUnauthorized(error) else { return }
             if detail == nil {
                 errorMessage = Self.message(for: error)
             } else {
@@ -97,25 +112,30 @@ final class ThreadReaderViewModel: ObservableObject {
     func perform(_ action: MailAction) async -> Bool {
         guard actionInProgress == nil else { return false }
         actionInProgress = action
+        mutationRevision += 1
+        let session = sessionGeneration
         errorMessage = nil
         defer { actionInProgress = nil }
 
         do {
             if action == .delete {
-                _ = try await api.deletePermanently(id: actionTargetID)
+                let response = try await api.deletePermanently(id: actionTargetID)
+                guard response.ok else { throw APIError.invalidResponse }
             } else {
-                _ = try await api.perform(action, ids: [actionTargetID])
+                let response = try await api.perform(action, ids: [actionTargetID])
+                guard response.ok else { throw APIError.invalidResponse }
             }
+            guard session == sessionGeneration else { return false }
+            mutationRevision += 1
             apply(action)
-            if action == .delete {
-                await invalidateCache()
-            }
+            await invalidateCache()
+            guard session == sessionGeneration else { return false }
             AppFeedback.play(feedbackEvent(for: action))
             return true
         } catch is CancellationError {
             return false
         } catch {
-            guard !Self.isUnauthorized(error) else { return false }
+            guard session == sessionGeneration, !Self.isUnauthorized(error) else { return false }
             errorMessage = Self.message(for: error)
             AppFeedback.error()
             return false
@@ -141,6 +161,8 @@ final class ThreadReaderViewModel: ObservableObject {
     }
 
     func clearSensitiveState() {
+        sessionGeneration += 1
+        mutationRevision += 1
         detail = nil
         isLoading = false
         isRefreshing = false
@@ -152,8 +174,10 @@ final class ThreadReaderViewModel: ObservableObject {
     }
 
     private func restoreCachedDetail() async {
+        let session = sessionGeneration
         guard let origin = await api.currentCredential?.origin,
-              let snapshot = cache.load(origin: origin, userID: userID, threadID: threadID) else {
+              let snapshot = cache.load(origin: origin, userID: userID, threadID: threadID),
+              session == sessionGeneration else {
             return
         }
         apply(snapshot.detail, updateFlags: false)
