@@ -294,12 +294,15 @@ nonisolated struct DraftResponse: Decodable, Equatable, Sendable {
 
 nonisolated struct ReplyMessage: Encodable, Equatable, Sendable {
     var fromAddressID: String?
+    var to: String?
+    var cc: String?
+    var bcc: String?
     var text: String?
     var html: String?
     var attachments: [OutboundAttachment]?
 
     enum CodingKeys: String, CodingKey {
-        case text, html, attachments
+        case to, cc, bcc, text, html, attachments
         case fromAddressID = "fromAddressId"
     }
 }
