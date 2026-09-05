@@ -1,16 +1,9 @@
 package dev.anuz.quickinbox.ui.thread
 
 import android.content.Intent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.stopScroll
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,7 +34,6 @@ import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.MarkEmailRead
 import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.RestoreFromTrash
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Unarchive
@@ -51,11 +43,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -65,31 +56,23 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.foundation.text.InlineTextContent
-import androidx.compose.foundation.text.appendInlineContent
-import androidx.compose.ui.text.Placeholder
-import androidx.compose.ui.text.PlaceholderVerticalAlign
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import androidx.core.content.FileProvider
 import dev.anuz.quickinbox.data.AppPreferences
 import dev.anuz.quickinbox.domain.EmailAttachment
@@ -97,12 +80,11 @@ import dev.anuz.quickinbox.domain.MailAction
 import dev.anuz.quickinbox.domain.ThreadMessage
 import dev.anuz.quickinbox.domain.ThreadSummary
 import dev.anuz.quickinbox.domain.formatBytes
+import dev.anuz.quickinbox.ui.components.rememberQuickInboxHaptics
 import dev.anuz.quickinbox.ui.components.SenderTile
 import dev.anuz.quickinbox.ui.compose.ComposeMode
 import dev.anuz.quickinbox.ui.theme.LocalQuickInboxDarkTheme
 import dev.anuz.quickinbox.ui.theme.QuickInboxMotion
-import kotlinx.coroutines.launch
-import kotlin.math.abs
 import java.text.DateFormat
 import java.util.Calendar
 import java.util.Date
@@ -123,27 +105,8 @@ fun ThreadScreen(
     val messages = state.chronologicalMessages
     val latest = messages.lastOrNull()
     val subject = state.detail?.subject ?: summary?.subject ?: "Conversation"
-    val actionsEnabled = state.actionInProgress == null
+    val actionsEnabled = state.detail != null && !state.isLoading && state.actionInProgress == null
     val readerScroll = rememberScrollState()
-    val density = LocalDensity.current
-    val scope = rememberCoroutineScope()
-    val edgeThreshold = with(density) { 32.dp.roundToPx() }
-    val collapseDistance = with(density) { 24.dp.roundToPx() }
-    var expandedAtScroll by remember { mutableStateOf<Int?>(null) }
-    var dockClearance by remember { mutableStateOf(96.dp) }
-    val showDock by remember(edgeThreshold) {
-        derivedStateOf {
-            expandedAtScroll != null || readerScroll.value <= edgeThreshold ||
-                readerScroll.maxValue - readerScroll.value <= edgeThreshold
-        }
-    }
-    LaunchedEffect(readerScroll, collapseDistance) {
-        snapshotFlow { readerScroll.value }.collect { position ->
-            expandedAtScroll?.let { anchor ->
-                if (abs(position - anchor) > collapseDistance) expandedAtScroll = null
-            }
-        }
-    }
     var menuExpanded by remember { mutableStateOf(false) }
     var confirmPermanentDelete by remember { mutableStateOf(false) }
 
@@ -207,46 +170,94 @@ fun ThreadScreen(
             TopAppBar(
                 title = {},
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
-                    }
+                    ReaderChromeButton(
+                        icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                        description = "Back to mailbox",
+                        onClick = onBack,
+                        modifier = Modifier.padding(start = 8.dp)
+                            .background(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.shapes.large)
+                    )
                 },
                 actions = {
-                    IconButton(
-                        enabled = actionsEnabled,
-                        colors = IconButtonDefaults.iconButtonColors(
-                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        ),
-                        onClick = { onAction(if (state.isRead) MailAction.Unread else MailAction.Read) }
+                    Surface(
+                        modifier = Modifier.padding(end = 12.dp),
+                        shape = MaterialTheme.shapes.extraLarge,
+                        color = MaterialTheme.colorScheme.surfaceContainerLow
                     ) {
-                        Icon(
-                            if (state.isRead) Icons.Outlined.MarkEmailUnread else Icons.Rounded.MarkEmailRead,
-                            contentDescription = if (state.isRead) "Mark as unread" else "Mark as read"
-                        )
-                    }
-                    if (state.isTrashed) {
-                        Box {
-                            IconButton(enabled = actionsEnabled, onClick = { menuExpanded = true }) {
-                                Icon(Icons.Rounded.MoreVert, contentDescription = "More actions")
-                            }
-                            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                                DropdownMenuItem(
-                                    text = { Text("Delete forever", color = MaterialTheme.colorScheme.error) },
-                                    leadingIcon = {
-                                        Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error)
-                                    },
-                                    onClick = {
-                                        menuExpanded = false
-                                        confirmPermanentDelete = true
-                                    }
+                        Row(
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (!state.isTrashed) {
+                                ReaderChromeButton(
+                                    icon = if (state.isArchived) Icons.Rounded.Unarchive else Icons.Rounded.Archive,
+                                    description = if (state.isArchived) "Move to inbox" else "Archive",
+                                    enabled = actionsEnabled,
+                                    onClick = { onAction(if (state.isArchived) MailAction.Unarchive else MailAction.Archive) }
                                 )
+                                ReaderChromeButton(
+                                    icon = Icons.Rounded.Delete,
+                                    description = "Move to trash",
+                                    enabled = actionsEnabled,
+                                    onClick = { onAction(MailAction.Trash) }
+                                )
+                            } else {
+                                ReaderChromeButton(
+                                    icon = Icons.Rounded.RestoreFromTrash,
+                                    description = "Restore",
+                                    enabled = actionsEnabled,
+                                    onClick = { onAction(MailAction.Restore) }
+                                )
+                            }
+                            ReaderChromeButton(
+                                icon = if (state.isRead) Icons.Outlined.MarkEmailUnread else Icons.Rounded.MarkEmailRead,
+                                description = if (state.isRead) "Mark as unread" else "Mark as read",
+                                enabled = actionsEnabled,
+                                onClick = { onAction(if (state.isRead) MailAction.Unread else MailAction.Read) }
+                            )
+                            Box {
+                                ReaderChromeButton(
+                                    icon = Icons.Rounded.MoreVert,
+                                    description = "More conversation actions",
+                                    enabled = actionsEnabled,
+                                    onClick = { menuExpanded = true }
+                                )
+                                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                                    if (latest != null) {
+                                        DropdownMenuItem(
+                                            text = { Text("Reply all") },
+                                            enabled = actionsEnabled,
+                                            leadingIcon = { Icon(Icons.AutoMirrored.Outlined.ReplyAll, null) },
+                                            onClick = { menuExpanded = false; replyTo(latest, replyAll = true) }
+                                        )
+                                    }
+                                    if (state.isTrashed) {
+                                        DropdownMenuItem(
+                                            text = { Text("Delete forever", color = MaterialTheme.colorScheme.error) },
+                                            enabled = actionsEnabled,
+                                            leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                                            onClick = { menuExpanded = false; confirmPermanentDelete = true }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             )
+        },
+        bottomBar = {
+            if (latest != null) {
+                ThreadReplyBar(
+                    enabled = actionsEnabled,
+                    onForwardAll = if (state.isTrashed) null else ::forwardAll,
+                    onReply = { replyTo(latest) }
+                )
+            }
         }
     ) { padding ->
         Box(Modifier.fillMaxSize()) {
@@ -269,6 +280,7 @@ fun ThreadScreen(
                             state.isArchived -> "Archive"
                             else -> "Inbox"
                         },
+                        messageCount = messages.size,
                         isStarred = state.isStarred,
                         starEnabled = actionsEnabled,
                         onToggleStar = { onAction(if (state.isStarred) MailAction.Unstar else MailAction.Star) }
@@ -312,49 +324,7 @@ fun ThreadScreen(
                             }
                         }
                     }
-                    Spacer(Modifier.height(dockClearance))
-                }
-            }
-            if (latest != null) {
-                AnimatedVisibility(
-                    visible = showDock,
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                    enter = fadeIn(tween(180)) + slideInVertically(tween(220)) { it / 2 },
-                    exit = fadeOut(tween(120)) + slideOutVertically(tween(180)) { it / 2 }
-                ) {
-                    ThreadActionDock(
-                        modifier = Modifier.onSizeChanged { size ->
-                            dockClearance = with(density) { size.height.toDp() } + 16.dp
-                        },
-                        isArchived = state.isArchived,
-                        isTrashed = state.isTrashed,
-                        enabled = actionsEnabled,
-                        onReply = { replyTo(latest) },
-                        onReplyAll = { replyTo(latest, replyAll = true) },
-                        onForward = ::forwardAll,
-                        onArchive = { onAction(if (state.isArchived) MailAction.Unarchive else MailAction.Archive) },
-                        onTrash = { onAction(if (state.isTrashed) MailAction.Restore else MailAction.Trash) }
-                    )
-                }
-                AnimatedVisibility(
-                    visible = !showDock,
-                    modifier = Modifier.align(Alignment.BottomEnd)
-                        .navigationBarsPadding().padding(end = 16.dp, bottom = 16.dp),
-                    enter = fadeIn(tween(180)) + scaleIn(tween(220), initialScale = 0.8f),
-                    exit = fadeOut(tween(120)) + scaleOut(tween(120), targetScale = 0.8f)
-                ) {
-                    FloatingActionButton(
-                        onClick = {
-                            scope.launch {
-                                readerScroll.stopScroll()
-                                expandedAtScroll = readerScroll.value
-                            }
-                        },
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    ) {
-                        Icon(Icons.Rounded.MoreHoriz, contentDescription = "Show conversation actions")
-                    }
+                    Spacer(Modifier.height(16.dp))
                 }
             }
         }
@@ -379,77 +349,67 @@ fun ThreadScreen(
     }
 }
 
+/** Shared touch target and tonal treatment for the reader toolbar. */
+@Composable
+private fun ReaderChromeButton(
+    icon: ImageVector,
+    description: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    val haptics = rememberQuickInboxHaptics()
+    IconButton(
+        onClick = { haptics.tap(); onClick() },
+        enabled = enabled,
+        modifier = modifier.size(48.dp).clip(MaterialTheme.shapes.large)
+    ) {
+        Icon(icon, contentDescription = description, modifier = Modifier.size(22.dp))
+    }
+}
+
 @Composable
 private fun ThreadSubjectHeader(
     subject: String,
     mailboxLabel: String,
+    messageCount: Int,
     isStarred: Boolean,
     starEnabled: Boolean,
     onToggleStar: () -> Unit
 ) {
-    val labelChipId = "mailboxLabel"
-    val subjectStyle = MaterialTheme.typography.headlineSmall
-    val text = remember(subject, mailboxLabel) {
-        buildAnnotatedString {
-            append(subject.ifBlank { "(No subject)" })
-            append("  ")
-            appendInlineContent(labelChipId, mailboxLabel)
-        }
-    }
-    val chipWidth = (mailboxLabel.length * 0.36f + 0.9f).em
-    val inlineContent = mapOf(
-        labelChipId to InlineTextContent(
-            placeholder = Placeholder(
-                width = chipWidth,
-                height = subjectStyle.fontSize * 0.95f,
-                placeholderVerticalAlign = PlaceholderVerticalAlign.Center
+    val colors = MaterialTheme.colorScheme
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = buildString {
+                    append(mailboxLabel)
+                    if (messageCount > 0) append(" · $messageCount ${if (messageCount == 1) "message" else "messages"}")
+                },
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.labelLarge,
+                color = colors.onSurfaceVariant
             )
-        ) {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                shape = RoundedCornerShape(6.dp),
-                color = MaterialTheme.colorScheme.secondaryContainer
+            IconToggleButton(
+                checked = isStarred,
+                onCheckedChange = { onToggleStar() },
+                enabled = starEnabled
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        mailboxLabel,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        maxLines = 1
-                    )
-                }
+                Icon(
+                    if (isStarred) Icons.Rounded.Star else Icons.Outlined.StarOutline,
+                    contentDescription = if (isStarred) "Remove star" else "Add star"
+                )
             }
         }
-    )
-
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 4.dp, top = 8.dp, bottom = 12.dp),
-        verticalAlignment = Alignment.Top
-    ) {
         Text(
-            text = text,
-            inlineContent = inlineContent,
-            modifier = Modifier.weight(1f).padding(top = 8.dp),
-            style = subjectStyle,
-            fontWeight = FontWeight.Normal,
-            maxLines = 4,
-            overflow = TextOverflow.Ellipsis
+            text = subject.ifBlank { "(No subject)" },
+            modifier = Modifier.padding(end = 8.dp).semantics { heading() },
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Medium,
+            color = colors.onSurface
         )
-        val starTint = if (isStarred) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-        IconButton(
-            onClick = onToggleStar,
-            enabled = starEnabled,
-            colors = IconButtonDefaults.iconButtonColors(
-                contentColor = starTint,
-                disabledContentColor = starTint
-            )
-        ) {
-            Icon(
-                if (isStarred) Icons.Rounded.Star else Icons.Outlined.StarOutline,
-                contentDescription = if (isStarred) "Remove star" else "Add star",
-                tint = starTint
-            )
-        }
     }
 }
 

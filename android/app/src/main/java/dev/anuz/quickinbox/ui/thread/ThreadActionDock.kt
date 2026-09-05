@@ -8,7 +8,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.automirrored.outlined.ReplyAll
-import androidx.compose.material.icons.automirrored.rounded.Forward
 import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.RestoreFromTrash
@@ -17,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -51,7 +51,10 @@ internal fun ThreadActionDock(
                 ReaderDockButton("Reply", Icons.AutoMirrored.Outlined.Reply, enabled, onReply)
                 ReaderDockButton("Reply all", Icons.AutoMirrored.Outlined.ReplyAll, enabled, onReplyAll)
                 if (!isTrashed) {
-                    ReaderDockButton("Forward", Icons.AutoMirrored.Rounded.Forward, enabled, onForward)
+                    ReaderDockButton(
+                        "Forward", Icons.AutoMirrored.Outlined.ReplyAll, enabled, onForward,
+                        iconModifier = Modifier.scale(scaleX = -1f, scaleY = 1f)
+                    )
                 }
                 VerticalDivider(
                     modifier = Modifier.height(28.dp).padding(horizontal = 4.dp),
@@ -82,7 +85,8 @@ private fun ReaderDockButton(
     icon: ImageVector,
     enabled: Boolean,
     onClick: () -> Unit,
-    tint: Color = MaterialTheme.colorScheme.primary
+    tint: Color = MaterialTheme.colorScheme.primary,
+    iconModifier: Modifier = Modifier
 ) {
     val haptics = rememberQuickInboxHaptics()
     Surface(
@@ -97,7 +101,7 @@ private fun ReaderDockButton(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(21.dp))
+            Icon(icon, contentDescription = null, tint = tint, modifier = iconModifier.size(21.dp))
             Spacer(Modifier.height(2.dp))
             Text(title, style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
