@@ -96,7 +96,7 @@ fun NavigationStylePrompt(
             }
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 NavigationChoice(
-                    title = "Bottom navigation",
+                    title = "Show dock",
                     description = "Keep your most-used mailboxes within thumb reach.",
                     icon = Icons.Rounded.ViewDay,
                     selected = selected == MailboxNavigationStyle.Native,
@@ -106,8 +106,8 @@ fun NavigationStylePrompt(
                     }
                 )
                 NavigationChoice(
-                    title = "Mailbox drawer",
-                    description = "Open every mailbox from a familiar side menu.",
+                    title = "Don’t show dock",
+                    description = "Use the side drawer to switch mailboxes.",
                     icon = Icons.Rounded.Menu,
                     selected = selected == MailboxNavigationStyle.Legacy,
                     onClick = {

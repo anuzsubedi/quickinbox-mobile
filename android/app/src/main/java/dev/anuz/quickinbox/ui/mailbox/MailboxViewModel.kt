@@ -9,9 +9,12 @@ import dev.anuz.quickinbox.data.ThreadCache
 import dev.anuz.quickinbox.domain.MailAction
 import dev.anuz.quickinbox.domain.MailboxFilters
 import dev.anuz.quickinbox.domain.MailboxKind
+import dev.anuz.quickinbox.domain.ThreadDetail
 import dev.anuz.quickinbox.domain.ThreadSummary
+import dev.anuz.quickinbox.domain.applying
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -32,6 +35,7 @@ data class MailboxUiState(
     val mailbox: MailboxKind = MailboxKind.Inbox,
     val searchText: String = "",
     val unreadOnly: Boolean = false,
+    val starredOnly: Boolean = false,
     val threads: List<ThreadSummary> = emptyList(),
     val total: Int = 0,
     val currentPage: Int = 0,
@@ -53,15 +57,29 @@ class MailboxViewModel(
     private val api: QuickInboxApi,
     private val userId: String,
     private val cache: MailboxCache,
-    private val threadCache: ThreadCache
+    private val threadCache: ThreadCache,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
     private val _state = MutableStateFlow(MailboxUiState())
     val state = _state.asStateFlow()
 
     private var generation = 0
+    private var mutationRevision = 0
+    private var reloadInProgress = false
     private var searchJob: Job? = null
     private var prefetchJob: Job? = null
     private var bootstrapped = false
+    private val _undoOffer = MutableStateFlow<MailboxUndoOffer?>(null)
+    val undoOffer = _undoOffer.asStateFlow()
+    private var nextUndoId = 0L
+    private val undoDecisions = mutableMapOf<Long, UndoDecision>()
+
+    fun resolveUndo(id: Long, undo: Boolean) {
+        undoDecisions[id]?.finish(undo)
+        if (_undoOffer.value?.id == id) _undoOffer.value = null
+    }
+
+    private val pendingMutations = mutableListOf<OptimisticMailboxMutation>()
 
     fun bootstrap() {
         if (bootstrapped) return
@@ -82,7 +100,8 @@ class MailboxViewModel(
     }
 
     fun onSearchChange(value: String) {
-        _state.update { it.copy(searchText = value) }
+        generation += 1
+        _state.update { it.copy(searchText = value, isAppending = false) }
         searchJob?.cancel()
         prefetchJob?.cancel()
         searchJob = viewModelScope.launch {
@@ -91,32 +110,61 @@ class MailboxViewModel(
         }
     }
 
-    fun toggleUnreadOnly() {
+    fun toggleUnreadOnly() = updateFilters(unreadOnly = !_state.value.unreadOnly)
+
+    fun toggleStarredOnly() = updateFilters(starredOnly = !_state.value.starredOnly)
+
+    private fun updateFilters(
+        unreadOnly: Boolean = _state.value.unreadOnly,
+        starredOnly: Boolean = _state.value.starredOnly
+    ) {
+        generation += 1
+        searchJob?.cancel()
         prefetchJob?.cancel()
-        _state.update { it.copy(unreadOnly = !it.unreadOnly) }
+        _state.update {
+            it.copy(
+                unreadOnly = unreadOnly,
+                starredOnly = starredOnly,
+                threads = emptyList(),
+                total = 0,
+                currentPage = 0,
+                pageCount = 1,
+                isInitialLoading = true,
+                isAppending = false,
+                isShowingCachedData = false,
+                cachedAt = null
+            )
+        }
         viewModelScope.launch { reload(showInitialLoading = true) }
     }
 
     suspend fun reload(showInitialLoading: Boolean = true) {
         generation += 1
         val current = generation
+        val revision = mutationRevision
+        reloadInProgress = true
         _state.update {
             it.copy(
                 isInitialLoading = showInitialLoading && it.threads.isEmpty(),
                 initialError = null,
-                refreshError = null
+                refreshError = null,
+                isAppending = false
             )
         }
         val snapshot = _state.value
         try {
-            val page = withContext(Dispatchers.IO) {
+            val page = withContext(ioDispatcher) {
                 api.listThreads(
                     mailbox = snapshot.mailbox,
                     page = 1,
-                    filters = MailboxFilters(query = snapshot.searchText, unreadOnly = snapshot.unreadOnly)
+                    filters = MailboxFilters(query = snapshot.searchText, unreadOnly = snapshot.unreadOnly, starredOnly = snapshot.starredOnly)
                 )
             }
             if (current != generation) return
+            if (revision != mutationRevision) {
+                reload(showInitialLoading = false)
+                return
+            }
             _state.update {
                 it.copy(
                     threads = page.threads.deduplicated(),
@@ -128,6 +176,7 @@ class MailboxViewModel(
                     isInitialLoading = false
                 )
             }
+            reapplyPendingMutations()
             saveInboxCacheIfNeeded()
             prefetchThreadDetails(_state.value.threads)
         } catch (error: CancellationException) {
@@ -140,6 +189,7 @@ class MailboxViewModel(
             }
         } finally {
             if (current == generation) {
+                reloadInProgress = false
                 _state.update { it.copy(isInitialLoading = false) }
             }
         }
@@ -159,19 +209,24 @@ class MailboxViewModel(
 
     fun loadNextPage() {
         val snapshot = _state.value
-        if (!snapshot.hasNextPage || snapshot.isAppending || snapshot.isInitialLoading) return
+        if (reloadInProgress || !snapshot.hasNextPage || snapshot.isAppending || snapshot.isInitialLoading || searchJob?.isActive == true) return
         viewModelScope.launch {
             _state.update { it.copy(isAppending = true) }
             val current = generation
+            val revision = mutationRevision
             try {
-                val page = withContext(Dispatchers.IO) {
+                val page = withContext(ioDispatcher) {
                     api.listThreads(
                         mailbox = snapshot.mailbox,
                         page = snapshot.currentPage + 1,
-                        filters = MailboxFilters(query = snapshot.searchText, unreadOnly = snapshot.unreadOnly)
+                        filters = MailboxFilters(query = snapshot.searchText, unreadOnly = snapshot.unreadOnly, starredOnly = snapshot.starredOnly)
                     )
                 }
                 if (current != generation) return@launch
+                if (revision != mutationRevision) {
+                    reload(showInitialLoading = false)
+                    return@launch
+                }
                 _state.update {
                     it.copy(
                         threads = it.threads.merging(page.threads),
@@ -180,6 +235,7 @@ class MailboxViewModel(
                         pageCount = maxOf(page.pageCount, 1)
                     )
                 }
+                reapplyPendingMutations()
                 saveInboxCacheIfNeeded()
                 prefetchThreadDetails(_state.value.threads)
             } catch (error: CancellationException) {
@@ -188,7 +244,7 @@ class MailboxViewModel(
                 if (current != generation) return@launch
                 _state.update { it.copy(actionError = error.message) }
             } finally {
-                _state.update { it.copy(isAppending = false) }
+                if (current == generation) _state.update { it.copy(isAppending = false) }
             }
         }
     }
@@ -201,28 +257,83 @@ class MailboxViewModel(
         val unique = threads.distinctBy { it.id }
         if (unique.isEmpty()) return
         val ids = unique.map { it.id }.toSet()
-        if (_state.value.mutatingIds.any { it in ids }) return
+        if (pendingMutations.any { pending -> pending.ids.any { it in ids } }) return
+        val pending = OptimisticMailboxMutation(action, _state.value, ids)
+        pendingMutations += pending
+        mutationRevision += 1
         prefetchJob?.cancel()
+        _state.update { it.copy(mutatingIds = it.mutatingIds + ids, actionError = null) }
+        unique.forEach { apply(action, it) }
+        val offer = if (action.supportsUndo()) {
+            _undoOffer.value?.let { resolveUndo(it.id, false) }
+            MailboxUndoOffer(++nextUndoId, action, unique.size).also {
+                undoDecisions[it.id] = UndoDecision()
+                _undoOffer.value = it
+            }
+        } else null
         viewModelScope.launch {
-            _state.update { it.copy(mutatingIds = it.mutatingIds + ids) }
             try {
-                val response = withContext(Dispatchers.IO) {
+                if (offer != null && undoDecisions.getValue(offer.id).isUndone()) {
+                    pendingMutations.remove(pending)
+                    mutationRevision += 1
+                    _state.update { pending.rollback(it) }
+                    saveInboxCacheIfNeeded()
+                    return@launch
+                }
+                val response = withContext(ioDispatcher) {
                     api.perform(action, unique.map { it.latestId })
                 }
                 if (!response.ok) throw IllegalStateException("The server could not update this conversation.")
-                unique.forEach { apply(action, it) }
-                if (action == MailAction.Delete) {
-                    invalidateThreadCache(unique)
-                }
-                saveInboxCacheIfNeeded()
+                pendingMutations.remove(pending)
+                mutationRevision += 1
+                // The list already reflects this action. Cache failures must not undo a server success.
+                try {
+                    updateThreadCache(action, unique)
+                    saveInboxCacheIfNeeded()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) { /* Cache will be refreshed by the next load. */ }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                _state.update { it.copy(actionError = error.message) }
+                pendingMutations.remove(pending)
+                mutationRevision += 1
+                _state.update { pending.rollback(it).copy(actionError = error.message) }
             } finally {
+                offer?.let { undoDecisions.remove(it.id) }
+                pendingMutations.remove(pending)
                 _state.update { it.copy(mutatingIds = it.mutatingIds - ids) }
             }
         }
+    }
+
+    fun onThreadLoaded(thread: ThreadSummary, detail: ThreadDetail) {
+        if (pendingMutations.any { thread.id in it.ids }) return
+        mutationRevision += 1
+        _state.update { state ->
+            val current = state.threads.firstOrNull { it.id == thread.id } ?: return@update state
+            if (detail.messages.isEmpty()) return@update state
+            val updated = current.copy(
+                isRead = detail.messages.all { it.isRead },
+                isStarred = detail.messages.any { it.isStarred },
+                isArchived = detail.messages.all { it.archivedAt != null }
+            )
+            when {
+                state.unreadOnly && updated.isRead -> state.without(current)
+                (state.starredOnly || state.mailbox == MailboxKind.Starred) && !updated.isStarred -> state.without(current)
+                state.mailbox == MailboxKind.Inbox && updated.isArchived -> state.without(current)
+                state.mailbox == MailboxKind.Archive && !updated.isArchived -> state.without(current)
+                else -> state.replacing(updated)
+            }
+        }
+        viewModelScope.launch { saveInboxCacheIfNeeded() }
+    }
+
+    fun onThreadMutation(action: MailAction, thread: ThreadSummary) {
+        mutationRevision += 1
+        prefetchJob?.cancel()
+        apply(action, thread)
+        viewModelScope.launch { saveInboxCacheIfNeeded() }
     }
 
     fun dismissErrors() {
@@ -231,10 +342,11 @@ class MailboxViewModel(
 
     private suspend fun restoreCachedInbox() {
         val snapshot = _state.value
-        if (snapshot.mailbox != MailboxKind.Inbox || snapshot.searchText.isNotEmpty() || snapshot.unreadOnly) return
+        val current = generation
+        if (snapshot.mailbox != MailboxKind.Inbox || snapshot.searchText.isNotEmpty() || snapshot.unreadOnly || snapshot.starredOnly) return
         val origin = api.credential?.origin ?: return
-        val cached = withContext(Dispatchers.IO) { cache.load(origin, userId) } ?: return
-        if (cached.threads.isEmpty()) return
+        val cached = withContext(ioDispatcher) { cache.load(origin, userId) } ?: return
+        if (cached.threads.isEmpty() || current != generation) return
         _state.update {
             it.copy(
                 threads = cached.threads.deduplicated(),
@@ -248,15 +360,17 @@ class MailboxViewModel(
     }
 
     private suspend fun saveInboxCacheIfNeeded() {
+        if (pendingMutations.isNotEmpty()) return
         val snapshot = _state.value
         val origin = api.credential?.origin ?: return
         if (snapshot.mailbox != MailboxKind.Inbox ||
             snapshot.searchText.isNotEmpty() ||
             snapshot.unreadOnly ||
+            snapshot.starredOnly ||
             snapshot.currentPage < 1
         ) return
         try {
-            withContext(Dispatchers.IO) {
+            withContext(ioDispatcher) {
                 cache.save(
                     snapshot.threads,
                     snapshot.total,
@@ -273,11 +387,19 @@ class MailboxViewModel(
         }
     }
 
-    private suspend fun invalidateThreadCache(threads: List<ThreadSummary>) {
+    private suspend fun updateThreadCache(action: MailAction, threads: List<ThreadSummary>) {
         val origin = api.credential?.origin ?: return
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             threads.forEach { thread ->
-                runCatching { threadCache.remove(origin, userId, thread.threadId) }
+                runCatching {
+                    if (action == MailAction.Delete) {
+                        threadCache.remove(origin, userId, thread.threadId)
+                    } else {
+                        threadCache.load(origin, userId, thread.threadId)?.let { cached ->
+                            threadCache.save(cached.detail.applying(action), origin, userId, thread.threadId)
+                        }
+                    }
+                }
             }
         }
     }
@@ -288,7 +410,7 @@ class MailboxViewModel(
         if (candidates.isEmpty()) return
 
         prefetchJob?.cancel()
-        prefetchJob = viewModelScope.launch(Dispatchers.IO) {
+        prefetchJob = viewModelScope.launch(ioDispatcher) {
             delay(PREFETCH_DELAY_MILLIS)
             val permits = Semaphore(PREFETCH_CONCURRENCY)
             coroutineScope {
@@ -314,38 +436,17 @@ class MailboxViewModel(
         }
     }
 
-    private fun apply(action: MailAction, thread: ThreadSummary) {
-        _state.update { state ->
-            val updated = when (action) {
-                MailAction.Read ->
-                    if (state.unreadOnly) state.without(thread)
-                    else state.replacing(thread.copy(isRead = true))
-                MailAction.Unread -> state.replacing(thread.copy(isRead = false))
-                MailAction.Star -> state.replacing(thread.copy(isStarred = true))
-                MailAction.Unstar ->
-                    if (state.mailbox == MailboxKind.Starred) state.without(thread)
-                    else state.replacing(thread.copy(isStarred = false))
-                MailAction.Archive ->
-                    if (state.mailbox == MailboxKind.Inbox) state.without(thread)
-                    else state.replacing(thread.copy(isArchived = true))
-                MailAction.Unarchive ->
-                    if (state.mailbox == MailboxKind.Archive) state.without(thread)
-                    else state.replacing(thread.copy(isArchived = false))
-                MailAction.Trash, MailAction.Restore, MailAction.Delete -> state.without(thread)
-                MailAction.ReadAll, MailAction.EmptyTrash -> state
-            }
-            updated
+    private fun reapplyPendingMutations() {
+        pendingMutations.filter { it.before.sameMailboxView(_state.value) }.forEach { pending ->
+            _state.update { it.copy(mutatingIds = it.mutatingIds + pending.ids) }
+            pending.before.threads.filter { it.id in pending.ids }.forEach { apply(pending.action, it) }
         }
     }
 
-    private fun MailboxUiState.replacing(thread: ThreadSummary) = copy(
-        threads = threads.map { if (it.id == thread.id) thread else it }
-    )
+    private fun apply(action: MailAction, thread: ThreadSummary) {
+        _state.update { it.applyingMailboxAction(action, thread) }
+    }
 
-    private fun MailboxUiState.without(thread: ThreadSummary) = copy(
-        threads = threads.filterNot { it.id == thread.id },
-        total = maxOf(0, total - 1)
-    )
 }
 
 private fun List<ThreadSummary>.deduplicated() = emptyList<ThreadSummary>().merging(this)

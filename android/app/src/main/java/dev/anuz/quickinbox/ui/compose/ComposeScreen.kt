@@ -100,7 +100,7 @@ fun ComposeScreen(
     var showCcBcc by remember { mutableStateOf(hasCcBccContent) }
     var fromOpen by remember { mutableStateOf(false) }
     var replyMenuOpen by remember(mode) { mutableStateOf(false) }
-    var replyAll by remember(mode) { mutableStateOf(false) }
+    var replyAll by remember(mode) { mutableStateOf((mode as? ComposeMode.Reply)?.replyAll == true) }
     var metadataCollapsed by remember { mutableStateOf(false) }
     val haptics = rememberQuickInboxHaptics()
     val fieldsEnabled = !state.isLoadingDraft && !state.isSending
@@ -234,13 +234,8 @@ fun ComposeScreen(
                                                     },
                                                     onReplyAll = {
                                                         replyAll = true
-                                                        val self = state.addresses.map { it.address.lowercase() }.toSet()
                                                         val primary = EmailAddressPresentation.addressOnly(mode.recipient)
-                                                        val extras = (mode.originalTo.split(',') + mode.originalCc.orEmpty().split(','))
-                                                            .map(EmailAddressPresentation::addressOnly)
-                                                            .map(String::trim)
-                                                            .filter { it.isNotEmpty() && it.lowercase() !in self && !it.equals(primary, true) }
-                                                            .distinctBy(String::lowercase)
+                                                        val extras = mode.replyAllCc(state.addresses.map { it.address })
                                                         onTo(listOf(primary))
                                                         onCc(extras)
                                                         showCcBcc = extras.isNotEmpty()

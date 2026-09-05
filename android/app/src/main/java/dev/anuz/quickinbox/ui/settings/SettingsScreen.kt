@@ -13,6 +13,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.CircleShape
@@ -30,10 +32,15 @@ import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,9 +61,8 @@ import dev.anuz.quickinbox.domain.MailboxKind
 import dev.anuz.quickinbox.domain.User
 import dev.anuz.quickinbox.ui.privacy.PrivacyScreen
 import dev.anuz.quickinbox.ui.theme.AppThemeOption
-import dev.anuz.quickinbox.ui.theme.LocalQuickInboxDarkTheme
 import dev.anuz.quickinbox.ui.theme.QuickInboxMotion
-import dev.anuz.quickinbox.ui.theme.materialScheme
+import dev.anuz.quickinbox.ui.theme.rememberAppColorScheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -64,8 +70,8 @@ import kotlinx.coroutines.withContext
 
 private enum class SettingsPage(val title: String) {
     Overview("Settings"), Account("Account"), Appearance("Appearance"),
-    Composing("Composing"), SwipeActions("Swipe Actions"), Privacy("Privacy & Security"), Devices("Connected Devices"),
-    Connection("Server & Session"), Support("Support"), PrivacyPolicy("Privacy Policy")
+    Composing("Composing"), SwipeActions("Swipe actions"), Privacy("Privacy & security"), Devices("Connected devices"),
+    Connection("Server & session"), Support("Support"), PrivacyPolicy("Privacy policy")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,7 +84,7 @@ fun SettingsScreen(
 ) {
     val scope = rememberCoroutineScope()
     val activity = LocalContext.current as? FragmentActivity
-    var page by remember { mutableStateOf(SettingsPage.Overview) }
+    var page by rememberSaveable { mutableStateOf(SettingsPage.Overview) }
     var addresses by remember { mutableStateOf<List<MailAddress>>(emptyList()) }
     var devices by remember { mutableStateOf<List<DeviceSession>>(emptyList()) }
     var signature by remember { mutableStateOf("") }
@@ -164,7 +170,12 @@ fun SettingsScreen(
         snackbarHostState = snackbarHostState,
         actions = {
             if (page == SettingsPage.Composing) {
-                TextButton(onClick = ::saveSignature, enabled = !saving && signature != savedSignature) {
+                FilledTonalButton(
+                    onClick = ::saveSignature,
+                    enabled = !loading && !saving && signature != savedSignature,
+                    modifier = Modifier.padding(end = 12.dp),
+                    shape = MaterialTheme.shapes.large
+                ) {
                     if (saving) {
                         CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     } else {
@@ -317,12 +328,22 @@ private fun SettingsScaffold(
     content: @Composable (PaddingValues) -> Unit
 ) {
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(title, fontWeight = FontWeight.SemiBold) },
+            TopAppBar(
+                title = {
+                    Text(
+                        title,
+                        style = if (root) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.semantics { heading() }
+                    )
+                },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = onBack, modifier = Modifier.padding(start = 8.dp)
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.shapes.large)) {
                         Icon(
                             if (root) Icons.Rounded.Close else Icons.AutoMirrored.Rounded.ArrowBack,
                             contentDescription = if (root) "Close" else "Back"
@@ -330,8 +351,8 @@ private fun SettingsScaffold(
                     }
                 },
                 actions = actions,
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
             )
         },
@@ -365,18 +386,18 @@ private fun SettingsOverview(
                 onNavigate(SettingsPage.Composing)
             }
             DestinationRow(
-                "Privacy & Security", "App lock and external content", Icons.Rounded.Lock,
+                "Privacy & security", "App lock and external content", Icons.Rounded.Lock,
                 if (appLockEnabled) "On" else "Off"
             ) { onNavigate(SettingsPage.Privacy) }
         }
-        SettingsGroup("Account Access") {
+        SettingsGroup("Account access") {
             DestinationRow(
-                "Connected Devices", "Manage active sessions", Icons.Rounded.Devices,
+                "Connected devices", "Manage active sessions", Icons.Rounded.Devices,
                 if (loading) null else deviceCount.toString()
             ) {
                 onNavigate(SettingsPage.Devices)
             }
-            DestinationRow("Server & Session", "Connection and local data", Icons.Rounded.Storage) {
+            DestinationRow("Server & session", "Connection and local data", Icons.Rounded.Storage) {
                 onNavigate(SettingsPage.Connection)
             }
         }
@@ -384,11 +405,11 @@ private fun SettingsOverview(
             DestinationRow("Support", "Get help or report a problem", Icons.AutoMirrored.Rounded.HelpOutline) {
                 onNavigate(SettingsPage.Support)
             }
-            DestinationRow("Privacy Policy", "How QuickInbox handles data", Icons.Rounded.PrivacyTip) {
+            DestinationRow("Privacy policy", "How QuickInbox handles data", Icons.Rounded.PrivacyTip) {
                 onNavigate(SettingsPage.PrivacyPolicy)
             }
         }
-        Spacer(Modifier.height(16.dp))
+
     }
 }
 
@@ -408,18 +429,7 @@ private fun SwipeActionsPage(
     var editorTarget by remember { mutableStateOf<SwipeEditorTarget?>(null) }
 
     PageBody(padding) {
-        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(
-                "Your swipe shortcuts",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                "Choose what each direction does in every mailbox.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        InfoBanner(Icons.Rounded.Swipe, "Your swipe shortcuts", "Choose what each direction does in every mailbox.")
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             ConfigurableSwipeMailboxes.forEach { mailbox ->
                 val mailboxControls = controls[mailbox] ?: defaultSwipeControls(mailbox)
@@ -431,7 +441,7 @@ private fun SwipeActionsPage(
             }
         }
         Surface(
-            shape = RoundedCornerShape(16.dp),
+            shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surfaceContainerHigh
         ) {
             Row(
@@ -475,10 +485,16 @@ private fun SwipeActionsPage(
             }
         ) {
             Column(
-                Modifier.fillMaxWidth().navigationBarsPadding()
-                    .padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                    .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                Text(
+                    "${target.mailbox.title} · ${if (target.direction == SwipeDirection.StartToEnd) "Swipe right" else "Swipe left"}",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.semantics { heading() }
+                )
                 Column {
                     availableSwipeControls(target.mailbox).forEach { control ->
                         SwipeChoiceCard(
@@ -505,7 +521,7 @@ private fun SwipeMailboxCard(
     Surface(
         shape = RoundedCornerShape(22.dp),
         color = settingsPanelColor(),
-        tonalElevation = 1.dp
+        tonalElevation = 0.dp
     ) {
         Column(
             Modifier.fillMaxWidth().padding(14.dp),
@@ -545,14 +561,14 @@ private fun SwipeMailboxCard(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 SwipeDirectionTile(
-                    label = "RIGHT",
+                    label = "Swipe right",
                     directionIcon = Icons.AutoMirrored.Rounded.ArrowForward,
                     control = controls.startToEnd,
                     onClick = { onEdit(SwipeDirection.StartToEnd) },
                     modifier = Modifier.weight(1f)
                 )
                 SwipeDirectionTile(
-                    label = "LEFT",
+                    label = "Swipe left",
                     directionIcon = Icons.AutoMirrored.Rounded.ArrowBack,
                     control = controls.endToStart,
                     onClick = { onEdit(SwipeDirection.EndToStart) },
@@ -573,7 +589,7 @@ private fun SwipeDirectionTile(
 ) {
     val destructive = control == SwipeControl.Trash || control == SwipeControl.Delete
     val accent = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    val shape = RoundedCornerShape(16.dp)
+    val shape = MaterialTheme.shapes.large
     Surface(
         modifier = modifier.clip(shape).clickable(onClick = onClick),
         shape = shape,
@@ -626,7 +642,7 @@ private fun SwipeChoiceCard(
     val selectionColor = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
     val shape = RoundedCornerShape(18.dp)
     Surface(
-        modifier = modifier.clip(shape).clickable(onClick = onClick),
+        modifier = modifier.clip(shape).selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
         shape = shape,
         color = if (selected) {
             if (destructive) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
@@ -647,7 +663,7 @@ private fun SwipeChoiceCard(
                     control.title,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                    maxLines = 1,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
@@ -658,7 +674,7 @@ private fun SwipeChoiceCard(
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
-                    maxLines = 1,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -687,9 +703,9 @@ private val SwipeControl.settingsDescription: String
 private fun AccountCard(user: User, onClick: (() -> Unit)?) {
     Surface(
         modifier = Modifier.then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.extraLarge,
         color = settingsPanelColor(),
-        tonalElevation = 1.dp
+        tonalElevation = 0.dp
     ) {
         Row(
             Modifier.fillMaxWidth().padding(16.dp),
@@ -708,10 +724,10 @@ private fun AccountCard(user: User, onClick: (() -> Unit)?) {
             }
             Column(Modifier.weight(1f)) {
                 Text(
-                    "QUICKINBOX ACCOUNT",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
+                    "Your account",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Medium
                 )
                 Text(
                     user.name.ifBlank { user.email },
@@ -734,7 +750,7 @@ private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionLabel(title)
         Column(
-            modifier = Modifier.clip(RoundedCornerShape(20.dp)),
+            modifier = Modifier.clip(MaterialTheme.shapes.extraLarge),
             verticalArrangement = Arrangement.spacedBy(2.dp),
             content = content
         )
@@ -750,28 +766,20 @@ private fun DestinationRow(
     onClick: () -> Unit
 ) {
     Row(
-        Modifier.fillMaxWidth().background(settingsPanelColor()).clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+        Modifier.fillMaxWidth().background(settingsPanelColor()).clickable(role = Role.Button, onClick = onClick)
+            .heightIn(min = 80.dp).padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Surface(Modifier.size(40.dp), RoundedCornerShape(12.dp), MaterialTheme.colorScheme.secondaryContainer) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(icon, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+        TonalIcon(icon)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(supporting, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            detail?.let {
+                Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             }
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-            Text(
-                supporting,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        detail?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium) }
-        Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(Icons.Rounded.ChevronRight, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -779,9 +787,9 @@ private fun DestinationRow(
 private fun PageBody(padding: PaddingValues, content: @Composable ColumnScope.() -> Unit) {
     Box(Modifier.fillMaxSize().padding(padding)) {
         Column(
-            Modifier.fillMaxWidth().widthIn(max = 720.dp).align(Alignment.TopCenter)
+            Modifier.widthIn(max = 720.dp).fillMaxWidth().align(Alignment.TopCenter)
                 .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 40.dp),
+                .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
             content = content
         )
@@ -807,7 +815,8 @@ private fun AccountPage(padding: PaddingValues, user: User, origin: String?) {
         if (origin != null) {
             FilledTonalButton(
                 onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("$origin/settings"))) },
-                modifier = Modifier.fillMaxWidth()
+                shape = MaterialTheme.shapes.large,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
             ) {
                 Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
@@ -827,30 +836,30 @@ private fun AppearancePage(
 ) {
     val systemDark = isSystemInDarkTheme()
     val themeOptions = remember {
-        listOf(AppThemeOption.FoldedSignal) + AppThemeOption.entries.filter { it != AppThemeOption.FoldedSignal }
+        AppThemeOption.entries.toList()
     }
     PageBody(padding) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Choose your canvas", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text(
-                "Paper is the QuickInbox signature. Every theme keeps your account and settings intact.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        InfoBanner(Icons.Rounded.Palette, "Make it yours", "Choose a theme and how you switch between mailboxes.")
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SectionLabel("Theme")
-            themeOptions.chunked(2).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    row.forEach { option ->
-                        ThemeTile(
-                            option = option,
-                            selected = option.id == selectedId,
-                            previewDark = option.forcedDark ?: systemDark,
-                            onClick = { onThemeSelected(option.id) },
-                            modifier = Modifier.weight(1f)
-                        )
+            val fontScale = LocalDensity.current.fontScale
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val columns = if (maxWidth < 340.dp || fontScale >= 1.3f) 1 else 2
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    themeOptions.chunked(columns).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            row.forEach { option ->
+                                ThemeTile(
+                                    option = option,
+                                    selected = option.id == selectedId,
+                                    previewDark = option.forcedDark ?: systemDark,
+                                    onClick = { onThemeSelected(option.id) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (row.size < columns) Spacer(Modifier.weight(1f))
+                        }
                     }
-                    if (row.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
         }
@@ -860,14 +869,13 @@ private fun AppearancePage(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SectionLabel("Navigation")
+        SettingsGroup("Navigation") {
             SwitchRow(
-                title = "Bottom navigation",
+                title = "Show navigation dock",
                 supporting = if (navigationStyle == MailboxNavigationStyle.Native) {
-                    "Bottom navigation with contextual mailbox actions"
+                    "Switch mailboxes from the bottom of the screen"
                 } else {
-                    "Legacy mailbox drawer and Compose button"
+                    "Open mailboxes from the side drawer"
                 },
                 checked = navigationStyle == MailboxNavigationStyle.Native,
                 onCheckedChange = { enabled ->
@@ -888,18 +896,11 @@ private fun ThemeTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val preview = remember(option, previewDark, context) {
-        if (option == AppThemeOption.Monet && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (previewDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        } else {
-            option.materialScheme(previewDark)
-        }
-    }
+    val preview = rememberAppColorScheme(option, previewDark)
     Surface(
-        onClick = onClick,
-        modifier = modifier,
-        shape = RoundedCornerShape(18.dp),
+        modifier = modifier.clip(MaterialTheme.shapes.large)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+        shape = MaterialTheme.shapes.large,
         color = settingsPanelColor(),
         border = BorderStroke(
             if (selected) 2.dp else 1.dp,
@@ -908,7 +909,7 @@ private fun ThemeTile(
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(
-                Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(12.dp))
+                Modifier.fillMaxWidth().height(64.dp).clip(RoundedCornerShape(12.dp))
                     .background(preview.background)
             ) {
                 Row(
@@ -934,7 +935,7 @@ private fun ThemeTile(
                     option.title,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (option == AppThemeOption.FoldedSignal) {
@@ -1004,8 +1005,8 @@ private fun ComposingPage(
                         readOnly = true,
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(fromOpen) },
                         label = { Text("Default sender") },
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth().padding(16.dp).menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                        shape = MaterialTheme.shapes.large,
+                        modifier = Modifier.fillMaxWidth().padding(16.dp).menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                     )
                     ExposedDropdownMenu(expanded = fromOpen, onDismissRequest = { onFromOpenChange(false) }) {
                         addresses.forEach { address ->
@@ -1018,14 +1019,18 @@ private fun ComposingPage(
         SettingsGroup("Signature") {
             OutlinedTextField(
                 signature, onSignature,
-                Modifier.fillMaxWidth().height(176.dp).background(settingsPanelColor()).padding(16.dp),
+                Modifier.fillMaxWidth().background(settingsPanelColor()).padding(16.dp),
+                enabled = !saving,
+                minLines = 4,
+                maxLines = 8,
+                label = { Text("Email signature") },
                 placeholder = { Text("Sent from QuickInbox") },
                 supportingText = { Text("${signature.length}/1000") },
-                shape = RoundedCornerShape(16.dp)
+                shape = MaterialTheme.shapes.large
             )
         }
         Text(
-            if (saving) "Saving your signature…" else "Use Save in the top bar after editing your signature.",
+            if (saving) "Saving your signature…" else "Your signature is added to outgoing messages. Tap Save to keep your changes.",
             modifier = Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1121,29 +1126,33 @@ private fun DevicesPage(
             } else if (devices.isEmpty()) {
                 EmptyPanel(Icons.Rounded.Devices, "No connected devices", "No active device sessions were returned by your server.")
             } else {
-                devices.forEachIndexed { index, device ->
-                    ListItem(
-                        headlineContent = {
-                            Text(
-                                device.deviceName ?: "Unknown device",
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        },
-                        supportingContent = {
-                            Text(device.devicePlatform?.replaceFirstChar { it.uppercase() }.orEmpty().ifBlank { "Unknown platform" })
-                        },
-                        leadingContent = {
+                devices.forEach { device ->
+                    Column(
+                        Modifier.fillMaxWidth().background(settingsPanelColor()).padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             TonalIcon(if (device.devicePlatform?.contains("ios", true) == true) Icons.Rounded.PhoneIphone else Icons.Rounded.Devices)
-                        },
-                        trailingContent = {
-                            if (device.isCurrent) {
-                                StatusBadge("This device")
-                            } else {
-                                TextButton({ onRevoke(device) }) { Text("Revoke") }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(device.deviceName ?: "Unknown device", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    device.devicePlatform?.replaceFirstChar { it.uppercase() }.orEmpty().ifBlank { "Unknown platform" },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                        },
-                        colors = ListItemDefaults.colors(containerColor = settingsPanelColor())
-                    )
+                        }
+                        if (device.isCurrent) {
+                            StatusBadge("This device")
+                        } else {
+                            OutlinedButton(
+                                onClick = { onRevoke(device) },
+                                modifier = Modifier.align(Alignment.End),
+                                shape = MaterialTheme.shapes.large,
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                            ) { Text("Revoke access") }
+                        }
+                    }
                 }
             }
         }
@@ -1168,22 +1177,22 @@ private fun ConnectionPage(
             InfoRow(Icons.Rounded.Lock, "Transport", "Secure HTTPS connection")
         }
         Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f))
+            shape = MaterialTheme.shapes.extraLarge,
+            color = settingsPanelColor()
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Icon(Icons.Rounded.Warning, null, tint = MaterialTheme.colorScheme.error)
-                    Text("Device data", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Icon(Icons.Rounded.PhonelinkErase, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Session & local data", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 }
                 Text(
                     "Disconnecting revokes this session. Removing local data only signs out this phone without contacting the server.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onErrorContainer
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Button(
-                    onDisconnect, Modifier.fillMaxWidth(),
+                    onDisconnect, Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                    shape = MaterialTheme.shapes.large,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError
@@ -1236,7 +1245,7 @@ private fun ActionRow(title: String, supporting: String, icon: ImageVector, onCl
         TonalIcon(icon)
         Column(Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.Medium)
-            Text(supporting, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(supporting, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -1244,36 +1253,31 @@ private fun ActionRow(title: String, supporting: String, icon: ImageVector, onCl
 
 @Composable
 private fun InfoBanner(icon: ImageVector, title: String, text: String) {
-    Surface(
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.primaryContainer
-    ) {
+    val colors = MaterialTheme.colorScheme
+    Surface(shape = MaterialTheme.shapes.extraLarge, color = colors.primaryContainer) {
         Row(
-            Modifier.fillMaxWidth().padding(18.dp),
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
             verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Surface(
                 modifier = Modifier.size(44.dp),
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.primary
+                shape = MaterialTheme.shapes.large,
+                color = colors.primary
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+                    Icon(icon, contentDescription = null, tint = colors.onPrimary)
                 }
             }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    color = colors.onPrimaryContainer,
+                    modifier = Modifier.semantics { heading() }
                 )
-                Text(
-                    text,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f)
-                )
+                Text(text, style = MaterialTheme.typography.bodyMedium, color = colors.onPrimaryContainer)
             }
         }
     }
@@ -1283,11 +1287,11 @@ private fun InfoBanner(icon: ImageVector, title: String, text: String) {
 private fun TonalIcon(icon: ImageVector) {
     Surface(
         modifier = Modifier.size(40.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -1317,15 +1321,15 @@ private fun SwitchRow(
 ) {
     Row(
         Modifier.fillMaxWidth().background(settingsPanelColor())
-            .clickable(enabled = enabled) { onCheckedChange(!checked) }.padding(16.dp),
+            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange).padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-            Text(supporting, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(supporting, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked = checked, enabled = enabled, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, enabled = enabled, onCheckedChange = null)
     }
 }
 
@@ -1376,19 +1380,15 @@ private fun EmptyPanel(icon: ImageVector, title: String, text: String) {
 private fun SectionLabel(title: String) {
     Text(
         title,
-        Modifier.padding(horizontal = 4.dp),
-        style = MaterialTheme.typography.labelLarge,
+        Modifier.padding(horizontal = 12.dp).semantics { heading() },
+        style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         fontWeight = FontWeight.SemiBold
     )
 }
 
 @Composable
-private fun settingsPanelColor(): Color = if (LocalQuickInboxDarkTheme.current) {
-    MaterialTheme.colorScheme.surfaceContainerLow
-} else {
-    MaterialTheme.colorScheme.surfaceContainerLowest
-}
+private fun settingsPanelColor(): Color = MaterialTheme.colorScheme.surfaceContainerLow
 
 private suspend fun disconnect(
     container: AppContainer,
