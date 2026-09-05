@@ -16,6 +16,22 @@ struct AuthenticatedRootView: View {
     @State private var composePresentation: ComposePresentation?
     @State private var isSettingsPresented = false
     @State private var mailboxRefreshToken = UUID()
+    @State private var readerRefreshToken = UUID()
+
+    @State private var mailboxModel: MailboxViewModel
+
+    init(api: QuickInboxAPI, mailboxCache: MailboxCache, threadCache: ThreadDetailCache,
+         currentUser: User, needsSignOut: Bool, onSignOut: @escaping () -> Void,
+         onDisconnected: @escaping (String?) -> Void) {
+        self.api = api
+        self.mailboxCache = mailboxCache
+        self.threadCache = threadCache
+        self.currentUser = currentUser
+        self.needsSignOut = needsSignOut
+        self.onSignOut = onSignOut
+        self.onDisconnected = onDisconnected
+        _mailboxModel = State(initialValue: MailboxViewModel(api: api, userID: currentUser.id, cache: mailboxCache, threadCache: threadCache))
+    }
 
     var body: some View {
         Group {
@@ -63,14 +79,19 @@ struct AuthenticatedRootView: View {
                 selectedThread = nil
             }
         }
+        .onChange(of: mailboxModel.mutatingThreadIDs) { oldIDs, newIDs in
+            if !oldIDs.isEmpty && newIDs.isEmpty { readerRefreshToken = UUID() }
+        }
         .onChange(of: needsSignOut) { _, revoked in
             guard revoked else { return }
+            mailboxModel.clearSensitiveState()
             selectedThread = nil
             compactPath.removeAll()
             composePresentation = nil
             isSettingsPresented = false
         }
     }
+
 
     private var compactLayout: some View {
         NavigationStack(path: $compactPath) {
@@ -82,7 +103,10 @@ struct AuthenticatedRootView: View {
                         threadCache: threadCache,
                         needsSignOut: needsSignOut,
                         selection: selection,
+                        mailboxRefreshToken: readerRefreshToken,
                         onMailboxMutation: refreshMailbox,
+                        onReaderMutation: mailboxModel.receiveReaderMutation,
+                        onReaderLoaded: mailboxModel.receiveReaderDetail,
                         onExit: exitRegularThread
                     )
                 }
@@ -102,7 +126,10 @@ struct AuthenticatedRootView: View {
                         threadCache: threadCache,
                         needsSignOut: needsSignOut,
                         selection: selectedThread,
+                        mailboxRefreshToken: readerRefreshToken,
                         onMailboxMutation: refreshMailbox,
+                        onReaderMutation: mailboxModel.receiveReaderMutation,
+                        onReaderLoaded: mailboxModel.receiveReaderDetail,
                         onExit: exitRegularThread
                     )
                     .id(selectedThread.id)
@@ -120,6 +147,7 @@ struct AuthenticatedRootView: View {
             userID: currentUser.id,
             cache: mailboxCache,
             threadCache: threadCache,
+            model: mailboxModel,
             refreshToken: mailboxRefreshToken,
             needsSignOut: needsSignOut,
             onSignOut: onSignOut,
@@ -206,7 +234,10 @@ private struct ThreadScene: View {
     let threadCache: ThreadDetailCache
     let needsSignOut: Bool
     let selection: ThreadSelection
+    let mailboxRefreshToken: UUID
     let onMailboxMutation: () -> Void
+    let onReaderMutation: (MailAction, String) -> Void
+    let onReaderLoaded: (ThreadDetail) -> Void
     let onExit: () -> Void
 
     @State private var composePresentation: ComposePresentation?
@@ -223,9 +254,14 @@ private struct ThreadScene: View {
             needsSignOut: needsSignOut,
             onReply: presentReply,
             onForward: presentForward,
-            onMailboxMutation: onMailboxMutation,
+            onMailboxMutation: {},
+            onReaderMutation: onReaderMutation,
+            onReaderLoaded: onReaderLoaded,
             onExit: onExit
         )
+        .onChange(of: mailboxRefreshToken) { _, _ in
+            refreshToken = UUID()
+        }
         .sheet(item: $composePresentation) { presentation in
             ComposeView(api: api, mode: presentation.mode) { _ in
                 refreshToken = UUID()
@@ -234,16 +270,13 @@ private struct ThreadScene: View {
         }
     }
 
-    private func presentReply(messageID: String) {
-        let recipient = selection.summary.participants
-            .first(where: { !$0.selfParticipant })?
-            .address ?? ""
-        let subject = selection.summary.subject.hasPrefix("Re:")
-            ? selection.summary.subject
-            : "Re: \(selection.summary.subject)"
-
+    private func presentReply(message: ThreadMessage, replyAll: Bool) {
         composePresentation = ComposePresentation(
-            mode: .reply(messageID: messageID, recipient: recipient, subject: subject)
+            mode: .reply(ReplyContext(
+                message: message,
+                replyAll: replyAll,
+                ownAddresses: selection.summary.participants.filter(\.selfParticipant).map(\.address)
+            ))
         )
     }
 
@@ -256,7 +289,7 @@ private struct ThreadScene: View {
         let forwardedMessages = messages.map { message in
             let rawBody = message.bodyText?.trimmingCharacters(in: .whitespacesAndNewlines)
                 ?? plainText(from: message.bodyHTML)
-            let body = QuotedTextParser.split(rawBody).message
+            let body = messages.count == 1 ? rawBody : QuotedTextParser.split(rawBody).message
             let date = message.createdAt.formatted(
                 .dateTime.month(.wide).day().year().hour().minute()
             )
@@ -276,7 +309,7 @@ private struct ThreadScene: View {
         let forwardedBody = """
 
 
-        ---------- Forwarded conversation ----------
+        ---------- Forwarded \(messages.count == 1 ? "message" : "conversation") ----------
         \(forwardedMessages)
         """
 

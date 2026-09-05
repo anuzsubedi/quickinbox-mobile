@@ -5,20 +5,62 @@ import UniformTypeIdentifiers
 nonisolated enum ComposeMode: Equatable, Sendable {
     case newMessage
     case draft(draftID: String)
-    case reply(messageID: String, recipient: String, subject: String)
+    case reply(ReplyContext)
     case forward(subject: String, body: String)
 
     var navigationTitle: String {
         switch self {
         case .newMessage: "New Message"
         case .draft: "Draft"
-        case .reply: "Reply"
+        case .reply(let context): context.replyAll ? "Reply All" : "Reply"
         case .forward: "Forward"
         }
     }
 
     var draftID: String? {
         if case .draft(let draftID) = self { draftID } else { nil }
+    }
+}
+
+/// Keeps replies anchored to the chosen email, including replies to older messages.
+nonisolated struct ReplyContext: Equatable, Sendable {
+    let message: ThreadMessage
+    let replyAll: Bool
+    let ownAddresses: [String]
+
+    var subject: String {
+        message.subject.lowercased().hasPrefix("re:") ? message.subject : "Re: \(message.subject)"
+    }
+
+    func recipients(additionalOwnAddresses: [String] = []) -> (to: String, cc: String) {
+        let own = Set((ownAddresses + additionalOwnAddresses + (message.direction == .outbound ? [message.fromAddress] : []))
+            .map { EmailAddressPresentation.addressOnly(from: $0).lowercased() })
+        var seen = own
+        func unique(_ values: String) -> [String] {
+            // Do not split commas inside quoted display names or angle brackets.
+            var parts: [String] = []
+            var part = ""
+            var quoted = false
+            var bracketed = false
+            for character in values {
+                if character == "\"" { quoted.toggle() }
+                if character == "<", !quoted { bracketed = true }
+                if character == ">", !quoted { bracketed = false }
+                if character == ",", !quoted, !bracketed {
+                    parts.append(part)
+                    part = ""
+                } else { part.append(character) }
+            }
+            parts.append(part)
+            return parts.compactMap { value in
+                let address = EmailAddressPresentation.addressOnly(from: value)
+                guard !address.isEmpty, seen.insert(address.lowercased()).inserted else { return nil }
+                return address
+            }
+        }
+        let to = unique(message.direction == .outbound ? message.toAddress : message.fromAddress)
+        let cc = replyAll ? unique(message.toAddress + "," + (message.ccAddress ?? "")) : []
+        return (to.joined(separator: ", "), cc.joined(separator: ", "))
     }
 }
 
@@ -74,6 +116,8 @@ final class ComposeViewModel: ObservableObject {
     private let api: QuickInboxAPI
     private var didAttemptAddressLoad = false
     private var didAttemptDraftLoad = false
+    private var replyAddressesLoaded = false
+    private var initialReplyCC = ""
 
     init(api: QuickInboxAPI, mode: ComposeMode, addresses: [MailAddress] = []) {
         self.api = api
@@ -85,11 +129,12 @@ final class ComposeViewModel: ObservableObject {
             selectedFromAddressID = Self.preferredAddress(in: addresses)?.id
         case .draft:
             selectedFromAddressID = nil
-        case .reply(_, let recipient, let subject):
-            to = recipient
-            self.subject = subject
-            // A nil selection lets the server reply from the mailbox that received
-            // the original, including a catch-all address that is not saved.
+        case .reply(let context):
+            let recipients = context.recipients(additionalOwnAddresses: addresses.map(\.address))
+            to = recipients.to
+            cc = recipients.cc
+            initialReplyCC = recipients.cc
+            self.subject = context.subject
             selectedFromAddressID = nil
         case .forward(let subject, let body):
             self.subject = subject
@@ -102,6 +147,10 @@ final class ComposeViewModel: ObservableObject {
         if case .reply = mode { true } else { false }
     }
 
+    var isReplyAll: Bool {
+        if case .reply(let context) = mode { context.replyAll } else { false }
+    }
+
     var isDraft: Bool { mode.draftID != nil }
 
     var totalAttachmentBytes: Int {
@@ -111,6 +160,7 @@ final class ComposeViewModel: ObservableObject {
     var hasUnsavedChanges: Bool {
         !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !attachments.isEmpty
+            || (isReply && (cc != initialReplyCC || !bcc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedFromAddressID != nil))
             || (!isReply && (
                 !to.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     || !cc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -120,7 +170,7 @@ final class ComposeViewModel: ObservableObject {
     }
 
     var canSend: Bool {
-        !isSending && !isImportingAttachments && !isLoadingDraft && validationMessage == nil
+        !isSending && !isImportingAttachments && !isLoadingDraft && !isLoadingAddresses && validationMessage == nil
     }
 
     var validationMessage: String? {
@@ -141,8 +191,11 @@ final class ComposeViewModel: ObservableObject {
             guard trimmedSubject.count <= 200 else {
                 return "The subject must be 200 characters or fewer."
             }
-        case .reply:
-            break
+        case .reply(let context):
+            if context.replyAll && !replyAddressesLoaded { return "Load your sending addresses before replying to all." }
+            if let error = Self.recipientError(to, label: "To", required: true) { return error }
+            if let error = Self.recipientError(cc, label: "Cc", required: false) { return error }
+            if let error = Self.recipientError(bcc, label: "Bcc", required: false) { return error }
         }
 
         return nil
@@ -263,11 +316,14 @@ final class ComposeViewModel: ObservableObject {
                             attachments: outboundAttachments
                         )
                     )
-                case .reply(let messageID, _, _):
+                case .reply(let context):
                     response = try await api.reply(
-                        to: messageID,
+                        to: context.message.id,
                         message: ReplyMessage(
                             fromAddressID: selectedFromAddressID,
+                            to: Self.nilIfEmpty(to),
+                            cc: Self.nilIfEmpty(cc),
+                            bcc: Self.nilIfEmpty(bcc),
                             text: body.trimmingCharacters(in: .whitespacesAndNewlines),
                             html: nil,
                             attachments: outboundAttachments
@@ -300,6 +356,15 @@ final class ComposeViewModel: ObservableObject {
         do {
             let loaded = try await api.addresses()
             addresses = loaded
+            if case .reply(let context) = mode {
+                let recipients = context.recipients(additionalOwnAddresses: loaded.map(\.address))
+                to = recipients.to
+                if cc == initialReplyCC {
+                    cc = recipients.cc
+                    initialReplyCC = recipients.cc
+                }
+                replyAddressesLoaded = true
+            }
             if !isReply, selectedFromAddressID == nil {
                 selectedFromAddressID = Self.preferredAddress(in: loaded)?.id
             }

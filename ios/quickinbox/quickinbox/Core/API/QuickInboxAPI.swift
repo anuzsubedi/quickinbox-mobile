@@ -1,6 +1,12 @@
 import Foundation
 
-actor QuickInboxAPI {
+nonisolated protocol MailboxAPI: Sendable {
+    var currentCredential: Credential? { get async }
+    func listThreads(mailbox: MailboxKind, page: Int, filters: MailboxFilters?) async throws -> MailboxPage
+    func perform(_ action: MailAction, ids: [String]) async throws -> MailActionResponse
+}
+
+actor QuickInboxAPI: MailboxAPI {
     private let session: URLSession
     private var credential: Credential?
     private var onUnauthorized: (@Sendable () -> Void)?

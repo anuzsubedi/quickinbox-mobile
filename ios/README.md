@@ -7,7 +7,9 @@ QuickInbox for iOS is a native SwiftUI client for a self-hosted QuickInbox serve
 - QR-first onboarding with manual pairing fallback.
 - Strict pairing-payload and server-origin validation.
 - Secure credential storage and session restoration.
-- Inbox, archive, starred, drafts, sent, and trash mailboxes.
+- Inbox, archive, drafts, sent, and trash mailboxes with combinable Unread and Starred filters.
+- Immediate mailbox updates. Individual archive/trash/delete actions offer five-second inline Undo; individual read/star/restore actions commit immediately. Selected bulk actions retain Undo and replace the entire dock.
+- Labeled bulk actions, a visible selection count, and select/deselect all loaded conversations.
 - Conversation search, threaded reading, quoted-text handling, and hardened HTML rendering.
 - Compose, save drafts, send, reply, reply-all, and forward.
 - Attachment previews and guarded downloads.

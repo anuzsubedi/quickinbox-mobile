@@ -15,11 +15,7 @@ struct SettingsView: View {
     }
 
     private var selectedTheme: AppTheme {
-        AppThemeRegistry.theme(id: appThemeID).applying(selectedTint)
-    }
-
-    private var selectedTint: AppTint {
-        AppTintRegistry.tint(id: AppTintRegistry.defaultTintID)
+        AppThemeRegistry.theme(id: appThemeID)
     }
 
     private var settingsPalette: AppThemePalette {
@@ -48,104 +44,49 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 24) {
+        List {
+            Section {
                 accountOverview
-
-                settingsGroup(title: "Personalization") {
-                    NavigationLink {
-                        appearancePage
-                    } label: {
-                        settingsDestinationLabel(
-                            "Appearance",
-                            systemImage: "paintpalette",
-                            detail: appearanceSummary
-                        )
-                    }
+            }
+            settingsGroup(title: "Preferences") {
+                NavigationLink { appearancePage } label: {
+                    settingsDestinationLabel("Appearance", systemImage: "paintpalette", detail: appearanceSummary,
+                                             supporting: "Theme and light or dark appearance")
                 }
-
-                settingsGroup(title: "Mail") {
-                    NavigationLink {
-                        sendingPage
-                    } label: {
-                        settingsDestinationLabel(
-                            "Composing",
-                            systemImage: "square.and.pencil"
-                        )
-                    }
-
-                    settingsGroupDivider
-
-                    NavigationLink {
-                        privacyPage
-                    } label: {
-                        settingsDestinationLabel(
-                            "Privacy & Security",
-                            systemImage: "lock.shield",
-                            detail: appLock.isEnabled ? "On" : "Off"
-                        )
-                    }
+                NavigationLink { sendingPage } label: {
+                    settingsDestinationLabel("Composing", systemImage: "square.and.pencil",
+                                             supporting: "Sending address and signature")
                 }
-
-                settingsGroup(title: "Account Access") {
-                    NavigationLink {
-                        devicesPage
-                    } label: {
-                        settingsDestinationLabel(
-                            "Connected Devices",
-                            systemImage: "laptopcomputer.and.iphone",
-                            detail: model.isLoading && model.devices.isEmpty
-                                ? nil
-                                : "\(model.devices.count)"
-                        )
-                    }
-
-                    settingsGroupDivider
-
-                    NavigationLink {
-                        connectionPage
-                    } label: {
-                        settingsDestinationLabel(
-                            "Server & Session",
-                            systemImage: "server.rack"
-                        )
-                    }
-                }
-
-                settingsGroup(title: "About") {
-                    NavigationLink {
-                        supportPage
-                    } label: {
-                        settingsDestinationLabel(
-                            "Support",
-                            systemImage: "questionmark.circle"
-                        )
-                    }
-
-                    settingsGroupDivider
-
-                    NavigationLink {
-                        privacyPolicyPage
-                    } label: {
-                        settingsDestinationLabel(
-                            "Privacy Policy",
-                            systemImage: "hand.raised"
-                        )
-                    }
+                NavigationLink { privacyPage } label: {
+                    settingsDestinationLabel("Privacy & Security", systemImage: "lock.shield",
+                                             supporting: appLock.isEnabled ? "App Lock on · Image preferences" : "App Lock and remote images")
                 }
             }
-            .padding(.horizontal, QuickInboxDesign.Spacing.page)
-            .padding(.top, 18)
-            .padding(.bottom, 40)
-            .frame(maxWidth: QuickInboxDesign.contentMaxWidth)
-            .frame(maxWidth: .infinity)
+            settingsGroup(title: "Account & Access") {
+                NavigationLink { devicesPage } label: {
+                    settingsDestinationLabel("Connected Devices", systemImage: "laptopcomputer.and.iphone",
+                                             detail: model.isLoading && model.devices.isEmpty ? nil : "\(model.devices.count)",
+                                             supporting: "Review devices with account access")
+                }
+                NavigationLink { connectionPage } label: {
+                    settingsDestinationLabel("Server & Session", systemImage: "server.rack",
+                                             supporting: "Connection, sign out, and local data")
+                }
+            }
+            settingsGroup(title: "Help & About") {
+                NavigationLink { supportPage } label: {
+                    settingsDestinationLabel("Support", systemImage: "questionmark.circle")
+                }
+                NavigationLink { privacyPolicyPage } label: {
+                    settingsDestinationLabel("Privacy Policy", systemImage: "hand.raised")
+                }
+            }
         }
-        .scrollIndicators(.hidden)
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
         .background(settingsPalette.grouped)
-        .toolbarBackground(settingsPalette.paper, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
         .navigationTitle("Settings")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(.large)
         .task {
             appLock.refreshAvailability()
             await model.loadIfNeeded()
@@ -189,18 +130,14 @@ struct SettingsView: View {
 
                 Spacer(minLength: 8)
 
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                    .padding(.top, dynamicTypeSize.isAccessibilitySize ? 8 : 0)
-                    .accessibilityHidden(true)
             }
             .frame(minHeight: 60)
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityHint("Shows account details")
-        .modifier(SettingsPanelModifier())
+        .padding(.vertical, 8)
+        .listRowBackground(settingsPalette.raised)
     }
 
     private var accountOverviewText: some View {
@@ -216,6 +153,20 @@ struct SettingsView: View {
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
         }
     }
+
+    private func settingsGroup<Content: View>(
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Section {
+            content()
+                .listRowBackground(settingsPalette.raised)
+        } header: {
+            Text(title)
+        }
+    }
+
+    private var settingsGroupDivider: some View { EmptyView() }
 
     private var appearanceOverview: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -259,7 +210,7 @@ struct SettingsView: View {
 
     private func themeChoice(_ theme: AppTheme) -> some View {
         let isSelected = theme.id == selectedTheme.id
-        let previewPalette = theme.applying(selectedTint).palette(for: colorScheme)
+        let previewPalette = theme.palette(for: colorScheme)
         let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
 
         return Button {
@@ -348,30 +299,6 @@ struct SettingsView: View {
         case nil: "Adaptive"
         @unknown default: "Adaptive"
         }
-    }
-
-    private func settingsGroup<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                .padding(.horizontal, 2)
-
-            VStack(spacing: 0) {
-                content()
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .modifier(SettingsPanelModifier(contentPadding: 0))
-        }
-    }
-
-    private var settingsGroupDivider: some View {
-        QuickInboxRule()
-            .padding(.leading, 58)
-            .accessibilityHidden(true)
     }
 
     private var appearancePage: some View {
@@ -515,20 +442,13 @@ struct SettingsView: View {
         spacing: CGFloat = 24,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: spacing) {
-                content()
-            }
-            .padding(.horizontal, QuickInboxDesign.Spacing.page)
-            .padding(.top, 18)
-            .padding(.bottom, 40)
-            .frame(maxWidth: QuickInboxDesign.contentMaxWidth)
-            .frame(maxWidth: .infinity)
+        Form {
+            content()
         }
-        .scrollIndicators(.hidden)
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .background(settingsPalette.grouped)
-        .toolbarBackground(settingsPalette.paper, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private var accountIdentitySummary: some View {
@@ -554,7 +474,8 @@ struct SettingsView: View {
                 }
             }
         }
-        .modifier(SettingsPanelModifier())
+        .padding(.vertical, 8)
+        .listRowBackground(settingsPalette.raised)
         .accessibilityElement(children: .combine)
     }
 
@@ -573,7 +494,8 @@ struct SettingsView: View {
     private func settingsDestinationLabel(
         _ title: String,
         systemImage: String,
-        detail: String? = nil
+        detail: String? = nil,
+        supporting: String? = nil
     ) -> some View {
         HStack(spacing: 12) {
             Image(systemName: systemImage)
@@ -589,6 +511,13 @@ struct SettingsView: View {
                 Text(title)
                     .font(.body)
                     .foregroundStyle(QuickInboxDesign.Palette.primaryText)
+
+                if let supporting {
+                    Text(supporting)
+                        .font(.caption)
+                        .foregroundStyle(settingsPalette.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 if dynamicTypeSize.isAccessibilitySize, let detail {
                     Text(detail)
@@ -606,14 +535,9 @@ struct SettingsView: View {
                     .lineLimit(1)
             }
 
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                .accessibilityHidden(true)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .frame(minHeight: 56)
+        .padding(.vertical, 4)
+        .frame(minHeight: 48)
         .contentShape(Rectangle())
     }
 
@@ -622,31 +546,18 @@ struct SettingsView: View {
         detail: String? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        Section {
+            content()
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                .listRowBackground(settingsPalette.raised)
+        } header: {
             Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                .padding(.horizontal, 2)
-
-            VStack(spacing: 0) {
-                content()
-            }
-            .modifier(SettingsPanelModifier(contentPadding: 0))
-
-            if let detail {
-                Text(detail)
-                    .font(.quickInboxBody(13, relativeTo: .footnote))
-                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                    .padding(.horizontal, 2)
-            }
+        } footer: {
+            if let detail { Text(detail) }
         }
     }
 
-    private var settingsInsetDivider: some View {
-        QuickInboxRule()
-            .padding(.leading, 16)
-            .accessibilityHidden(true)
-    }
+    private var settingsInsetDivider: some View { EmptyView() }
 
     private func labeledValueRow(_ label: String, value: String) -> some View {
         Group {
@@ -820,35 +731,15 @@ struct SettingsView: View {
                     .padding(.vertical, 14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    Menu {
-                        Picker("Default Sender", selection: $model.selectedAddressID) {
-                            ForEach(model.addresses) { address in
-                                Text(addressTitle(address))
-                                    .tag(address.id)
-                            }
+                    Picker("Default Sender", selection: $model.selectedAddressID) {
+                        ForEach(model.addresses) { address in
+                            Text(addressTitle(address)).tag(address.id)
                         }
-                    } label: {
-                        HStack(spacing: 12) {
-                            Text("Default Sender")
-                                .foregroundStyle(QuickInboxDesign.Palette.primaryText)
-
-                            Spacer(minLength: 12)
-
-                            Text(selectedAddressTitle)
-                                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                                .lineLimit(1)
-
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                                .accessibilityHidden(true)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .pickerStyle(.navigationLink)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .frame(minHeight: 52)
                     .accessibilityHint("Chooses the address preselected for new messages")
                 }
             }
@@ -856,44 +747,30 @@ struct SettingsView: View {
     }
 
     private var signatureSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Signature")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                .padding(.horizontal, 2)
-
-            Group {
-                if model.isLoading && !model.hasLoadedSignature {
-                    loadingRow("Loading signature")
-                        .padding(16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    TextField(
-                        "Add a signature to new messages…",
-                        text: $model.signatureDraft,
-                        axis: .vertical
-                    )
+        Section {
+            if model.isLoading && !model.hasLoadedSignature {
+                loadingRow("Loading signature")
+            } else {
+                TextField("Add a signature to new messages…", text: $model.signatureDraft, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .lineLimit(2...7)
-                    .padding(14)
+                    .lineLimit(3...8)
+                    .padding(.vertical, 6)
                     .accessibilityLabel("Email signature")
                     .onChange(of: model.signatureDraft) { _, value in
                         if value.count > SettingsViewModel.signatureLimit {
                             model.signatureDraft = String(value.prefix(SettingsViewModel.signatureLimit))
                         }
                     }
-                }
             }
-            .modifier(SettingsPanelModifier(contentPadding: 0))
-
-            VStack(alignment: .leading, spacing: 5) {
+        } header: {
+            Text("Signature")
+        } footer: {
+            VStack(alignment: .leading, spacing: 8) {
                 signatureStatus
                 Text("Added to sent mail unless the selected sending address has its own signature.")
-                    .font(.quickInboxBody(13, relativeTo: .footnote))
-                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
             }
-            .padding(.horizontal, 2)
         }
+        .listRowBackground(settingsPalette.raised)
     }
 
     private var signatureStatus: some View {
@@ -958,11 +835,6 @@ struct SettingsView: View {
                 ForEach(model.devices) { device in
                     deviceRow(device)
 
-                    if device.id != model.devices.last?.id {
-                        QuickInboxRule()
-                            .padding(.leading, 60)
-                            .accessibilityHidden(true)
-                    }
                 }
             }
         }
@@ -1043,29 +915,15 @@ struct SettingsView: View {
     }
 
     private var disconnectSection: some View {
-        settingsPageSection(
-            "Session",
-            detail: "Revokes this session on your server and removes the account and cached mail from this device."
-        ) {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Disconnect This Device")
-                        .font(.body.weight(.medium))
-                    Text("Revoke access and sign out")
-                        .font(.quickInboxBody(13, relativeTo: .caption))
-                        .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                }
-
-                Button(role: .destructive) {
-                    showingDisconnectConfirmation = true
-                } label: {
-                    disconnectButtonLabel("Disconnect")
-                }
-                .buttonStyle(SettingsDestructiveButtonStyle())
-                .disabled(model.isDisconnecting)
+        settingsPageSection("Session", detail: "Revokes this session on your server and removes the account and cached mail from this device.") {
+            Button(role: .destructive) { showingDisconnectConfirmation = true } label: {
+                disconnectButtonLabel("Disconnect This Device")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .foregroundStyle(settingsPalette.destructive)
+            .disabled(model.isDisconnecting)
         }
     }
 
@@ -1085,29 +943,15 @@ struct SettingsView: View {
     }
 
     private var localDataSection: some View {
-        settingsPageSection(
-            "Recovery",
-            detail: "Use only when your server cannot be reached. You may still need to revoke this device on the web."
-        ) {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Local App Data")
-                        .font(.body.weight(.medium))
-                    Text("Clear this device without contacting the server")
-                        .font(.quickInboxBody(13, relativeTo: .caption))
-                        .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
-                }
-
-                Button(role: .destructive) {
-                    showingLocalWipeConfirmation = true
-                } label: {
-                    disconnectButtonLabel("Remove Local Data")
-                }
-                .buttonStyle(SettingsDestructiveButtonStyle())
-                .disabled(model.isDisconnecting)
+        settingsPageSection("Local Data", detail: "Clears saved data without contacting your server. Use this if the server is unavailable; you may still need to revoke this device on the web.") {
+            Button(role: .destructive) { showingLocalWipeConfirmation = true } label: {
+                disconnectButtonLabel("Remove Local Data")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .foregroundStyle(settingsPalette.destructive)
+            .disabled(model.isDisconnecting)
         }
     }
 
@@ -1141,7 +985,7 @@ struct SettingsView: View {
 
                 Label(message, systemImage: "exclamationmark.triangle.fill")
                     .font(.quickInboxBody(13, relativeTo: .caption))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(QuickInboxDesign.Palette.destructive)
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityLabel("App Lock unavailable. \(message)")
@@ -1213,50 +1057,6 @@ struct SettingsView: View {
     private func disconnect(revokeOnServer: Bool) async {
         let warning = await model.disconnect(revokeOnServer: revokeOnServer)
         onDisconnected(warning)
-    }
-}
-
-private struct SettingsPanelModifier: ViewModifier {
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.appTheme) private var appTheme
-    var contentPadding: CGFloat = 16
-
-    func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: QuickInboxDesign.Radius.card, style: .continuous)
-        let palette = appTheme.palette(for: colorScheme)
-
-        content
-            .padding(contentPadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                palette.raised,
-                in: shape
-            )
-            .overlay {
-                shape.stroke(palette.separator.opacity(0.55), lineWidth: 0.5)
-            }
-    }
-}
-
-private struct SettingsDestructiveButtonStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        let red = Color(uiColor: .systemRed)
-        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
-
-        configuration.label
-            .foregroundStyle(red)
-            .padding(.horizontal, 16)
-            .frame(minHeight: 48)
-            .background(
-                red.opacity(0.08),
-                in: shape
-            )
-            .overlay {
-                shape.stroke(red.opacity(0.78), lineWidth: 1)
-            }
-            .opacity(isEnabled ? (configuration.isPressed ? 0.68 : 1) : 0.42)
     }
 }
 

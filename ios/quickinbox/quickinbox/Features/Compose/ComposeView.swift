@@ -108,6 +108,10 @@ struct ComposeView: View {
 
             if model.isReply {
                 readOnlyField("To", value: model.to)
+                if model.isReplyAll || !model.cc.isEmpty {
+                    fieldDivider
+                    recipientField("Cc", text: $model.cc, prompt: "Optional", field: .cc, nextField: .body)
+                }
             } else {
                 adaptiveFieldRow {
                     fieldLabel("To")
@@ -232,7 +236,7 @@ struct ComposeView: View {
         ZStack(alignment: .topLeading) {
             if model.body.isEmpty {
                 Text(model.isReply ? "Write a reply…" : "Start writing…")
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(QuickInboxDesign.Palette.secondaryText)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 15)
                     .allowsHitTesting(false)
@@ -396,7 +400,7 @@ struct ComposeView: View {
     private func guidanceLabel(_ message: String) -> some View {
         Label(message, systemImage: "exclamationmark.circle")
             .font(.callout)
-            .foregroundStyle(.red)
+            .foregroundStyle(QuickInboxDesign.Palette.destructive)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityLabel("Action needed: \(message)")
     }

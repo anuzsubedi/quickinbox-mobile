@@ -265,11 +265,11 @@ struct OnboardingView: View {
             Image(systemName: "exclamationmark.circle.fill")
                 .font(.callout.weight(.semibold))
         }
-        .foregroundStyle(Color(uiColor: .systemRed))
+        .foregroundStyle(QuickInboxDesign.Palette.destructive)
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            Color(uiColor: .systemRed).opacity(0.09),
+            QuickInboxDesign.Palette.destructive.opacity(0.09),
             in: RoundedRectangle(cornerRadius: 14, style: .continuous)
         )
         .accessibilityElement(children: .combine)
