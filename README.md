@@ -4,6 +4,8 @@ Native Android and iOS clients for [QuickInbox](https://github.com/DivinPrince/q
 
 QuickInbox Mobile is designed around a simple idea: the server owns the mail and the user owns the connection. The mobile clients pair with a QuickInbox server, keep credentials in the platform secure store, and provide a focused experience for reading, organizing, and composing mail.
 
+[![Get it on Google Play](https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png)](https://play.google.com/store/apps/details?id=dev.anuz.quickinbox)
+
 ## What is in this repository
 
 ~~~text
