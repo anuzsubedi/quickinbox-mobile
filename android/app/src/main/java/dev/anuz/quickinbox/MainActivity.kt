@@ -1,6 +1,7 @@
 package dev.anuz.quickinbox
 
 import android.os.Bundle
+import android.os.Build
 import android.graphics.Color as AndroidColor
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -40,6 +41,13 @@ class MainActivity : AppCompatActivity() {
                     SystemBarStyle.light(transparent, transparent)
                 }
                 enableEdgeToEdge(systemBarStyle, systemBarStyle)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    // Keep three-button navigation transparent instead of adding a contrast scrim.
+                    window.isNavigationBarContrastEnforced = false
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    window.navigationBarDividerColor = transparent
+                }
                 if (appLockState.isEnabled) {
                     window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
                 } else {
