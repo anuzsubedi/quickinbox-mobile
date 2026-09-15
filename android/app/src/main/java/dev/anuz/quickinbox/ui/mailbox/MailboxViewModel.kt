@@ -48,6 +48,7 @@ data class MailboxUiState(
     val refreshError: String? = null,
     val actionError: String? = null,
     val cachedAt: Date? = null,
+    val cacheRefreshFailed: Boolean = false,
     val isShowingCachedData: Boolean = false
 ) {
     val hasNextPage: Boolean get() = currentPage > 0 && currentPage < pageCount
@@ -148,6 +149,7 @@ class MailboxViewModel(
                 isInitialLoading = showInitialLoading && it.threads.isEmpty(),
                 initialError = null,
                 refreshError = null,
+                cacheRefreshFailed = false,
                 isAppending = false
             )
         }
@@ -185,7 +187,7 @@ class MailboxViewModel(
             if (current != generation) return
             _state.update {
                 if (it.threads.isEmpty()) it.copy(initialError = error.message, isInitialLoading = false)
-                else it.copy(refreshError = error.message, isInitialLoading = false)
+                else it.copy(refreshError = error.message, isInitialLoading = false, cacheRefreshFailed = it.isShowingCachedData)
             }
         } finally {
             if (current == generation) {
