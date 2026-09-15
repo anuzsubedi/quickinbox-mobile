@@ -6,6 +6,11 @@ QuickInbox Mobile is designed around a simple idea: the server owns the mail and
 
 <a href="https://play.google.com/store/apps/details?id=dev.anuz.quickinbox"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" width="180"></a>
 
+<p>
+  <a href="https://buymeacoffee.com/anuz"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="40"></a>
+  <a href="mailto:hire@anuz.dev"><img src="https://img.shields.io/badge/Hire%20me-hire%40anuz.dev-302b63?style=for-the-badge&logo=handshake&logoColor=58a6ff" alt="Hire me at hire@anuz.dev" height="40"></a>
+</p>
+
 ## What is in this repository
 
 ~~~text
