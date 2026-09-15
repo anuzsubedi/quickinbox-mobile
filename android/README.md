@@ -112,3 +112,18 @@ Before a pull request, verify the affected flow on an emulator or device where p
 ## Licensing
 
 The original Android application code is licensed under [GPL-3.0-or-later](LICENSE.md), with the complete license text in the repository root at [../LICENSE](../LICENSE). Bundled fonts remain under the SIL Open Font License 1.1; see `app/src/main/assets/fonts/OFL.txt` and [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
+
+## Navigation and loading behavior
+
+Screen navigation uses AndroidX Navigation Compose 2.9.8 (Apache-2.0), including onboarding and Settings subpages. A shared navigation host supplies a short vertical Back transition and retains predictive Back support. Inbox rows, reader messages, and Settings sections use brief, capped entrance staggers.
+
+The reader displays fetched content before read-status synchronization finishes. Saved-mail notices appear only after refresh failure; an initial reader failure offers Retry. HTML bodies preserve their measured height during updates and fade in after measurement and visual readiness. The mailbox scrolls behind the transparent system gesture area while keeping the final row reachable.
+
+Validation for navigation and reader changes:
+
+```sh
+./gradlew :app:assembleDebug :app:testDebugUnitTest
+./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.anuz.quickinbox.ThreadViewModelInstrumentedTest
+```
+
+On-device review should cover completed and cancelled predictive Back gestures, long HTML emails and remote images, dark appearance, and reduced-motion settings.
