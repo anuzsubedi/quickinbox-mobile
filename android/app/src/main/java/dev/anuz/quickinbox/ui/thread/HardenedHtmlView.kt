@@ -16,7 +16,6 @@ import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -58,30 +57,54 @@ internal fun HardenedHtmlView(html: String, loadsRemoteImages: Boolean) {
     val density = LocalDensity.current.density
     val session = remember { MessageWebSession() }
 
-    LaunchedEffect(document) {
-        heightDpValue = 44
-    }
     session.allowRemoteImages = loadsRemoteImages
 
     fun measure(view: WebView) {
-        if (view.width <= 0) {
-            view.post { measure(view) }
-            return
-        }
+        val messageView = view as MessageWebView
+        if (messageView.released || view.width <= 0) return
+        val generation = messageView.generation
         val viewDp = view.width / density
         view.evaluateJavascript("($FIT_AND_MEASURE)()") { raw ->
+            if (messageView.released || messageView.generation != generation) return@evaluateJavascript
             val values = raw.trim('"').split(',')
-            val cssHeight = values.getOrNull(0)?.toDoubleOrNull() ?: return@evaluateJavascript
+            val cssHeight = values.getOrNull(0)?.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 }
+                ?: return@evaluateJavascript
             val contentWidth = values.getOrNull(1)?.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 }
                 ?: return@evaluateJavascript
             heightDpValue = ceil(cssHeight * viewDp / contentWidth).toInt().coerceAtLeast(44)
+            if (!messageView.revealed) {
+                messageView.postVisualStateCallback(generation.toLong(), object : WebView.VisualStateCallback() {
+                    override fun onComplete(requestId: Long) {
+                        if (messageView.released || messageView.generation != generation || messageView.revealed) return
+                        messageView.revealed = true
+                        messageView.animate().alpha(1f).setDuration(120).start()
+                    }
+                })
+            }
         }
+    }
+
+    fun scheduleMeasure(view: WebView, delayMillis: Long = 48) {
+        val messageView = view as MessageWebView
+        if (messageView.released || !messageView.pageFinished) return
+        messageView.pendingMeasure?.let(view::removeCallbacks)
+        val generation = messageView.generation
+        val pending = Runnable {
+            messageView.pendingMeasure = null
+            if (!messageView.released && messageView.generation == generation) measure(view)
+        }
+        messageView.pendingMeasure = pending
+        view.postDelayed(pending, delayMillis)
     }
 
     key(rendererEpoch) {
         AndroidView(
             factory = { viewContext ->
                 MessageWebView(viewContext).apply {
+                    alpha = 0f
+                    addOnLayoutChangeListener { view, left, _, right, _, oldLeft, _, oldRight, _ ->
+                        if (right - left != oldRight - oldLeft) scheduleMeasure(view as WebView)
+                    }
                     setBackgroundColor(canvasArgb)
                     overScrollMode = View.OVER_SCROLL_NEVER
                     isNestedScrollingEnabled = false
@@ -130,14 +153,12 @@ internal fun HardenedHtmlView(html: String, loadsRemoteImages: Boolean) {
                         }
 
                         override fun onPageFinished(view: WebView, url: String?) {
-                            measure(view)
-                            view.postDelayed({ measure(view) }, 80)
-                            view.postDelayed({ measure(view) }, 300)
-                            view.postDelayed({ measure(view) }, 900)
+                            (view as MessageWebView).pageFinished = true
+                            scheduleMeasure(view, 0)
                         }
 
                         override fun onLoadResource(view: WebView, url: String?) {
-                            view.postDelayed({ measure(view) }, 40)
+                            scheduleMeasure(view)
                         }
 
                         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
@@ -151,11 +172,22 @@ internal fun HardenedHtmlView(html: String, loadsRemoteImages: Boolean) {
                 view.setBackgroundColor(canvasArgb)
                 view.settings.blockNetworkImage = !loadsRemoteImages
                 if (view.loadedDocument != document) {
+                    view.pendingMeasure?.let(view::removeCallbacks)
+                    view.pendingMeasure = null
+                    view.generation += 1
+                    view.pageFinished = false
+                    view.animate().cancel()
+                    view.revealed = false
+                    view.alpha = 0f
                     view.loadedDocument = document
                     view.loadDataWithBaseURL(DOCUMENT_BASE, document, "text/html", "utf-8", null)
                 }
             },
             onRelease = { view ->
+                view.released = true
+                view.pendingMeasure?.let(view::removeCallbacks)
+                view.pendingMeasure = null
+                view.animate().cancel()
                 view.stopLoading()
                 view.webChromeClient = null
                 view.webViewClient = WebViewClient()
@@ -177,6 +209,11 @@ private class MessageWebSession {
 @SuppressLint("ClickableViewAccessibility")
 private class MessageWebView(context: Context) : WebView(context) {
     var loadedDocument: String? = null
+    var generation = 0
+    var released = false
+    var revealed = false
+    var pageFinished = false
+    var pendingMeasure: Runnable? = null
 
     init {
         setOnTouchListener { view, event ->
