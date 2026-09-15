@@ -77,7 +77,7 @@ class ThreadViewModelInstrumentedTest {
         val cachedState = withTimeout(5_000) {
             viewModel.state.first { it.isRefreshing && it.detail?.messages?.single()?.bodyText == "Saved body" }
         }
-        assertEquals("Showing saved conversation · Refreshing", cachedState.savedDataMessage)
+        assertNull(cachedState.savedDataMessage)
 
         val refreshedState = withTimeout(5_000) {
             viewModel.state.first { !it.isRefreshing && it.detail?.messages?.single()?.bodyText == "Fresh body" }
@@ -117,6 +117,40 @@ class ThreadViewModelInstrumentedTest {
 
         withTimeout(5_000) { exited.await() }
         assertNull(cache.load(origin(), USER_ID, THREAD_ID))
+    }
+
+    @Test
+    fun unreadBodyRendersBeforeReadRequestCompletes() = runBlocking {
+        server.enqueue(MockResponse().setBody(threadJson("Unread body").replace("true", "false")))
+        server.enqueue(MockResponse().setBody("""{"ok":true}""").setBodyDelay(2, TimeUnit.SECONDS))
+        val viewModel = viewModel()
+        val loaded = CompletableDeferred<ThreadDetail>()
+
+        viewModel.load { loaded.complete(it) }
+
+        val visible = withTimeout(5_000) {
+            viewModel.state.first { it.detail != null && !it.isLoading }
+        }
+        assertEquals("Unread body", visible.detail?.messages?.single()?.bodyText)
+        assertFalse(visible.isRead)
+        assertFalse(loaded.isCompleted)
+        val opened = withTimeout(5_000) { loaded.await() }
+        assertEquals(true, opened.messages.single().isRead)
+    }
+
+    @Test
+    fun failedInitialLoadCanBeRetried() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(503).setBody("""{"error":"Unavailable"}"""))
+        server.enqueue(MockResponse().setBody(threadJson("Recovered body")))
+        val viewModel = viewModel()
+        viewModel.load()
+        withTimeout(5_000) { viewModel.state.first { it.errorMessage != null && !it.isLoading } }
+
+        val loaded = CompletableDeferred<ThreadDetail>()
+        viewModel.load { loaded.complete(it) }
+
+        assertEquals("Recovered body", withTimeout(5_000) { loaded.await() }.messages.single().bodyText)
+        assertNull(viewModel.state.value.errorMessage)
     }
 
     private fun viewModel() = ThreadViewModel(

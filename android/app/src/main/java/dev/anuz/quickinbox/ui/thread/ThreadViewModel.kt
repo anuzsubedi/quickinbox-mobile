@@ -59,6 +59,7 @@ class ThreadViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(
         ThreadUiState(
+            isLoading = true,
             isRead = summary?.isRead ?: true,
             isStarred = summary?.isStarred ?: false,
             isArchived = summary?.isArchived ?: false
@@ -76,7 +77,8 @@ class ThreadViewModel(
                 it.copy(
                     isLoading = it.detail == null,
                     isRefreshing = it.detail != null,
-                    errorMessage = null
+                    errorMessage = null,
+                    savedDataMessage = null
                 )
             }
             try {
@@ -90,13 +92,22 @@ class ThreadViewModel(
                                 isLoading = false,
                                 isRefreshing = true,
                                 isShowingSavedData = true,
-                                savedDataMessage = "Showing saved conversation · Refreshing"
+                                savedDataMessage = null
                             )
                         }
                     }
                 }
                 val value = withContext(ioDispatcher) { api.thread(threadId) }
-                // Persist the read action before publishing the opened conversation to the mailbox.
+                // Render the body immediately; read-status synchronization must not delay reading.
+                _state.update {
+                    it.withDetail(value).copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        isShowingSavedData = false,
+                        savedDataMessage = null
+                    )
+                }
+                // Notify the mailbox only after the read request has resolved.
                 val opened = if (value.messages.any { !it.isRead }) {
                     try {
                         val response = withContext(ioDispatcher) {
@@ -138,7 +149,7 @@ class ThreadViewModel(
                             errorMessage = null
                         )
                     } else {
-                        it.copy(isLoading = false, isRefreshing = false, errorMessage = error.message)
+                        it.copy(isLoading = false, isRefreshing = false, errorMessage = error.message ?: "Couldn’t load this conversation.")
                     }
                 }
             } finally {

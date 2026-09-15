@@ -69,16 +69,18 @@ fun PrivacyScreen(onBack: () -> Unit) {
     var loading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var webView by remember { mutableStateOf<WebView?>(null) }
+    var canGoBack by remember { mutableStateOf(false) }
     var webViewEpoch by remember { mutableIntStateOf(0) }
 
     val retry = {
         loading = true
         loadError = null
         webView = null
+        canGoBack = false
         webViewEpoch += 1
     }
 
-    BackHandler {
+    BackHandler(enabled = canGoBack) {
         val current = webView
         if (current?.canGoBack() == true) current.goBack() else onBack()
     }
@@ -123,7 +125,10 @@ fun PrivacyScreen(onBack: () -> Unit) {
                                         if (webView === view) loading = true
                                     },
                                     onLoaded = { view ->
-                                        if (webView === view) loading = false
+                                        if (webView === view) {
+                                            loading = false
+                                            canGoBack = view.canGoBack()
+                                        }
                                     },
                                     onLoadError = { view, message ->
                                         if (webView === view) {

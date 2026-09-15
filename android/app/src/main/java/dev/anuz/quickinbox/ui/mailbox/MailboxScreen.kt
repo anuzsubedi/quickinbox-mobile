@@ -12,10 +12,15 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +36,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -77,6 +83,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -125,10 +132,20 @@ fun MailboxScreen(
     onCompose: (draftId: String?) -> Unit,
     onOpenSettings: () -> Unit,
     onAction: (MailAction, List<ThreadSummary>) -> Unit,
-    onDismissError: () -> Unit
+    onDismissError: () -> Unit,
+    listState: LazyListState = rememberLazyListState()
 ) {
     val snackbar = remember { SnackbarHostState() }
-    val listState = rememberLazyListState()
+    // One entrance per screen appearance, not per row entering the viewport during scrolling.
+    val listEntrance = remember { Animatable(0f) }
+    var entranceFirstIndex by remember { mutableStateOf(listState.firstVisibleItemIndex) }
+    val hasMail = !state.isInitialLoading && state.threads.isNotEmpty()
+    LaunchedEffect(hasMail) {
+        if (hasMail && listEntrance.value < 1f) {
+            entranceFirstIndex = listState.firstVisibleItemIndex
+            listEntrance.animateTo(1f, tween(465, easing = LinearEasing))
+        }
+    }
     val refreshState = rememberPullToRefreshState()
     val haptics = rememberQuickInboxHaptics()
     val drawerState = androidx.compose.material3.rememberDrawerState(androidx.compose.material3.DrawerValue.Closed)
@@ -216,6 +233,10 @@ fun MailboxScreen(
                 }
             }
         ) { padding ->
+            val layoutDirection = LocalLayoutDirection.current
+            val hasBottomDock = isNativeNavigation || selectionActive
+            // Let mail scroll behind the gesture handle; keep the final row reachable above it.
+            val scrollBottomInset = if (hasBottomDock) 0.dp else padding.calculateBottomPadding()
             PullToRefreshBox(
                 isRefreshing = state.isRefreshing,
                 onRefresh = onRefresh,
@@ -227,7 +248,12 @@ fun MailboxScreen(
                         modifier = Modifier.align(Alignment.TopCenter)
                     )
                 },
-                modifier = Modifier.fillMaxSize().padding(padding)
+                modifier = Modifier.fillMaxSize().padding(
+                    start = padding.calculateStartPadding(layoutDirection),
+                    top = padding.calculateTopPadding(),
+                    end = padding.calculateEndPadding(layoutDirection),
+                    bottom = if (hasBottomDock) padding.calculateBottomPadding() else 0.dp
+                )
             ) {
                 Column(Modifier.fillMaxSize()) {
                     AnimatedContent(
@@ -266,9 +292,9 @@ fun MailboxScreen(
                             )
                         }
                     }
-                    if (state.isShowingCachedData) {
+                    if (state.isShowingCachedData && state.cacheRefreshFailed && !state.isRefreshing) {
                         Text(
-                            "Showing saved mail · Pull to refresh",
+                            "Couldn’t refresh · Showing saved mail",
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -280,12 +306,20 @@ fun MailboxScreen(
                         state.threads.isEmpty() -> EmptyState(state.mailbox, filtered = state.starredOnly || state.unreadOnly || state.searchText.isNotBlank())
                         else -> LazyColumn(
                             state = listState,
-                            contentPadding = PaddingValues(bottom = 88.dp),
+                            contentPadding = PaddingValues(bottom = 88.dp + scrollBottomInset),
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             itemsIndexed(state.threads, key = { _, thread -> thread.id }) { index, thread ->
                                 SwipeableMailThreadItem(
-                                    modifier = Modifier.animateItem(),
+                                    modifier = Modifier.animateItem().graphicsLayer {
+                                        // 35 ms between rows, capped at eight rows to keep the list responsive.
+                                        val rank = (index - entranceFirstIndex).coerceIn(0, 7)
+                                        val fraction = ((listEntrance.value * 465f - rank * 35f) / 220f)
+                                            .coerceIn(0f, 1f)
+                                        val eased = QuickInboxMotion.Standard.transform(fraction)
+                                        alpha = eased
+                                        translationY = -16.dp.toPx() * (1f - eased)
+                                    },
                                     index = index,
                                     motion = swipeMotion,
                                     thread = thread,

@@ -1,15 +1,21 @@
 package dev.anuz.quickinbox.ui.settings
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.constrainWidth
+import androidx.compose.ui.unit.constrainHeight
+import dev.anuz.quickinbox.ui.theme.QuickInboxMotion
+
+import dev.anuz.quickinbox.ui.QuickInboxNavHost
+
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,7 +38,6 @@ import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -61,7 +66,6 @@ import dev.anuz.quickinbox.domain.MailboxKind
 import dev.anuz.quickinbox.domain.User
 import dev.anuz.quickinbox.ui.privacy.PrivacyScreen
 import dev.anuz.quickinbox.ui.theme.AppThemeOption
-import dev.anuz.quickinbox.ui.theme.QuickInboxMotion
 import dev.anuz.quickinbox.ui.theme.rememberAppColorScheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -84,7 +88,7 @@ fun SettingsScreen(
 ) {
     val scope = rememberCoroutineScope()
     val activity = LocalContext.current as? FragmentActivity
-    var page by rememberSaveable { mutableStateOf(SettingsPage.Overview) }
+    val navController = rememberNavController()
     var addresses by remember { mutableStateOf<List<MailAddress>>(emptyList()) }
     var devices by remember { mutableStateOf<List<DeviceSession>>(emptyList()) }
     var signature by remember { mutableStateOf("") }
@@ -103,11 +107,6 @@ fun SettingsScreen(
     val mailboxSwipeControls by container.preferences.mailboxSwipeControls.collectAsState()
     val appLockState by container.appLock.state.collectAsState()
     val selectedId = container.preferences.selectedSendingAddressId
-
-    fun navigateBack() {
-        if (page == SettingsPage.Overview) onBack() else page = SettingsPage.Overview
-    }
-    BackHandler(onBack = ::navigateBack)
 
     LaunchedEffect(error) {
         error?.let {
@@ -140,11 +139,6 @@ fun SettingsScreen(
         }
     }
 
-    if (page == SettingsPage.PrivacyPolicy) {
-        PrivacyScreen(onBack = { page = SettingsPage.Overview })
-        return
-    }
-
     fun saveSignature() {
         scope.launch {
             saving = true
@@ -163,97 +157,88 @@ fun SettingsScreen(
         }
     }
 
-    SettingsScaffold(
-        title = page.title,
-        root = page == SettingsPage.Overview,
-        onBack = ::navigateBack,
-        snackbarHostState = snackbarHostState,
-        actions = {
-            if (page == SettingsPage.Composing) {
-                FilledTonalButton(
-                    onClick = ::saveSignature,
-                    enabled = !loading && !saving && signature != savedSignature,
-                    modifier = Modifier.padding(end = 12.dp),
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    if (saving) {
-                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    } else {
-                        Text("Save")
+    QuickInboxNavHost(navController, startDestination = SettingsPage.Overview.name) {
+        SettingsPage.entries.forEach { page ->
+            composable(page.name) {
+                if (page == SettingsPage.PrivacyPolicy) {
+                    PrivacyScreen(onBack = { navController.popBackStack() })
+                    return@composable
+                }
+                SettingsScaffold(
+                    title = page.title,
+                    root = page == SettingsPage.Overview,
+                    onBack = { if (!navController.popBackStack()) onBack() },
+                    snackbarHostState = snackbarHostState,
+                    actions = {
+                        if (page == SettingsPage.Composing) {
+                            FilledTonalButton(
+                                onClick = ::saveSignature,
+                                enabled = !loading && !saving && signature != savedSignature,
+                                modifier = Modifier.padding(end = 12.dp),
+                                shape = MaterialTheme.shapes.large
+                            ) {
+                                if (saving) {
+                                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Text("Save")
+                                }
+                            }
+                        }
+                    }
+                ) { padding ->
+                    when (page) {
+                        SettingsPage.Overview -> SettingsOverview(
+                            padding, user, loading, devices.size, appLockState.isEnabled,
+                            themeTitle = AppThemeOption.fromId(themeId).title,
+                            onNavigate = { navController.navigate(it.name) { launchSingleTop = true } }
+                        )
+                        SettingsPage.Account -> AccountPage(padding, user, container.api.credential?.origin)
+                        SettingsPage.Appearance -> AppearancePage(
+                            padding = padding,
+                            selectedId = themeId,
+                            navigationStyle = mailboxNavigationStyle,
+                            onThemeSelected = { container.preferences.selectedThemeId = it },
+                            onNavigationStyleChanged = { container.preferences.selectedMailboxNavigationStyle = it }
+                        )
+                        SettingsPage.Composing -> ComposingPage(
+                            padding, addresses, selectedId, signature, saving, fromOpen,
+                            onFromOpenChange = { fromOpen = it },
+                            onAddress = {
+                                container.preferences.selectedSendingAddressId = it
+                                fromOpen = false
+                            },
+                            onSignature = { if (it.length <= 1000) signature = it }
+                        )
+                        SettingsPage.SwipeActions -> SwipeActionsPage(
+                            padding = padding,
+                            controls = mailboxSwipeControls,
+                            onControlChanged = container.preferences::setSwipeControl,
+                            onRestoreDefaults = container.preferences::resetSwipeControls
+                        )
+                        SettingsPage.Privacy -> PrivacyPage(
+                            padding = padding,
+                            remoteImages = remoteImages,
+                            appLockState = appLockState,
+                            onAppLock = { enabled ->
+                                activity?.let { container.appLock.requestSetEnabled(it, enabled) }
+                            },
+                            onRemoteImages = {
+                                remoteImages = it
+                                container.preferences.showRemoteImagesByDefault = it
+                            }
+                        )
+                        SettingsPage.Devices -> DevicesPage(padding, devices, loading, onRevoke = { deviceToRevoke = it })
+                        SettingsPage.Connection -> ConnectionPage(
+                            padding, container.api.credential?.origin,
+                            onDisconnect = { confirmDisconnect = true },
+                            onRemoveLocal = { confirmLocal = true }
+                        )
+                        SettingsPage.Support -> SupportPage(padding)
+                        SettingsPage.PrivacyPolicy -> Unit
                     }
                 }
             }
         }
-    ) { padding ->
-        AnimatedContent(
-            targetState = page,
-            transitionSpec = {
-                val enteringSubpage = targetState != SettingsPage.Overview
-                val direction = if (enteringSubpage) {
-                    AnimatedContentTransitionScope.SlideDirection.Left
-                } else {
-                    AnimatedContentTransitionScope.SlideDirection.Right
-                }
-                (slideIntoContainer(
-                    direction,
-                    animationSpec = tween(QuickInboxMotion.DurationMedium, easing = QuickInboxMotion.Standard)
-                ) + fadeIn(tween(QuickInboxMotion.DurationShort, easing = QuickInboxMotion.Standard))) togetherWith
-                    (slideOutOfContainer(
-                        direction,
-                        animationSpec = tween(QuickInboxMotion.DurationMedium, easing = QuickInboxMotion.Standard)
-                    ) + fadeOut(tween(QuickInboxMotion.DurationShort, easing = QuickInboxMotion.Standard)))
-            },
-            label = "settings page"
-        ) { currentPage -> when (currentPage) {
-            SettingsPage.Overview -> SettingsOverview(
-                padding, user, loading, devices.size, appLockState.isEnabled,
-                themeTitle = AppThemeOption.fromId(themeId).title,
-                onNavigate = { page = it }
-            )
-            SettingsPage.Account -> AccountPage(padding, user, container.api.credential?.origin)
-            SettingsPage.Appearance -> AppearancePage(
-                padding = padding,
-                selectedId = themeId,
-                navigationStyle = mailboxNavigationStyle,
-                onThemeSelected = { container.preferences.selectedThemeId = it },
-                onNavigationStyleChanged = { container.preferences.selectedMailboxNavigationStyle = it }
-            )
-            SettingsPage.Composing -> ComposingPage(
-                padding, addresses, selectedId, signature, saving, fromOpen,
-                onFromOpenChange = { fromOpen = it },
-                onAddress = {
-                    container.preferences.selectedSendingAddressId = it
-                    fromOpen = false
-                },
-                onSignature = { if (it.length <= 1000) signature = it }
-            )
-            SettingsPage.SwipeActions -> SwipeActionsPage(
-                padding = padding,
-                controls = mailboxSwipeControls,
-                onControlChanged = container.preferences::setSwipeControl,
-                onRestoreDefaults = container.preferences::resetSwipeControls
-            )
-            SettingsPage.Privacy -> PrivacyPage(
-                padding = padding,
-                remoteImages = remoteImages,
-                appLockState = appLockState,
-                onAppLock = { enabled ->
-                    activity?.let { container.appLock.requestSetEnabled(it, enabled) }
-                },
-                onRemoteImages = {
-                    remoteImages = it
-                    container.preferences.showRemoteImagesByDefault = it
-                }
-            )
-            SettingsPage.Devices -> DevicesPage(padding, devices, loading, onRevoke = { deviceToRevoke = it })
-            SettingsPage.Connection -> ConnectionPage(
-                padding, container.api.credential?.origin,
-                onDisconnect = { confirmDisconnect = true },
-                onRemoveLocal = { confirmLocal = true }
-            )
-            SettingsPage.Support -> SupportPage(padding)
-            SettingsPage.PrivacyPolicy -> Unit
-        } }
     }
 
     deviceToRevoke?.let { device ->
@@ -790,9 +775,38 @@ private fun PageBody(padding: PaddingValues, content: @Composable ColumnScope.()
             Modifier.widthIn(max = 720.dp).fillMaxWidth().align(Alignment.TopCenter)
                 .verticalScroll(rememberScrollState())
                 .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
-            content = content
-        )
+        ) {
+            val columnScope = this
+            StaggeredSettingsContent { content(columnScope) }
+        }
+    }
+}
+
+/** Stagger sections once per page appearance, without changing their layout or hit targets. */
+@Composable
+private fun StaggeredSettingsContent(content: @Composable () -> Unit) {
+    val entrance = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        entrance.animateTo(1f, tween(465, easing = LinearEasing))
+    }
+    Layout(content = content) { measurables, constraints ->
+        val children = measurables.map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
+        val spacing = 24.dp.roundToPx()
+        val height = children.sumOf { it.height } + spacing * (children.size - 1).coerceAtLeast(0)
+        val width = constraints.constrainWidth(children.maxOfOrNull { it.width } ?: 0)
+        layout(width, constraints.constrainHeight(height)) {
+            var y = 0
+            children.forEachIndexed { index, child ->
+                val fraction = ((entrance.value * 465f - index.coerceAtMost(7) * 35f) / 220f)
+                    .coerceIn(0f, 1f)
+                val eased = QuickInboxMotion.Standard.transform(fraction)
+                child.placeRelativeWithLayer(0, y) {
+                    alpha = eased
+                    translationY = -16.dp.toPx() * (1f - eased)
+                }
+                y += child.height + spacing
+            }
+        }
     }
 }
 
