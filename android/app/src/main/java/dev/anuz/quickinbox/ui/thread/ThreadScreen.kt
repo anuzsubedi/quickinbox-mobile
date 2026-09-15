@@ -2,6 +2,8 @@ package dev.anuz.quickinbox.ui.thread
 
 import android.content.Intent
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -54,6 +56,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.key
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -63,6 +66,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
@@ -96,6 +100,7 @@ fun ThreadScreen(
     summary: ThreadSummary?,
     preferences: AppPreferences,
     onBack: () -> Unit,
+    onRetry: () -> Unit,
     onCompose: (ComposeMode) -> Unit,
     onAction: (MailAction) -> Unit,
     onDownload: (ThreadMessage, EmailAttachment) -> Unit,
@@ -104,6 +109,13 @@ fun ThreadScreen(
     val context = LocalContext.current
     val messages = state.chronologicalMessages
     val latest = messages.lastOrNull()
+    val messageEntrance = remember { Animatable(0f) }
+    // Animate once when messages arrive; read-status updates and card expansion don't replay it.
+    LaunchedEffect(messages.isNotEmpty()) {
+        if (messages.isNotEmpty() && messageEntrance.value < 1f) {
+            messageEntrance.animateTo(1f, tween(465, easing = LinearEasing))
+        }
+    }
     val subject = state.detail?.subject ?: summary?.subject ?: "Conversation"
     val actionsEnabled = state.detail != null && !state.isLoading && state.actionInProgress == null
     val readerScroll = rememberScrollState()
@@ -266,10 +278,14 @@ fun ThreadScreen(
                     Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center
                 ) { CircularProgressIndicator() }
-                state.errorMessage != null && state.detail == null -> Box(
+                state.errorMessage != null && state.detail == null -> Column(
                     Modifier.fillMaxSize().padding(padding).padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) { Text(state.errorMessage, color = MaterialTheme.colorScheme.error) }
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically)
+                ) {
+                    Text(state.errorMessage, color = MaterialTheme.colorScheme.error)
+                    Button(onClick = onRetry) { Text("Retry") }
+                }
                 else -> Column(
                     Modifier.fillMaxSize().padding(padding).verticalScroll(readerScroll)
                 ) {
@@ -310,17 +326,27 @@ fun ThreadScreen(
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             messages.forEachIndexed { index, message ->
-                                ThreadMessageCard(
-                                    message = message,
-                                    first = index == 0,
-                                    last = index == messages.lastIndex,
-                                    initiallyExpanded = index == messages.lastIndex,
-                                    showRemoteImagesByDefault = preferences.showRemoteImagesByDefault,
-                                    downloadingIds = state.downloadingIds,
-                                    onReply = { replyTo(message) },
-                                    onForward = { forward(message) },
-                                    onDownload = { onDownload(message, it) }
-                                )
+                                key(message.id) {
+                                    ThreadMessageCard(
+                                        modifier = Modifier.graphicsLayer {
+                                            val rank = index.coerceAtMost(7)
+                                            val fraction = ((messageEntrance.value * 465f - rank * 35f) / 220f)
+                                                .coerceIn(0f, 1f)
+                                            val eased = QuickInboxMotion.Standard.transform(fraction)
+                                            alpha = eased
+                                            translationY = -16.dp.toPx() * (1f - eased)
+                                        },
+                                        message = message,
+                                        first = index == 0,
+                                        last = index == messages.lastIndex,
+                                        initiallyExpanded = index == messages.lastIndex,
+                                        showRemoteImagesByDefault = preferences.showRemoteImagesByDefault,
+                                        downloadingIds = state.downloadingIds,
+                                        onReply = { replyTo(message) },
+                                        onForward = { forward(message) },
+                                        onDownload = { onDownload(message, it) }
+                                    )
+                                }
                             }
                         }
                     }
@@ -415,6 +441,7 @@ private fun ThreadSubjectHeader(
 
 @Composable
 private fun ThreadMessageCard(
+    modifier: Modifier = Modifier,
     message: ThreadMessage,
     first: Boolean,
     last: Boolean,
@@ -434,7 +461,7 @@ private fun ThreadMessageCard(
     else message.toAddress.takeIf { it.isNotBlank() }?.let { "to $it" } ?: "sent message"
 
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .animateContentSize(
                 animationSpec = tween(

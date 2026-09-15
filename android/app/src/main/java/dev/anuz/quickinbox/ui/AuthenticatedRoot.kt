@@ -1,15 +1,15 @@
 package dev.anuz.quickinbox.ui
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
+import android.net.Uri
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonDeserializer
+import com.google.gson.JsonSerializer
+import dev.anuz.quickinbox.data.ApiDateAdapter
+import java.util.Date
+
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -30,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.anuz.quickinbox.data.AppContainer
@@ -43,12 +45,11 @@ import dev.anuz.quickinbox.ui.mailbox.MailboxScreen
 import dev.anuz.quickinbox.ui.mailbox.MailboxViewModel
 import dev.anuz.quickinbox.ui.mailbox.MailboxViewModelFactory
 import dev.anuz.quickinbox.ui.settings.SettingsScreen
-import dev.anuz.quickinbox.ui.theme.QuickInboxMotion
 import dev.anuz.quickinbox.ui.thread.ThreadScreen
 import dev.anuz.quickinbox.ui.thread.ThreadViewModel
 import dev.anuz.quickinbox.ui.thread.ThreadViewModelFactory
 
-private sealed class AuthDestination {
+internal sealed class AuthDestination {
     data object Mailbox : AuthDestination()
     data class Thread(val summary: ThreadSummary) : AuthDestination()
     data class Compose(
@@ -59,119 +60,23 @@ private sealed class AuthDestination {
     data object Settings : AuthDestination()
 }
 
-private enum class NavTransition {
-    ThreadPush,
-    SettingsPush,
-    ComposeModal
-}
-
-/** Picks transition shape and whether navigation is forward (deeper / opening). */
-private fun navTransition(
-    initial: AuthDestination,
-    target: AuthDestination
-): Pair<NavTransition, Boolean> {
-    val kind = when {
-        target is AuthDestination.Compose || initial is AuthDestination.Compose -> NavTransition.ComposeModal
-        target is AuthDestination.Settings || initial is AuthDestination.Settings -> NavTransition.SettingsPush
-        else -> NavTransition.ThreadPush
-    }
-    val forward = when (kind) {
-        NavTransition.ComposeModal -> target is AuthDestination.Compose
-        NavTransition.SettingsPush -> target is AuthDestination.Settings
-        NavTransition.ThreadPush -> when {
-            target is AuthDestination.Thread -> initial is AuthDestination.Mailbox
-            initial is AuthDestination.Thread -> target is AuthDestination.Mailbox
-            else -> false
-        }
-    }
-    return kind to forward
-}
-
-private fun authDestinationTransitionSpec(
-    initial: AuthDestination,
-    target: AuthDestination
-): androidx.compose.animation.ContentTransform {
-    val (kind, forward) = navTransition(initial, target)
-    return when (kind) {
-        NavTransition.ThreadPush -> if (forward) {
-            (fadeIn(tween(QuickInboxMotion.DurationMedium, easing = QuickInboxMotion.Standard)) +
-                slideInHorizontally(tween(QuickInboxMotion.DurationMedium, easing = QuickInboxMotion.Standard)) { fullWidth ->
-                    fullWidth
-                })
-                .togetherWith(
-                    fadeOut(tween(QuickInboxMotion.DurationShort, easing = QuickInboxMotion.Decelerate)) +
-                        slideOutHorizontally(tween(QuickInboxMotion.DurationShort, easing = QuickInboxMotion.Decelerate)) { fullWidth ->
-                            -fullWidth / 4
-                        }
-                )
-        } else {
-            (fadeIn(tween(QuickInboxMotion.DurationMedium, easing = QuickInboxMotion.Standard)) +
-                slideInHorizontally(tween(QuickInboxMotion.DurationMedium, easing = QuickInboxMotion.Standard)) { fullWidth ->
-                    -fullWidth / 4
-                })
-                .togetherWith(
-                    fadeOut(tween(QuickInboxMotion.DurationShort, easing = QuickInboxMotion.Decelerate)) +
-                        slideOutHorizontally(tween(QuickInboxMotion.DurationShort, easing = QuickInboxMotion.Decelerate)) { fullWidth ->
-                            fullWidth
-                        }
-                )
-        }
-        NavTransition.SettingsPush -> if (forward) {
-            (fadeIn(tween(QuickInboxMotion.DurationLong, easing = QuickInboxMotion.Emphasized)) +
-                slideInHorizontally(tween(QuickInboxMotion.DurationLong, easing = QuickInboxMotion.Emphasized)) { fullWidth ->
-                    fullWidth / 2
-                })
-                .togetherWith(
-                    fadeOut(tween(QuickInboxMotion.DurationMedium, easing = QuickInboxMotion.Decelerate)) +
-                        slideOutHorizontally(tween(QuickInboxMotion.DurationMedium, easing = QuickInboxMotion.Decelerate)) { fullWidth ->
-                            -fullWidth / 6
-                        }
-                )
-        } else {
-            (fadeIn(tween(QuickInboxMotion.DurationMedium, easing = QuickInboxMotion.Standard)) +
-                slideInHorizontally(tween(QuickInboxMotion.DurationMedium, easing = QuickInboxMotion.Standard)) { fullWidth ->
-                    -fullWidth / 6
-                })
-                .togetherWith(
-                    fadeOut(tween(QuickInboxMotion.DurationLong, easing = QuickInboxMotion.Decelerate)) +
-                        slideOutHorizontally(tween(QuickInboxMotion.DurationLong, easing = QuickInboxMotion.Decelerate)) { fullWidth ->
-                            fullWidth / 2
-                        }
-                )
-        }
-        NavTransition.ComposeModal -> if (forward) {
-            (fadeIn(tween(QuickInboxMotion.DurationMedium, easing = QuickInboxMotion.Emphasized)) +
-                slideInVertically(tween(QuickInboxMotion.DurationMedium, easing = QuickInboxMotion.Emphasized)) { fullHeight ->
-                    fullHeight
-                })
-                .togetherWith(
-                    fadeOut(tween(QuickInboxMotion.DurationShort, easing = QuickInboxMotion.Decelerate)) +
-                        slideOutVertically(tween(QuickInboxMotion.DurationShort, easing = QuickInboxMotion.Decelerate)) { fullHeight ->
-                            -fullHeight / 5
-                        }
-                )
-        } else {
-            (fadeIn(tween(QuickInboxMotion.DurationShort, easing = QuickInboxMotion.Standard)) +
-                slideInVertically(tween(QuickInboxMotion.DurationShort, easing = QuickInboxMotion.Standard)) { fullHeight ->
-                    -fullHeight / 5
-                })
-                .togetherWith(
-                    fadeOut(tween(QuickInboxMotion.DurationMedium, easing = QuickInboxMotion.Decelerate)) +
-                        slideOutVertically(tween(QuickInboxMotion.DurationMedium, easing = QuickInboxMotion.Decelerate)) { fullHeight ->
-                            fullHeight
-                        }
-                )
-        }
-    }
-}
-
 @Composable
 fun AuthenticatedRoot(
     container: AppContainer,
     user: User,
     onDisconnected: (String?) -> Unit
 ) {
-    var destination by remember { mutableStateOf<AuthDestination>(AuthDestination.Mailbox) }
+    val navController = rememberNavController()
+    val routeGson = remember { navigationGson() }
+    fun navigate(destination: AuthDestination) {
+        when (destination) {
+            AuthDestination.Mailbox -> navController.popBackStack("mailbox", false)
+            AuthDestination.Settings -> navController.navigate("settings") { launchSingleTop = true }
+            is AuthDestination.Thread -> navController.navigate("thread/${Uri.encode(routeGson.toJson(destination))}") { launchSingleTop = true }
+            is AuthDestination.Compose -> navController.navigate("compose/${Uri.encode(routeGson.toJson(destination))}") { launchSingleTop = true }
+        }
+    }
+    val mailboxListState = rememberLazyListState()
     var mailboxRefresh by remember { mutableStateOf(0) }
     var composeSession by remember { mutableStateOf(0) }
     val mailboxViewModel: MailboxViewModel = viewModel(
@@ -205,14 +110,11 @@ fun AuthenticatedRoot(
     }
 
     Box(Modifier.fillMaxSize()) {
-        AnimatedContent(
-            targetState = destination,
-            transitionSpec = { authDestinationTransitionSpec(initialState, targetState) },
-            label = "auth-destination"
-        ) { current ->
-            when (current) {
-                AuthDestination.Mailbox -> MailboxScreen(
+        QuickInboxNavHost(navController, startDestination = "mailbox") {
+            composable("mailbox") {
+                MailboxScreen(
                     state = mailboxState,
+                    listState = mailboxListState,
                     navigationStyle = mailboxNavigationStyle,
                     swipeControls = mailboxSwipeControls,
                     onSelectMailbox = mailboxViewModel::selectMailbox,
@@ -221,20 +123,23 @@ fun AuthenticatedRoot(
                     onToggleStarred = mailboxViewModel::toggleStarredOnly,
                     onRefresh = mailboxViewModel::refresh,
                     onLoadNext = mailboxViewModel::loadNextPage,
-                    onOpenThread = { destination = AuthDestination.Thread(it) },
+                    onOpenThread = { navigate(AuthDestination.Thread(it)) },
                     onCompose = {
                         composeSession += 1
-                        destination = AuthDestination.Compose(
+                        navigate(AuthDestination.Compose(
                             mode = it?.let(ComposeMode::Draft) ?: ComposeMode.NewMessage,
                             sessionKey = composeSession
-                        )
+                        ))
                     },
-                    onOpenSettings = { destination = AuthDestination.Settings },
+                    onOpenSettings = { navigate(AuthDestination.Settings) },
                     onAction = mailboxViewModel::perform,
                     onDismissError = mailboxViewModel::dismissErrors
                 )
-                is AuthDestination.Thread -> {
-                    BackHandler { destination = AuthDestination.Mailbox }
+            }
+            composable("thread/{payload}") { entry ->
+                    val current = remember(entry) {
+                        routeGson.fromJson(entry.arguments!!.getString("payload"), AuthDestination.Thread::class.java)
+                    }
                     val context = LocalContext.current
                     val threadViewModel: ThreadViewModel = viewModel(
                         key = current.summary.id,
@@ -248,41 +153,45 @@ fun AuthenticatedRoot(
                         )
                     )
                     val threadState by threadViewModel.state.collectAsStateWithLifecycle()
-                    LaunchedEffect(current.summary.id) {
+                    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
                         threadViewModel.load { detail -> mailboxViewModel.onThreadLoaded(current.summary, detail) }
                     }
                     ThreadScreen(
                         state = threadState,
                         summary = current.summary,
                         preferences = container.preferences,
-                        onBack = { destination = AuthDestination.Mailbox },
+                        onRetry = {
+                            threadViewModel.load { detail -> mailboxViewModel.onThreadLoaded(current.summary, detail) }
+                        },
+                        onBack = { navigate(AuthDestination.Mailbox) },
                         onCompose = {
                             composeSession += 1
-                            destination = AuthDestination.Compose(
+                            navigate(AuthDestination.Compose(
                                 mode = it,
                                 returnTo = current.summary,
                                 sessionKey = composeSession
-                            )
+                            ))
                         },
                         onAction = { action ->
                             if (action.supportsUndo()) {
                                 val updated = current.summary.copy(isRead = threadState.isRead, isStarred = threadState.isStarred, isArchived = threadState.isArchived)
                                 mailboxViewModel.perform(action, listOf(updated))
-                                destination = AuthDestination.Mailbox
+                                navigate(AuthDestination.Mailbox)
                             } else threadViewModel.perform(action, onMailboxMutation = {
                                 mailboxViewModel.onThreadMutation(action, current.summary)
                                 mailboxViewModel.refresh()
                             }, onExit = {
-                                destination = AuthDestination.Mailbox
+                                navigate(AuthDestination.Mailbox)
                             })
                         },
                         onDownload = threadViewModel::download,
                         onOpenedAttachmentConsumed = threadViewModel::consumeOpenedAttachment
                     )
                 }
-                is AuthDestination.Compose -> {
-                    val returnDestination = current.returnTo?.let(AuthDestination::Thread) ?: AuthDestination.Mailbox
-                    BackHandler { destination = returnDestination }
+            composable("compose/{payload}") { entry ->
+                    val current = remember(entry) {
+                        routeGson.fromJson(entry.arguments!!.getString("payload"), AuthDestination.Compose::class.java)
+                    }
                     val composeViewModel: ComposeViewModel = viewModel(
                         key = "${current.mode}:${current.sessionKey}",
                         factory = ComposeViewModelFactory(container.api, current.mode, container.preferences)
@@ -293,7 +202,7 @@ fun AuthenticatedRoot(
                     ComposeScreen(
                         mode = current.mode,
                         state = composeState,
-                        onBack = { destination = returnDestination },
+                        onBack = { navController.popBackStack() },
                         onTo = composeViewModel::onTo,
                         onCc = composeViewModel::onCc,
                         onBcc = composeViewModel::onBcc,
@@ -312,23 +221,21 @@ fun AuthenticatedRoot(
                                     }
                                 }
                                 mailboxRefresh += 1
-                                destination = AuthDestination.Mailbox
+                                navigate(AuthDestination.Mailbox)
                             }
                         },
                         onImport = { uris -> composeViewModel.importUris(context, uris) },
                         onRemoveAttachment = composeViewModel::removeAttachment
                     )
                 }
-                AuthDestination.Settings -> {
-                    BackHandler { destination = AuthDestination.Mailbox }
+            composable("settings") {
                     SettingsScreen(
                         container = container,
                         user = user,
-                        onBack = { destination = AuthDestination.Mailbox },
+                        onBack = { navigate(AuthDestination.Mailbox) },
                         onDisconnected = onDisconnected
                     )
                 }
-            }
         }
 
         SnackbarHost(undoSnackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 88.dp))
@@ -348,3 +255,31 @@ fun LaunchScreen() {
         CircularProgressIndicator()
     }
 }
+
+internal fun navigationGson() = GsonBuilder()
+    .registerTypeAdapter(Date::class.java, ApiDateAdapter())
+    .registerTypeAdapter(ComposeMode::class.java, JsonSerializer<ComposeMode> { mode, _, context ->
+        val kind = when (mode) {
+            ComposeMode.NewMessage -> "new"
+            is ComposeMode.Draft -> "draft"
+            is ComposeMode.Reply -> "reply"
+            is ComposeMode.Forward.Message -> "forward-message"
+            is ComposeMode.Forward.Thread -> "forward-thread"
+        }
+        com.google.gson.JsonObject().apply {
+            addProperty("kind", kind)
+            add("value", context.serialize(mode, mode.javaClass))
+        }
+    })
+    .registerTypeAdapter(ComposeMode::class.java, JsonDeserializer<ComposeMode> { json, _, context ->
+        val envelope = json.asJsonObject
+        when (envelope.get("kind").asString) {
+            "new" -> ComposeMode.NewMessage
+            "draft" -> context.deserialize<ComposeMode>(envelope.get("value"), ComposeMode.Draft::class.java)
+            "reply" -> context.deserialize<ComposeMode>(envelope.get("value"), ComposeMode.Reply::class.java)
+            "forward-message" -> context.deserialize<ComposeMode>(envelope.get("value"), ComposeMode.Forward.Message::class.java)
+            "forward-thread" -> context.deserialize<ComposeMode>(envelope.get("value"), ComposeMode.Forward.Thread::class.java)
+            else -> error("Unknown compose route")
+        }
+    })
+    .create()

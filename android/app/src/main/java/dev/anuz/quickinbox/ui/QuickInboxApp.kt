@@ -1,5 +1,8 @@
 package dev.anuz.quickinbox.ui
 
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,7 +29,6 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private enum class OnboardingRoute { Home, Scanner, Privacy }
 
 @Composable
 fun QuickInboxApp() {
@@ -65,7 +67,7 @@ private fun OnboardingFlow(
 ) {
     val container = LocalAppContainer.current
     val scope = rememberCoroutineScope()
-    var route by remember { mutableStateOf(OnboardingRoute.Home) }
+    val navController = rememberNavController()
     var showManual by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf(initialMessage) }
     var scanned by remember { mutableStateOf<Pairing?>(null) }
@@ -115,27 +117,29 @@ private fun OnboardingFlow(
         }
     }
 
-    when (route) {
-        OnboardingRoute.Home -> OnboardingScreen(
+    QuickInboxNavHost(navController, startDestination = "home") {
+        composable("home") { OnboardingScreen(
             error = error,
-            onScan = { error = null; route = OnboardingRoute.Scanner },
+            onScan = { error = null; navController.navigate("scanner") { launchSingleTop = true } },
             onManual = { error = null; showManual = true },
-            onPrivacy = { route = OnboardingRoute.Privacy }
+            onPrivacy = { navController.navigate("privacy") { launchSingleTop = true } }
         )
-        OnboardingRoute.Scanner -> ScannerScreen(
-            onBack = { route = OnboardingRoute.Home },
-            onManual = { route = OnboardingRoute.Home; showManual = true },
+        }
+        composable("scanner") { ScannerScreen(
+            onBack = { navController.popBackStack("home", false) },
+            onManual = { navController.popBackStack("home", false); showManual = true },
             onScanned = { value ->
                 val result = validatePayload(value)
                 if (result == null) error = "Invalid pairing code"
                 else {
                     scanned = result
                     error = null
-                    route = OnboardingRoute.Home
+                    navController.popBackStack("home", false)
                 }
             }
         )
-        OnboardingRoute.Privacy -> PrivacyScreen(onBack = { route = OnboardingRoute.Home })
+        }
+        composable("privacy") { PrivacyScreen(onBack = { navController.popBackStack() }) }
     }
 
     if (showManual) {
